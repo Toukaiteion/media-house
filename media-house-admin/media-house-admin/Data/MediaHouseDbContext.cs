@@ -21,6 +21,8 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
     public DbSet<Plugin> Plugins { get; set; }
     public DbSet<PluginConfig> PluginConfigs { get; set; }
     public DbSet<PluginExecutionLog> PluginExecutionLogs { get; set; }
+    public DbSet<UploadTask> UploadTasks { get; set; }
+    public DbSet<StagingMedia> StagingMedias { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -177,5 +179,25 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
 
         modelBuilder.Entity<PluginExecutionLog>()
             .HasIndex(pel => pel.StartTime);
+
+        // Upload configurations
+        modelBuilder.Entity<UploadTask>()
+            .HasIndex(ut => ut.Status);
+
+        modelBuilder.Entity<UploadTask>()
+            .HasIndex(ut => ut.CreatedAt);
+
+        modelBuilder.Entity<StagingMedia>()
+            .HasIndex(sm => sm.Status);
+
+        modelBuilder.Entity<StagingMedia>()
+            .HasIndex(sm => sm.UploadTaskId);
+
+        // StagingMedia -> UploadTask relationship
+        modelBuilder.Entity<StagingMedia>()
+            .HasOne(sm => sm.UploadTask)
+            .WithMany()
+            .HasForeignKey(sm => sm.UploadTaskId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

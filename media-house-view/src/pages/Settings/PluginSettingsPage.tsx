@@ -45,6 +45,7 @@ import { api } from '../../services/api';
 import { PluginCard } from '../../components/PluginCard';
 import { PluginConfigDialog } from '../../components/PluginConfigDialog';
 import { PluginTestRunDialog } from '../../components/PluginTestRunDialog';
+import { PluginWizardDialog } from '../../components/PluginWizardDialog';
 import type { Plugin, PluginConfig, PluginExecutionLog } from '../../types';
 
 interface TabPanelProps {
@@ -95,6 +96,9 @@ export function PluginSettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingUploading, setUploadingUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // 插件编写向导对话框状态
+  const [wizardDialogOpen, setWizardDialogOpen] = useState(false);
 
   // 测试运行对话框状态
   const [testRunDialogOpen, setTestRunDialogOpen] = useState(false);
@@ -490,6 +494,13 @@ export function PluginSettingsPage() {
             <IconButton onClick={refreshPlugins} aria-label="刷新列表">
               <RefreshIcon />
             </IconButton>
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => setWizardDialogOpen(true)}
+            >
+              插件助手
+            </Button>
             <Button
               variant="contained"
               startIcon={uploadingUploading ? <CircularProgress size={20} /> : <UploadIcon />}
@@ -956,6 +967,12 @@ export function PluginSettingsPage() {
           <Button onClick={handleCloseLogDetail}>关闭</Button>
         </DialogActions>
       </Dialog>
+
+      {/* 插件编写向导对话框 */}
+      <PluginWizardDialog
+        open={wizardDialogOpen}
+        onClose={() => setWizardDialogOpen(false)}
+      />
     </Container>
   );
 }

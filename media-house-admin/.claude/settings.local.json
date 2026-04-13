@@ -5,7 +5,10 @@
       "Bash(/usr/share/dotnet/dotnet --version)",
       "Bash(/usr/local/bin/dotnet --version)",
       "Bash(dotnet add:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(pkill -f dotnet.*media-house-admin)",
+      "Bash(rm -rf media-house-admin/bin/Debug/net10.0/*)",
+      "Bash(dotnet clean:*)"
     ]
   }
 }

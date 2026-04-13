@@ -22,14 +22,11 @@
 {
   "action": "scrape",
   "source_dir": "/path/to/movie/directory",
+  "output_dir": "/path/to/output/directory",//可选
   "config": {
     "language": "zh-CN",
     "poster_quality": "high",
     "custom_fields": {}
-  },
-  "media_info": {
-    "title": "电影标题（可选，用于匹配）",
-    "year": "2024"
   }
 }
 ```
@@ -78,7 +75,11 @@
 {"type": "progress", "step": "searching", "message": "Searching for movie...", "percent": 10}
 {"type": "progress", "step": "downloading", "message": "Downloading poster...", "percent": 50}
 {"type": "progress", "step": "saving", "message": "Saving metadata...", "percent": 80}
+{"type": "error", "message": "An error occurred"}
 ```
+支持的消息类型：
+- `progress`: 进度消息
+- `error`: 报错消息
 
 支持的进度步骤类型：
 - `initializing`: 初始化中
@@ -589,3 +590,148 @@ my-scraper-1.0.0/
 - 向stderr输出进度信息（JSON行格式）
 - 确保返回值：成功返回0，失败返回非零
 - 支持信号处理，收到SIGTERM时优雅退出
+
+## 九、插件运行命令规范
+
+### 9.1 基本命令结构
+
+插件通过标准输入/输出进行通信，运行方式为：
+
+**Linux/macOS:**
+```bash
+/path/to/plugins/{pluginId}/{version}/bin/scraper < input.json
+```
+
+**Windows:**
+```cmd
+path\to\plugins\{pluginId}\{version}\bin\scraper.exe < input.json
+```
+
+### 9.2 完整执行流程
+
+```bash
+# 1. 准备输入JSON（通过文件重定向到stdin）
+cat > input.json << EOF
+{
+  "action": "scrape",
+  "source_dir": "/path/to/movie/directory",
+  "output_dir": "/path/to/output/directory"
+  "config": {
+    "language": "zh-CN",
+    "poster_quality": "high"
+  },
+  "media_info": {
+    "title": "电影标题",
+    "year": "2024"
+  }
+}
+EOF
+
+# 2. 运行插件，同时捕获stdout和stderr
+/path/to/plugins/av-mogu/1.0.0/bin/scraper < input.json > output.json 2> progress.log
+
+# 3. 检查退出码
+exit_code=$?
+if [ $exit_code -eq 0 ]; then
+    echo "执行成功"
+    # 解析output.json获取元数据
+else
+    echo "执行失败，退出码: $exit_code"
+fi
+```
+
+### 9.3 进度通知（stderr）
+
+插件通过stderr输出进度通知，每行一个JSON对象：
+
+```json
+{"type": "progress", "step": "searching", "message": "Searching for movie...", "percent": 10}
+{"type": "progress", "step": "downloading", "message": "Downloading poster...", "percent": 50}
+{"type": "progress", "step": "saving", "message": "Saving metadata...", "percent": 80}
+```
+
+### 9.4 输出结果（stdout）
+
+执行成功时，向stdout输出JSON：
+
+```json
+{
+  "status": "success",
+  "message": "Scraping completed",
+  "metadata": {
+    "title": "电影标题",
+    "original_title": "原始标题",
+    "year": "2024",
+    "summary": "剧情简介"
+  },
+  "created_files": {
+    "nfo": "movie.nfo",
+    "poster": "poster.jpg"
+  },
+  "statistics": {
+    "total_time_ms": 5000,
+    "api_requests": 3
+  }
+}
+```
+
+### 9.5 退出码规则
+
+| 退出码 | 含义 |
+|--------|------|
+| 0 | 执行成功 |
+| 非零 | 执行失败 |
+
+### 9.6 插件开发者实现示例（Python）
+
+```python
+#!/usr/bin/env python3
+import sys
+import json
+
+def main():
+    # 1. 从stdin读取输入
+    input_data = json.load(sys.stdin)
+
+    action = input_data.get("action")
+    source_dir = input_data.get("source_dir")
+    config = input_data.get("config", {})
+
+    # 2. 发送进度通知到stderr
+    def send_progress(step, message, percent):
+        progress = {
+            "type": "progress",
+            "step": step,
+            "message": message,
+            "percent": percent
+        }
+        print(json.dumps(progress), file=sys.stderr, flush=True)
+
+    send_progress("initializing", "Starting scraper...", 0)
+    send_progress("searching", "Searching...", 10)
+    # ... 执行搜刮逻辑 ...
+
+    # 3. 向stdout输出结果
+    result = {
+        "status": "success",
+        "message": "Scraping completed",
+        "metadata": { /* 元数据 */ },
+        "created_files": { /* 创建的文件 */ },
+        "statistics": { /* 统计信息 */ }
+    }
+    print(json.dumps(result), file=sys.stdout, flush=True)
+
+    # 4. 返回0表示成功
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
+```
+
+### 9.7 设计要点
+
+- **标准化接口**：所有插件使用相同的输入/输出格式
+- **跨平台兼容**：支持Linux/macOS/Windows
+- **实时进度跟踪**：通过stderr输出进度JSON
+- **简洁通信**：仅使用stdin/stdout/stderr，无需复杂IPC
+- **易于调试**：可以手动运行插件并查看输入/输出

@@ -1,3 +1,4 @@
+using MediaHouse;
 using MediaHouse.Data;
 using MediaHouse.Data.repository;
 using MediaHouse.Interfaces;
@@ -28,10 +29,18 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPluginService, PluginService>();
 builder.Services.AddScoped<IPluginConfigService, PluginConfigService>();
 builder.Services.AddScoped<IPluginExecutionService, PluginExecutionService>();
+builder.Services.AddScoped<IUploadService, UploadService>();
+builder.Services.AddScoped<IChunkService, ChunkService>();
+builder.Services.AddScoped<IStagingService, StagingService>();
+builder.Services.AddScoped<IPublishService, PublishService>();
 
 // Configure JWT Settings
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection(JwtSettings.SectionName));
+
+// Configure Upload Settings
+builder.Services.Configure<UploadSettings>(
+    builder.Configuration.GetSection("UploadSettings"));
 
 // Register repositories
 builder.Services.AddScoped<IMediaLibraryRepository, MediaLibraryRepository>();
