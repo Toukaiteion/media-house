@@ -1,0 +1,65 @@
+/* ==============================================
+   全局滚动条样式（Chrome / Edge / Safari）
+   ============================================== */
+
+/* 定义 CSS 变量默认值（亮色主题） */
+:root {
+  --scrollbar-track: #f1f1f1;
+  --scrollbar-thumb: #c0c0c0;
+  --scrollbar-thumb-hover: #999;
+  --scrollbar-thumb-active: #666;
+}
+
+/* 暗色主题变量 */
+[data-theme="dark"] {
+  --scrollbar-track: #2d2d2d;
+  --scrollbar-thumb: #555;
+  --scrollbar-thumb-hover: #777;
+  --scrollbar-thumb-active: #999;
+}
+
+/* 整体滚动条宽高 */
+::-webkit-scrollbar {
+  width: 8px;    /* 垂直滚动条 */
+  height: 8px;   /* 水平滚动条 */
+}
+
+/* 滚动条轨道（背景） */
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 4px;
+}
+
+/* 滚动条滑块（可拖动部分） */
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+/* 滑块 hover */
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* 滑块 active（按下）） */
+::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
+}
+
+/* 滚动条交汇角（右下角） */
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+/* ==============================================
+   全局滚动条样式（Firefox 标准属性）
+   ============================================== */
+html,
+body,
+* {
+  /* 宽度：thin / auto / none */
+  scrollbar-width: thin;
+  /* 滑块颜色 / 轨道颜色 */
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
