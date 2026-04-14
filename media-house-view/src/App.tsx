@@ -14,6 +14,7 @@ import { MetadataSettingsPage } from './pages/Settings/MetadataSettingsPage';
 import { AccountSettingsPage } from './pages/Settings/AccountSettingsPage';
 import { LogsManagerPage } from './pages/Settings/LogsManagerPage';
 import { PluginSettingsPage } from './pages/Settings/PluginSettingsPage';
+import { MediaPublishPage } from './pages/Settings/MediaPublishPage';
 import { PlayerLayout } from './layouts/PlayerLayout';
 import { PlayerPage } from './pages/Player/PlayerPage';
 import { LoginPage } from './pages/Login/LoginPage';
@@ -44,6 +45,7 @@ function App({ toggleTheme }: AppProps) {
             <Route path="/settings" element={<Settings />} >
               <Route index element={<MediaLibrarySettingsPage />} />
               <Route path="media-library" element={<MediaLibrarySettingsPage />} />
+              <Route path="media-publish" element={<MediaPublishPage />} />
               <Route path="plugins" element={<PluginSettingsPage />} />
               <Route path="metadata" element={<MetadataSettingsPage />} />
               <Route path="account" element={<AccountSettingsPage />} />

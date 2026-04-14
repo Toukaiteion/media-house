@@ -292,13 +292,14 @@ DROP TABLE IF EXISTS upload_tasks;
 CREATE TABLE upload_tasks (
     id VARCHAR(36) PRIMARY KEY,         -- UUID
     file_name VARCHAR(255) NOT NULL,     -- 原始文件名
-    file_size BIGINT NOT NULL,            -- 文件总大小（字节）
-    chunk_size INTEGER NOT NULL,           -- 分片大小（默认5MB）
-    total_chunks INTEGER NOT NULL,           -- 总分片数
-    uploaded_chunks INTEGER DEFAULT 0,        -- 已上传分片数
-    uploaded_size BIGINT DEFAULT 0,         -- 已上传大小（字节）
-    status INTEGER DEFAULT 0,               -- 状态：0=待上传，1=上传中，2=已暂停，3=已完成，4=已取消，5=失败
-    mime_type VARCHAR(100),                -- 文件MIME类型
+    file_size BIGINT NOT NULL,           -- 文件总大小（字节）
+    file_md5 VARCHAR(32),               -- 文件MD5值（32位十六进制字符串）
+    chunk_size INTEGER NOT NULL,         -- 分片大小（默认5MB）
+    total_chunks INTEGER NOT NULL,       -- 总分片数
+    uploaded_chunks INTEGER DEFAULT 0,    -- 已上传分片数
+    uploaded_size BIGINT DEFAULT 0,     -- 已上传大小（字节）
+    status INTEGER DEFAULT 0,            -- 状态：0=待上传，1=上传中，2=已完成，3=已取消，4=失败
+    mime_type VARCHAR(100),             -- 文件MIME类型
     created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
     updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
     completed_at TIMESTAMP
@@ -335,6 +336,7 @@ CREATE TABLE staging_medias (
 -- 上传模块索引
 -- ==============================
 CREATE INDEX IF NOT EXISTS idx_upload_tasks_status ON upload_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_upload_tasks_file_md5 ON upload_tasks(file_md5);
 CREATE INDEX IF NOT EXISTS idx_upload_tasks_created_at ON upload_tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_staging_medias_status ON staging_medias(status);
 CREATE INDEX IF NOT EXISTS idx_staging_medias_upload_task_id ON staging_medias(upload_task_id);
