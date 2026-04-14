@@ -579,7 +579,54 @@ export interface UploadProgress {
 export interface UploadRequest {
   file_name: string;
   file_size: number;
+  file_md5?: string;
   chunk_size?: number;
+}
+
+/**
+ * 根据 MD5 查找上传任务响应（用于断点续传）
+ */
+export interface FindUploadTaskByMd5Response {
+  upload_id: string;
+  file_name: string;
+  file_size: number;
+  file_md5: string;
+  chunk_size: number;
+  total_chunks: number;
+  uploaded_chunks: number;
+  uploaded_size: number;
+  progress: number;
+  status: UploadStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 检查已上传分片响应
+ */
+export interface CheckChunksResponse {
+  upload_id: string;
+  from_index: number;
+  to_index: number;
+  all_uploaded: boolean;
+  missing_chunks: number[];
+}
+
+/**
+ * 合并上传请求
+ */
+export interface MergeUploadRequest {
+  upload_id: string;
+  type?: 'movie' | 'tvshow';
+  title?: string;
+}
+
+/**
+ * 合并上传响应
+ */
+export interface MergeUploadResponse {
+  media_id: string;
+  status: string;
 }
 
 /**

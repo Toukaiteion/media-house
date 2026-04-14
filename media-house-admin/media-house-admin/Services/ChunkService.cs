@@ -1,5 +1,6 @@
 using MediaHouse.Data.Entities;
 using MediaHouse.Interfaces;
+using MediaHouse.DTOs;
 using MediaHouse.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -9,10 +10,12 @@ namespace MediaHouse.Services;
 public class ChunkService(
     MediaHouseDbContext context,
     IOptions<UploadSettings> uploadSettings,
+    IOptions<StagingSettings> stagingSettings,
     ILogger<ChunkService> logger) : IChunkService
 {
     private readonly MediaHouseDbContext _context = context;
-    private readonly UploadSettings _settings = uploadSettings.Value;
+    private readonly UploadSettings _uploadSettings = uploadSettings.Value;
+    private readonly StagingSettings _stagingSettings = stagingSettings.Value;
     private readonly ILogger<ChunkService> _logger = logger;
     private const int BufferSize = 81920; // 80KB buffer for faster copy
 
@@ -24,18 +27,13 @@ public class ChunkService(
             throw new InvalidOperationException($"Upload task not found: {uploadId}");
         }
 
-        if (task.Status == 2) // 已暂停
-        {
-            throw new InvalidOperationException($"Upload task is paused: {uploadId}");
-        }
-
-        if (task.Status == 3) // 已完成
+        if (task.Status == 2) // 已完成
         {
             throw new InvalidOperationException($"Upload task already completed: {uploadId}");
         }
 
-        // 保存分片 - 使用更大的缓冲区
-        var chunkDir = Path.Combine(_settings.UploadPath, uploadId, "chunks");
+        // 保存分片
+        var chunkDir = Path.Combine(_uploadSettings.UploadPath, uploadId, "chunks");
         var chunkFile = Path.Combine(chunkDir, $"{chunkIndex}.chunk");
 
         // 确保目录存在
@@ -64,20 +62,13 @@ public class ChunkService(
 
         var chunkSize = new FileInfo(chunkFile).Length;
 
-        // 更新任务状态 - 使用超时保护
+        // 更新任务状态
         var updateTask = Task.Run(async () =>
         {
             task.UploadedChunks++;
             task.UploadedSize += chunkSize;
             task.Status = 1; // 上传中
             task.UpdatedAt = DateTime.UtcNow;
-
-            // 检查是否完成
-            if (task.UploadedChunks >= task.TotalChunks)
-            {
-                task.Status = 3; // 已完成
-                task.CompletedAt = DateTime.UtcNow;
-            }
 
             await _context.SaveChangesAsync();
         });
@@ -90,54 +81,48 @@ public class ChunkService(
         else
         {
             _logger.LogWarning("Database update timeout for chunk {ChunkIndex}, but file saved successfully", chunkIndex);
-            // 文件已保存，虽然数据库更新失败，但返回成功
         }
 
         _logger.LogDebug("Uploaded chunk {ChunkIndex} ({Size} bytes) for task {UploadId}", chunkIndex, chunkSize, uploadId);
         return true;
     }
 
-    public async Task<string?> CompleteUploadAsync(string uploadId)
+    public async Task<CheckChunksResponse> CheckChunksAsync(string uploadId, int index)
     {
         var task = await _context.UploadTasks.FindAsync(uploadId);
         if (task == null)
         {
-            throw new InvalidOperationException($"Upload task not found: {uploadId}");
+            return new CheckChunksResponse
+            {
+                success = false,
+                error = "Upload task not found"
+            };
         }
 
-        if (task.Status != 3) // 未完成
-        {
-            throw new InvalidOperationException($"Upload task not completed: {uploadId}");
-        }
+        var chunkDir = Path.Combine(_uploadSettings.UploadPath, uploadId, "chunks");
+        var missingChunks = new List<int>();
 
-        // 合并分片
-        var uploadDir = Path.Combine(_settings.UploadPath, uploadId);
-        var chunkDir = Path.Combine(uploadDir, "chunks");
-        var mergedFile = Path.Combine(uploadDir, task.FileName);
-
-        using var outputStream = new FileStream(mergedFile, FileMode.Create, FileAccess.Write);
-
-        for (int i = 0; i < task.TotalChunks; i++)
+        // 检查从 0 到 index 的所有分片
+        for (int i = 0; i <= index && i < task.TotalChunks; i++)
         {
             var chunkFile = Path.Combine(chunkDir, $"{i}.chunk");
             if (!File.Exists(chunkFile))
             {
-                throw new InvalidOperationException($"Chunk {i} not found for upload task: {uploadId}");
+                missingChunks.Add(i);
             }
-
-            using var inputStream = new FileStream(chunkFile, FileMode.Open, FileAccess.Read);
-            await inputStream.CopyToAsync(outputStream);
         }
 
-        // 验证文件大小
-        var fileInfo = new FileInfo(mergedFile);
-        if (fileInfo.Length != task.FileSize)
+        return new CheckChunksResponse
         {
-            throw new InvalidOperationException($"Merged file size mismatch for upload task: {uploadId}");
-        }
-
-        _logger.LogInformation("Completed upload task {UploadId}, merged file: {FilePath}", uploadId, mergedFile);
-
-        return mergedFile;
+            success = true,
+            data = new CheckChunksData
+            {
+                upload_id = uploadId,
+                from_index = 0,
+                to_index = index,
+                all_uploaded = missingChunks.Count == 0,
+                missing_chunks = missingChunks.ToArray()
+            }
+        };
     }
 }

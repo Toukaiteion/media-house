@@ -48,6 +48,10 @@ import type {
   UpdateStagingMetadataDto,
   PublishRequest,
   PublishResponse,
+  FindUploadTaskByMd5Response,
+  CheckChunksResponse,
+  MergeUploadRequest,
+  MergeUploadResponse,
 } from '../types';
 
 const API_BASE_URL = '/api';
@@ -663,6 +667,13 @@ class ApiClient {
   }
 
   /**
+   * 根据 MD5 查找上传任务（用于断点续传）
+   */
+  async findUploadTaskByMd5(fileMd5: string): Promise<FindUploadTaskByMd5Response> {
+    return this.request<FindUploadTaskByMd5Response>(`/upload/find-by-md5/${fileMd5}`);
+  }
+
+  /**
    * 上传分片
    */
   async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob): Promise<UploadChunkResponse> {
@@ -687,6 +698,13 @@ class ApiClient {
     }
 
     return response.json();
+  }
+
+  /**
+   * 检查已上传的分片（用于断点续传）
+   */
+  async checkUploadedChunks(uploadId: string, index: number = 0): Promise<CheckChunksResponse> {
+    return this.request<CheckChunksResponse>(`/upload/check-chunks/${uploadId}?index=${index}`);
   }
 
   /**
@@ -731,12 +749,13 @@ class ApiClient {
   }
 
   /**
-   * 完成上传，创建待发布媒体
+   * 合并分片，创建待发布媒体
    */
-  async completeUpload(uploadId: string, dto: { type: 'movie' | 'tvshow'; title?: string }): Promise<{ media_id: string }> {
-    return this.request<{ media_id: string }>(`/upload/complete/${uploadId}`, {
+  async mergeUpload(upload_id: string, dto: MergeUploadRequest): Promise<MergeUploadResponse> {
+    dto.upload_id = upload_id; // 将 upload_id 添加到请求体中
+    return this.request<MergeUploadResponse>(`/upload/merge`, {
       method: 'POST',
-      body: JSON.stringify(dto),
+      body: JSON.stringify({ ...dto }),
     });
   }
 

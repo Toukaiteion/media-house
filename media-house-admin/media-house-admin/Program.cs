@@ -34,10 +34,6 @@ builder.Services.AddScoped<IChunkService, ChunkService>();
 builder.Services.AddScoped<IStagingService, StagingService>();
 builder.Services.AddScoped<IPublishService, PublishService>();
 
-// Configure Upload Settings
-builder.Services.Configure<UploadSettings>(
-    builder.Configuration.GetSection("UploadSettings"));
-
 // Configure JWT Settings
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection(JwtSettings.SectionName));
@@ -45,6 +41,10 @@ builder.Services.Configure<JwtSettings>(
 // Configure Upload Settings
 builder.Services.Configure<UploadSettings>(
     builder.Configuration.GetSection("UploadSettings"));
+
+// Configure Staging Settings
+builder.Services.Configure<StagingSettings>(
+    builder.Configuration.GetSection("StagingSettings"));
 
 // Register repositories
 builder.Services.AddScoped<IMediaLibraryRepository, MediaLibraryRepository>();

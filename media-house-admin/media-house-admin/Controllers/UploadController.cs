@@ -32,95 +32,120 @@ public class UploadController(
         }
     }
 
-    [HttpPost("chunk/{uploadId}/{chunkIndex}")]
-    [RequestSizeLimit(10 * 1024 * 1024)] // 10MB limit per chunk
-    public async Task<ActionResult> UploadChunk(string uploadId, int chunkIndex)
+    [HttpGet("find-by-md5/{file_md5}")]
+    public async Task<ActionResult<UploadProgressDto>> FindByMd5(string file_md5)
     {
         try
         {
-            if (Request.Body == null)
+            var result = await _uploadService.FindByMd5Async(file_md5);
+            if (result == null)
             {
-                return BadRequest(new { error = "No data provided" });
+                return NotFound(new { error = "upload_task_not_found", message = "未找到匹配的上传任务" });
             }
-
-            await _chunkService.UploadChunkAsync(uploadId, chunkIndex, Request.Body);
-            var progress = await _uploadService.GetUploadProgressAsync(uploadId);
-
-            return Ok(new
-            {
-                chunkIndex,
-                uploadedChunks = progress.UploadedChunks,
-                progress = progress.Progress
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error uploading chunk {ChunkIndex} for task {UploadId}", chunkIndex, uploadId);
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
-    [HttpGet("progress/{uploadId}")]
-    public async Task<ActionResult<UploadProgressDto>> GetUploadProgress(string uploadId)
-    {
-        try
-        {
-            var result = await _uploadService.GetUploadProgressAsync(uploadId);
             return Ok(result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting upload progress for task {UploadId}", uploadId);
+            _logger.LogError(ex, "Error finding upload task by MD5 {FileMd5}", file_md5);
             return BadRequest(new { error = ex.Message });
         }
     }
 
-    [HttpPost("pause/{uploadId}")]
-    public async Task<ActionResult> PauseUpload(string uploadId)
+    [HttpPost("chunk")]
+    [RequestSizeLimit(10 * 1024 * 1024)] // 10.24MB limit per chunk
+    public async Task<ActionResult> UploadChunk()
     {
         try
         {
-            var success = await _uploadService.PauseUploadAsync(uploadId);
-            if (!success)
+            var form = await Request.ReadFormAsync();
+
+            if (!form.ContainsKey("upload_id") || !form.ContainsKey("chunk_index"))
             {
-                return NotFound(new { error = "Upload task not found" });
+                return BadRequest(new { error = "Missing required parameters" });
             }
 
-            return Ok(new { message = "Upload paused" });
+            var uploadId = form["upload_id"].ToString();
+            var chunkIndex = int.Parse(form["chunk_index"].ToString());
+
+            if (!form.Files.Any())
+            {
+                return BadRequest(new { error = "No file data provided" });
+            }
+
+            var chunkFile = form.Files[0];
+            if (chunkFile == null || chunkFile.Length == 0)
+            {
+                return BadRequest(new { error = "No file data provided" });
+            }
+
+            await _chunkService.UploadChunkAsync(uploadId, chunkIndex, chunkFile.OpenReadStream());
+            var progress = await _uploadService.GetUploadProgressAsync(uploadId);
+
+            return Ok(new
+            {
+                chunk_index = chunkIndex,
+                uploaded_chunks = progress.uploaded_chunks,
+                progress = progress.progress
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error pausing upload task {UploadId}", uploadId);
+            _logger.LogError(ex, "Error uploading chunk");
             return BadRequest(new { error = ex.Message });
         }
     }
 
-    [HttpPost("resume/{uploadId}")]
-    public async Task<ActionResult> ResumeUpload(string uploadId)
+    [HttpGet("check-chunks/{upload_id}")]
+    public async Task<ActionResult<CheckChunksResponse>> CheckChunks(string upload_id, [FromQuery] int index = 0)
     {
         try
         {
-            var success = await _uploadService.ResumeUploadAsync(uploadId);
-            if (!success)
-            {
-                return NotFound(new { error = "Upload task not found" });
-            }
-
-            return Ok(new { message = "Upload resumed" });
+        var result = await _chunkService.CheckChunksAsync(upload_id, index);
+            return Ok(result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error resuming upload task {UploadId}", uploadId);
+            _logger.LogError(ex, "Error checking chunks for task {UploadId}", upload_id);
             return BadRequest(new { error = ex.Message });
         }
     }
 
-    [HttpDelete("{uploadId}")]
-    public async Task<ActionResult> DeleteUploadTask(string uploadId)
+    [HttpPost("merge")]
+    public async Task<ActionResult<MergeResponse>> MergeUpload([FromBody] MergeRequest request)
     {
         try
         {
-            var success = await _uploadService.DeleteUploadTaskAsync(uploadId);
+            var result = await _uploadService.MergeAsync(request.upload_id);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error merging upload task {UploadId}", request.upload_id);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("progress/{upload_id}")]
+    public async Task<ActionResult<UploadProgressDto>> GetUploadProgress(string upload_id)
+    {
+        try
+        {
+            var result = await _uploadService.GetUploadProgressAsync(upload_id);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting upload progress for task {UploadId}", upload_id);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("{upload_id}")]
+    public async Task<ActionResult> DeleteUploadTask(string upload_id)
+    {
+        try
+        {
+            var success = await _uploadService.DeleteUploadTaskAsync(upload_id);
             if (!success)
             {
                 return NotFound(new { error = "Upload task not found" });
@@ -130,7 +155,7 @@ public class UploadController(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error deleting upload task {UploadId}", uploadId);
+            _logger.LogError(ex, "Error deleting upload task {UploadId}", upload_id);
             return BadRequest(new { error = ex.Message });
         }
     }
@@ -146,28 +171,6 @@ public class UploadController(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting all upload tasks");
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
-    [HttpPost("complete/{uploadId}")]
-    public async Task<ActionResult<StagingMediaDto>> CompleteUpload(string uploadId, [FromBody] CompleteUploadRequest request)
-    {
-        try
-        {
-            var stagingService = HttpContext.RequestServices.GetRequiredService<IStagingService>();
-
-            // 合并分片
-            await _chunkService.CompleteUploadAsync(uploadId);
-
-            // 创建待发布媒体
-            var result = await stagingService.CreateStagingMediaAsync(uploadId, request);
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error completing upload task {UploadId}", uploadId);
             return BadRequest(new { error = ex.Message });
         }
     }
