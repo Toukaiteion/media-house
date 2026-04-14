@@ -34,6 +34,10 @@ builder.Services.AddScoped<IChunkService, ChunkService>();
 builder.Services.AddScoped<IStagingService, StagingService>();
 builder.Services.AddScoped<IPublishService, PublishService>();
 
+// Configure Upload Settings
+builder.Services.Configure<UploadSettings>(
+    builder.Configuration.GetSection("UploadSettings"));
+
 // Configure JWT Settings
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection(JwtSettings.SectionName));
@@ -115,6 +119,13 @@ builder.Services.AddCors(options =>
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
+
+// Configure Kestrel server timeouts for large file uploads
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(10);
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(5);
+});
 
 var app = builder.Build();
 

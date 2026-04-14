@@ -14,6 +14,7 @@ public class ChunkService(
     private readonly MediaHouseDbContext _context = context;
     private readonly UploadSettings _settings = uploadSettings.Value;
     private readonly ILogger<ChunkService> _logger = logger;
+    private const int BufferSize = 81920; // 80KB buffer for faster copy
 
     public async Task<bool> UploadChunkAsync(string uploadId, int chunkIndex, Stream chunkData)
     {
@@ -33,31 +34,66 @@ public class ChunkService(
             throw new InvalidOperationException($"Upload task already completed: {uploadId}");
         }
 
-        // 保存分片
+        // 保存分片 - 使用更大的缓冲区
         var chunkDir = Path.Combine(_settings.UploadPath, uploadId, "chunks");
         var chunkFile = Path.Combine(chunkDir, $"{chunkIndex}.chunk");
 
-        using var fileStream = new FileStream(chunkFile, FileMode.Create, FileAccess.Write);
-        await chunkData.CopyToAsync(fileStream);
+        // 确保目录存在
+        if (!Directory.Exists(chunkDir))
+        {
+            Directory.CreateDirectory(chunkDir);
+        }
+
+        // 使用超时保护保存文件
+        var saveTask = Task.Run(async () =>
+        {
+            using var fileStream = new FileStream(chunkFile, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize);
+            await chunkData.CopyToAsync(fileStream, BufferSize);
+            await fileStream.FlushAsync();
+        });
+
+        // 5分钟超时
+        if (await Task.WhenAny(saveTask, Task.Delay(TimeSpan.FromMinutes(5))) == saveTask)
+        {
+            await saveTask;
+        }
+        else
+        {
+            throw new TimeoutException($"Timeout saving chunk {chunkIndex} for upload {uploadId}");
+        }
 
         var chunkSize = new FileInfo(chunkFile).Length;
 
-        // 更新任务状态
-        task.UploadedChunks++;
-        task.UploadedSize += chunkSize;
-        task.Status = 1; // 上传中
-        task.UpdatedAt = DateTime.UtcNow;
-
-        // 检查是否完成
-        if (task.UploadedChunks >= task.TotalChunks)
+        // 更新任务状态 - 使用超时保护
+        var updateTask = Task.Run(async () =>
         {
-            task.Status = 3; // 已完成
-            task.CompletedAt = DateTime.UtcNow;
+            task.UploadedChunks++;
+            task.UploadedSize += chunkSize;
+            task.Status = 1; // 上传中
+            task.UpdatedAt = DateTime.UtcNow;
+
+            // 检查是否完成
+            if (task.UploadedChunks >= task.TotalChunks)
+            {
+                task.Status = 3; // 已完成
+                task.CompletedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+        });
+
+        // 30秒超时更新数据库
+        if (await Task.WhenAny(updateTask, Task.Delay(TimeSpan.FromSeconds(30))) == updateTask)
+        {
+            await updateTask;
+        }
+        else
+        {
+            _logger.LogWarning("Database update timeout for chunk {ChunkIndex}, but file saved successfully", chunkIndex);
+            // 文件已保存，虽然数据库更新失败，但返回成功
         }
 
-        await _context.SaveChangesAsync();
-
-        _logger.LogDebug("Uploaded chunk {ChunkIndex} for task {UploadId}", chunkIndex, uploadId);
+        _logger.LogDebug("Uploaded chunk {ChunkIndex} ({Size} bytes) for task {UploadId}", chunkIndex, chunkSize, uploadId);
         return true;
     }
 

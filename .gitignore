@@ -16,6 +16,7 @@ media-house-admin/media-house-admin/dist/
 media-house-admin/media-house-admin/build/
 media-house-admin/media-house-admin/out/
 media-house-admin/media-house-admin/plugins/
+media-house-admin/media-house-admin/uploads
 
 # Dependencies
 media-house-view/node_modules/

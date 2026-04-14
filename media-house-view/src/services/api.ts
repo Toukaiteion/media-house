@@ -38,6 +38,16 @@ import type {
   PluginExecutionLog,
   PluginInstallResponse,
   PluginExecutionResponse,
+  // 上传模块相关类型
+  UploadTask,
+  UploadRequest,
+  UploadChunkResponse,
+  UploadProgress,
+  StagingMedia,
+  StagingMediaDetail,
+  UpdateStagingMetadataDto,
+  PublishRequest,
+  PublishResponse,
 } from '../types';
 
 const API_BASE_URL = '/api';
@@ -636,6 +646,232 @@ class ApiClient {
     return this.request<{ message: string }>(`/plugins/execution/${executionId}`, {
       method: 'DELETE',
     });
+  }
+
+  /**
+   * ===== 上传模块 API =====
+   */
+
+  /**
+   * 创建上传任务
+   */
+  async createUploadTask(dto: UploadRequest): Promise<{ upload_id: string; total_chunks: number; status: string }> {
+    return this.request('/upload/create', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  /**
+   * 上传分片
+   */
+  async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob): Promise<UploadChunkResponse> {
+    const token = this.getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/octet-stream',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = `${this.baseUrl}/upload/chunk/${uploadId}/${chunkIndex}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: chunk,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new Error(error.message || error.error || `HTTP error! status: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * 获取上传进度
+   */
+  async getUploadProgress(uploadId: string): Promise<UploadProgress> {
+    return this.request<UploadProgress>(`/upload/progress/${uploadId}`);
+  }
+
+  /**
+   * 暂停上传
+   */
+  async pauseUpload(uploadId: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/upload/pause/${uploadId}`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * 恢复上传
+   */
+  async resumeUpload(uploadId: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/upload/resume/${uploadId}`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * 删除上传任务
+   */
+  async deleteUploadTask(uploadId: string): Promise<void> {
+    await this.request(`/upload/${uploadId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * 获取所有上传任务
+   */
+  async getUploadTasks(): Promise<UploadTask[]> {
+    return this.request<UploadTask[]>('/upload/list');
+  }
+
+  /**
+   * 完成上传，创建待发布媒体
+   */
+  async completeUpload(uploadId: string, dto: { type: 'movie' | 'tvshow'; title?: string }): Promise<{ media_id: string }> {
+    return this.request<{ media_id: string }>(`/upload/complete/${uploadId}`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  /**
+   * 获取待发布媒体列表
+   */
+  async getStagingMedias(): Promise<StagingMedia[]> {
+    return this.request<StagingMedia[]>('/staging/list');
+  }
+
+  /**
+   * 获取待发布媒体详情
+   */
+  async getStagingMedia(id: string): Promise<StagingMediaDetail> {
+    return this.request<StagingMediaDetail>(`/staging/${id}`);
+  }
+
+  /**
+   * 更新待发布媒体元数据
+   */
+  async updateStagingMetadata(id: string, dto: UpdateStagingMetadataDto): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/staging/${id}/metadata`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  /**
+   * 上传海报
+   */
+  async uploadStagingPoster(id: string, file: File): Promise<{ message: string }> {
+    const formData = new FormData();
+    formData.append('poster', file);
+
+    const token = this.getAuthToken();
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = `${this.baseUrl}/staging/${id}/poster`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new Error(error.message || error.error || `HTTP error! status: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * 上传背景图
+   */
+  async uploadStagingFanart(id: string, file: File): Promise<{ message: string }> {
+    const formData = new FormData();
+    formData.append('fanart', file);
+
+    const token = this.getAuthToken();
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = `${this.baseUrl}/staging/${id}/fanart`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new Error(error.message || error.error || `HTTP error! status: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * 上传截图
+   */
+  async uploadStagingScreenshot(id: string, file: File): Promise<{ message: string }> {
+    const formData = new FormData();
+    formData.append('screenshot', file);
+
+    const token = this.getAuthToken();
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = `${this.baseUrl}/staging/${id}/screenshot`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new Error(error.message || error.error || `HTTP error! status: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * 删除待发布媒体
+   */
+  async deleteStagingMedia(id: string): Promise<void> {
+    await this.request(`/staging/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * 发布到库
+   */
+  async publishStagingMedia(id: string, dto: PublishRequest): Promise<PublishResponse> {
+    return this.request<PublishResponse>(`/staging/${id}/publish`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  /**
+   * 获取媒体库列表（用于发布时选择）
+   */
+  async getLibrariesForPublish(): Promise<MediaLibrary[]> {
+    return this.request<MediaLibrary[]>('/libraries');
   }
 }
 

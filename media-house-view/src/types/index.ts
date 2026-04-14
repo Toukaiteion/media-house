@@ -526,3 +526,130 @@ export interface PluginExecutionResponse {
   execution_id: number;
   status: string;
 }
+
+/**
+ * ===== 上传模块类型定义 =====
+ */
+
+/**
+ * 上传任务状态
+ */
+export type UploadStatus = 'pending' | 'uploading' | 'paused' | 'completed' | 'cancelled' | 'failed';
+
+/**
+ * 待发布媒体状态
+ */
+export type StagingStatus = 'pending_edit' | 'pending_publish' | 'published';
+
+/**
+ * 上传任务
+ */
+export interface UploadTask {
+  upload_id: string;
+  file_name: string;
+  file_size: number;
+  chunk_size: number;
+  total_chunks: number;
+  uploaded_chunks: number;
+  uploaded_size: number;
+  status: UploadStatus;
+  mime_type?: string;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string;
+}
+
+/**
+ * 上传进度
+ */
+export interface UploadProgress {
+  upload_id: string;
+  file_name: string;
+  file_size: number;
+  uploaded_size: number;
+  total_chunks: number;
+  uploaded_chunks: number;
+  progress: number;
+  status: UploadStatus;
+}
+
+/**
+ * 创建上传任务请求
+ */
+export interface UploadRequest {
+  file_name: string;
+  file_size: number;
+  chunk_size?: number;
+}
+
+/**
+ * 上传分片响应
+ */
+export interface UploadChunkResponse {
+  chunk_index: number;
+  uploaded_chunks: number;
+  progress: number;
+}
+
+/**
+ * 待发布媒体
+ */
+export interface StagingMedia {
+  id: string;
+  upload_task_id?: string;
+  type: 'movie' | 'tvshow';
+  title?: string;
+  original_title?: string;
+  year?: number;
+  studio?: string;
+  runtime?: number;
+  description?: string;
+  video_path?: string;
+  video_size?: number;
+  poster_path?: string;
+  fanart_path?: string;
+  screenshots_path?: string;
+  tags?: string;
+  staff?: string;
+  status: StagingStatus;
+  created_at: string;
+  updated_at: string;
+  published_at?: string;
+}
+
+/**
+ * 待发布媒体详情
+ */
+export interface StagingMediaDetail extends StagingMedia {
+  // 继承 StagingMedia，可能包含更详细信息
+}
+
+/**
+ * 更新待发布媒体元数据请求
+ */
+export interface UpdateStagingMetadataDto {
+  title?: string;
+  original_title?: string;
+  year?: number;
+  studio?: string;
+  runtime?: number;
+  description?: string;
+}
+
+/**
+ * 发布到库请求
+ */
+export interface PublishRequest {
+  library_id: number;
+  media_name: string;
+}
+
+/**
+ * 发布响应
+ */
+export interface PublishResponse {
+  media_id: number;
+  movie_id?: number;
+  tv_show_id?: number;
+  status: string;
+}

@@ -9,11 +9,12 @@ CREATE TABLE media_libraries (
     name VARCHAR(100) NOT NULL,         -- 库名
     type VARCHAR(20) NOT NULL,          -- movie / tv
     path VARCHAR(500) NOT NULL,         -- 库路径
-	status VARCHAR(20) ,
+    status VARCHAR(20) ,
     is_enabled BOOLEAN DEFAULT 1,
     create_time TIMESTAMP DEFAULT (datetime('now','localtime')),
     update_time TIMESTAMP DEFAULT (datetime('now','localtime'))
 );
+
 
 -- ==============================
 -- 媒体
@@ -21,23 +22,22 @@ CREATE TABLE media_libraries (
 DROP TABLE IF EXISTS medias;
 CREATE TABLE medias (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-	library_id INTEGER NOT NULL,
-	type  VARCHAR(20) NOT NULL,         -- movie,tvshow,season, episode
-	parent_id INTEGER NOT NULL DEFAULT 0,
+    library_id INTEGER NOT NULL,
+    type  VARCHAR(20) NOT NULL,         -- movie,tvshow,season, episode
+    parent_id INTEGER NOT NULL DEFAULT 0,
     name VARCHAR(100) NOT NULL,         -- 媒体名
-	title VARCHAR(255) NOT NULL,          -- 标题
-	original_title VARCHAR(255),          -- 原始标题
-	release_date DATE,                    -- 上映日期
-	summary   VARCHAR(4096),             -- 简介
-	poster_path VARCHAR(255),            -- 海报
+    title VARCHAR(255) NOT NULL,          -- 标题
+    original_title VARCHAR(255),          -- 原始标题
+    release_date DATE,                    -- 上映日期
+    summary   VARCHAR(4096),             -- 简介
+    poster_path VARCHAR(255),            -- 海报
     thumb_path VARCHAR(255),             -- 缩略图
     fanart_path VARCHAR(255),            -- 粉丝图
-	play_count INTEGER,
-	
+    play_count INTEGER,
+
     create_time TIMESTAMP DEFAULT (datetime('now','localtime')),
     update_time TIMESTAMP DEFAULT (datetime('now','localtime'))
 );
-
 
 
 -- ==============================
@@ -47,13 +47,13 @@ DROP TABLE IF EXISTS movies;
 CREATE TABLE movies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     library_id INTEGER NOT NULL,
-	media_id INTEGER NOT NULL,
+    media_id INTEGER NOT NULL,
     num VARCHAR(64),                          -- 编号/排序号
     studio VARCHAR(255),                  -- 制片公司/工作室
     maker VARCHAR(100),                 -- 制作公司
     runtime INTEGER,                     -- 时长(分钟)
     description TEXT,                    -- 详细描述
-    
+
     screenshots_path VARCHAR(4096),      -- 截图路径
     create_time TIMESTAMP DEFAULT (datetime('now','localtime')),
     update_time TIMESTAMP DEFAULT (datetime('now','localtime'))
@@ -72,7 +72,7 @@ CREATE TABLE media_files (
     extension VARCHAR(10),
     container VARCHAR(20),               -- mkv, mp4...
     video_codec VARCHAR(20),
-	runtime     INTEGER,
+    runtime     INTEGER,
     width INTEGER,
     height INTEGER,
     audio_codec VARCHAR(20),
@@ -93,7 +93,7 @@ CREATE TABLE media_imgs (
     path VARCHAR(500) NOT NULL UNIQUE,          -- 文件路径
     file_name VARCHAR(255) NOT NULL,
     extension VARCHAR(10),           -- mkv, mp4...
-    type VARCHAR(20),                -- poster、thumb、fanart  
+    type VARCHAR(20),                -- poster、thumb、fanart
     width INTEGER,
     height INTEGER,
     size_bytes BIGINT,
@@ -106,12 +106,12 @@ CREATE TABLE media_imgs (
 -- ==============================
 DROP TABLE IF EXISTS media_tags;
 CREATE TABLE media_tags (
-	media_library_id INTEGER NOT NULL,
+    media_library_id INTEGER NOT NULL,
     media_type VARCHAR(20) NOT NULL,
     media_id INTEGER NOT NULL,
     tag_id INTEGER NOT NULL,
     create_time TIMESTAMP DEFAULT (datetime('now','localtime')),
-	PRIMARY KEY('media_library_id', 'media_id', 'tag_id')
+    PRIMARY KEY('media_library_id', 'media_id', 'tag_id')
 );
 
 DROP TABLE IF EXISTS tags;
@@ -142,7 +142,7 @@ DROP TABLE IF EXISTS my_favors;
 CREATE TABLE my_favors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-	library_id INTEGER NOT NULL,
+    library_id INTEGER NOT NULL,
     media_type VARCHAR(20) NOT NULL,    -- movie / tv
     media_id INTEGER NOT NULL,  -- media id
     create_time TIMESTAMP DEFAULT (datetime('now','localtime'))
@@ -155,7 +155,7 @@ DROP TABLE IF EXISTS play_records;
 CREATE TABLE play_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-	library_id INTEGER NOT NULL,
+    library_id INTEGER NOT NULL,
     media_type VARCHAR(20) NOT NULL,
     media_id INTEGER NOT NULL,     -- media id
     position_ms BIGINT DEFAULT 0,        -- 播放进度（毫秒）
@@ -201,7 +201,7 @@ CREATE TABLE system_sync_logs (
     sync_type VARCHAR(64) NOT NULL,
     status VARCHAR(64) NOT NULL,
     added_count INTEGER,
-	updated_count INTEGER,
+    updated_count INTEGER,
     deleted_count INTEGER,
     error_message VARCHAR(1024),
     start_time TIMESTAMP DEFAULT (datetime('now','localtime')),
@@ -239,7 +239,7 @@ CREATE TABLE plugins (
 DROP TABLE IF EXISTS plugin_configs;
 CREATE TABLE plugin_configs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-	plugin_id INTEGER NOT NULL,
+    plugin_id INTEGER NOT NULL,
     plugin_key VARCHAR(50) NOT NULL,
     plugin_version VARCHAR(20),
     library_id INTEGER,
@@ -265,7 +265,7 @@ CREATE TABLE plugin_execution_logs (
     source_dir VARCHAR(500),
     status VARCHAR(20) NOT NULL,
     error_message TEXT,
-	log_messages TEXT,
+    log_messages TEXT,
     progress_percent INTEGER DEFAULT 0,
     current_step VARCHAR(50),
     start_time TIMESTAMP DEFAULT (datetime('now','localtime')),
@@ -284,3 +284,62 @@ CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_plugin_key ON plugin_execut
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_media_id ON plugin_execution_logs(media_id);
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_status ON plugin_execution_logs(status);
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_start_time ON plugin_execution_logs(start_time);
+
+-- ==============================
+-- 16. 上传任务表
+-- ==============================
+DROP TABLE IF EXISTS upload_tasks;
+CREATE TABLE upload_tasks (
+    id VARCHAR(36) PRIMARY KEY,         -- UUID
+    file_name VARCHAR(255) NOT NULL,     -- 原始文件名
+    file_size BIGINT NOT NULL,            -- 文件总大小（字节）
+    chunk_size INTEGER NOT NULL,           -- 分片大小（默认5MB）
+    total_chunks INTEGER NOT NULL,           -- 总分片数
+    uploaded_chunks INTEGER DEFAULT 0,        -- 已上传分片数
+    uploaded_size BIGINT DEFAULT 0,         -- 已上传大小（字节）
+    status INTEGER DEFAULT 0,               -- 状态：0=待上传，1=上传中，2=已暂停，3=已完成，4=已取消，5=失败
+    mime_type VARCHAR(100),                -- 文件MIME类型
+    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    completed_at TIMESTAMP
+);
+
+-- ==============================
+-- 17. 待发布媒体表
+-- ==============================
+DROP TABLE IF EXISTS staging_medias;
+CREATE TABLE staging_medias (
+    id VARCHAR(36) PRIMARY KEY,         -- UUID
+    upload_task_id VARCHAR(36) NOT NULL,  -- 关联的上传任务ID
+    type VARCHAR(20) NOT NULL,            -- 媒体类型：movie, tvshow
+    title VARCHAR(255) NOT NULL,           -- 标题
+    original_title VARCHAR(255),            -- 原始标题
+    year INTEGER,                          -- 年份
+    studio VARCHAR(255),                   -- 制片厂
+    runtime INTEGER,                        -- 时长（（分钟）
+    description TEXT,                       -- 描述
+    video_path VARCHAR(500) NOT NULL,      -- 视频文件相对路径
+    video_size BIGINT NOT NULL,             -- 视频文件大小
+    poster_path VARCHAR(500),               -- 海报路径
+    fanart_path VARCHAR(500),               -- 背景图路径
+    screenshots_path VARCHAR(1024),         -- 截图路径（逗号分隔）
+    tags TEXT,                             -- 标签 JSON 数组
+    staff TEXT,                            -- 演职员 JSON 数组
+    status INTEGER DEFAULT 0,               -- 状态：0=待编辑，1=待发布，2=已发布
+    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    published_at TIMESTAMP
+);
+
+-- ==============================
+-- 上传模块索引
+-- ==============================
+CREATE INDEX IF NOT EXISTS idx_upload_tasks_status ON upload_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_upload_tasks_created_at ON upload_tasks(created_at);
+CREATE INDEX IF NOT EXISTS idx_staging_medias_status ON staging_medias(status);
+CREATE INDEX IF NOT EXISTS idx_staging_medias_upload_task_id ON staging_medias(upload_task_id);
+
+-- ==============================
+-- 外键约束
+-- ==============================
+PRAGMA foreign_keys = ON;
