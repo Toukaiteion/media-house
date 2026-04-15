@@ -755,9 +755,10 @@ class ApiClient {
    * 合并分片，创建待发布媒体
    */
   async mergeUpload(upload_id: string, dto: MergeUploadRequest): Promise<MergeUploadResponse> {
+    dto.upload_id = upload_id; // 确保 upload_id 在请求体中
     return this.request<MergeUploadResponse>(`/upload/merge`, {
       method: 'POST',
-      body: JSON.stringify({ upload_id, ...dto }),
+      body: JSON.stringify({ ...dto }),
     });
   }
 

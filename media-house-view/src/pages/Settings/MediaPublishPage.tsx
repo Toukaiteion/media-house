@@ -19,7 +19,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -31,7 +30,7 @@ import { StagingMediaCard } from '../../components/StagingMediaCard';
 import { MediaEditDialog } from '../../components/MediaEditDialog';
 import { MetadataScrapeDialog } from '../../components/MetadataScrapeDialog';
 import { PublishDialog } from '../../components/PublishDialog';
-import type { UploadTask, StagingMedia, Plugin, PluginConfig, MediaLibrary, FindUploadTaskByMd5Response, MergeUploadRequest } from '../../types';
+import type { UploadTask, StagingMedia, Plugin, PluginConfig, MediaLibrary, FindUploadTaskByMd5Response } from '../../types';
 
 interface TabPanelProps {
   children?: React.ReactNode;
