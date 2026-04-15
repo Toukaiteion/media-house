@@ -4,10 +4,9 @@ namespace MediaHouse.Interfaces;
 
 public interface IUploadService
 {
-    Task<UploadTaskDto> CreateUploadTaskAsync(CreateUploadRequest request);
-    Task<UploadProgressDto?> FindByMd5Async(string fileMd5);
+    Task<CreateUploadTaskResponse> CreateUploadTaskAsync(CreateUploadRequest request);
     Task<UploadProgressDto> GetUploadProgressAsync(string uploadId);
-    Task<bool> DeleteUploadTaskAsync(string uploadId);
     Task<List<UploadProgressDto>> GetAllUploadTasksAsync();
+    Task<bool> DeleteUploadTaskAsync(string uploadId);
     Task<MergeResponse> MergeAsync(string uploadId);
 }

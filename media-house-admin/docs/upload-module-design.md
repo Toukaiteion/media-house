@@ -115,7 +115,7 @@ DTOs/
 
 ### 5.1 上传任务管理
 
-#### POST /api/upload/create
+#### POST /api/media/upload-tasks
 创建上传任务
 
 **请求:**
@@ -128,72 +128,110 @@ DTOs/
 }
 ```
 
-**响应:**
+**响应（新任务）:**
 ```json
 {
-  "success": true,
-  "data": {
-    "upload_id": "uuid",
-    "total_chunks": 205,
-    "status": "pending"
-  }
+  "upload_id": "uuid",
+  "file_name": "movie.mp4",
+  "file_size": 1073741824,
+  "file_md5": "d41d8cd98f00b204e9800998ecf8427e",
+  "chunk_size": 5242880,
+  "total_chunks": 205,
+  "uploaded_chunks": 0,
+  "uploaded_size": 0,
+  "start_chunk_index": 0,
+  "progress": 0,
+  "status": "pending",
+  "created_at": "2026-04-15T10:00:00Z",
+  "is_new": true
 }
 ```
 
-#### GET /api/upload/find-by-md5/{file_md5}
-根据文件 MD5 查找未完成的上传任务
-
-**响应（找到任务）:**
+**响应（恢复已有任务）:**
 ```json
 {
-  "success": true,
-  "data": {
+  "upload_id": "existing-uuid",
+  "file_name": "movie.mp4",
+  "file_size": 1073741824,
+  "file_md5": "d41d8cd98f00b204e9800998ecf8427e",
+  "chunk_size": 5242880,
+  "total_chunks": 205,
+  "uploaded_chunks": 43,
+  "uploaded_size": 225280000,
+  "start_chunk_index": 43,
+  "progress": 0.21,
+  "status": "uploading",
+  "created_at": "2026-04-15T10:00:00Z",
+  "updated_at": "2026-04-15T10:05:00Z",
+  "is_new": false
+}
+```
+
+#### GET /api/media/upload-tasks
+获取上传任务列表
+
+**响应:**
+```json
+[
+  {
     "upload_id": "uuid",
     "file_name": "movie.mp4",
     "file_size": 1073741824,
     "file_md5": "d41d8cd98f00b204e9800998ecf8427e",
     "chunk_size": 5242880,
+    "uploaded_size": 225280000,
     "total_chunks": 205,
     "uploaded_chunks": 43,
-    "uploaded_size": 225280000,
     "progress": 0.21,
     "status": "uploading",
     "created_at": "2026-04-15T10:00:00Z",
     "updated_at": "2026-04-15T10:05:00Z"
   }
-}
+]
 ```
 
-**响应（未找到）:**
-```json
-{
-  "success": false,
-  "error": "upload_task_not_found",
-  "message": "未找到匹配的上传任务"
-}
-```
-
-#### POST /api/upload/chunk
-上传分片
-
-**请求表单参数:**
-- `upload_id`: 上传任务ID
-- `chunk_index`: 分片索引
-- `chunk_data`: 二进制分片数据
+#### GET /api/media/upload-tasks/{upload_id}
+获取指定上传任务的详细信息
 
 **响应:**
 ```json
 {
-  "success": true,
-  "data": {
-    "chunk_index": 42,
-    "uploaded_chunks": 43,
-    "progress": 0.21
-  }
+  "upload_id": "uuid",
+  "file_name": "movie.mp4",
+  "file_size": 1073741824,
+  "file_md5": "d41d8cd98f00b204e9800998ecf8427e",
+  "chunk_size": 5242880,
+  "uploaded_size": 225280000,
+  "total_chunks": 205,
+  "uploaded_chunks": 43,
+  "progress": 0.21,
+  "status": "uploading",
+  "created_at": "2026-04-15T10:00:00Z",
+  "updated_at": "2026-04-15T10:05:00Z"
 }
 ```
 
-#### POST /api/upload/merge
+#### POST /api/media/upload-tasks/{upload_id}/chunk
+上传分片
+
+**请求:**
+```json
+{
+  "chunk_index": 42,
+  "chunk_data": "base64_encoded_data"
+}
+```
+
+**响应:**
+```json
+{
+  "chunk_index": 42,
+  "uploaded_chunks": 43,
+  "progress": 0.21
+}
+```
+
+#### POST /api/media/upload-tasks/{upload_id}/merge
 合并文件
 
 **请求:**
@@ -223,28 +261,11 @@ DTOs/
 }
 ```
 
-#### GET /api/upload/progress/{upload_id}
-获取上传进度
+#### GET /api/media/upload-tasks/{upload_id}/check-chunk?index={}
+检查分片状态
 
-**响应:**
-```json
-{
-  "success": true,
-  "data": {
-    "upload_id": "uuid",
-    "file_name": "movie.mp4",
-    "file_size": 1073741824,
-    "uploaded_size": 225280000,
-    "total_chunks": 205,
-    "uploaded_chunks": 43,
-    "progress": 0.21,
-    "status": "uploading"
-  }
-}
-```
-
-#### GET /api/upload/check-chunks/{upload_id}?index={index}
-检查指定索引之前的分片是否都已上传
+**请求参数:**
+- `index`: 可选，不传时检查整体，传了检查这个索引之前的分片
 
 **响应:**
 ```json
@@ -274,11 +295,8 @@ DTOs/
 }
 ```
 
-#### DELETE /api/upload/{upload_id}
+#### DELETE /api/media/upload-tasks/{upload_id}
 取消/删除上传任务
-
-#### GET /api/upload/list
-获取所有上传任务
 
 ### 5.2 待发布媒体管理
 
@@ -362,32 +380,43 @@ DTOs/
 ### 6.1 上传流程
 
 ```
-1. 前端调用 /api/upload/create 创建任务（带 file_md5）
+1. 前端调用 POST /api/media/upload-tasks 创建任务（带 file_md5）
    ↓
-2. 服务端生成 upload_id，创建任务记录和目录
+2. 服务端根据 file_md5 查找已有任务
    ↓
-3. 前端分片上传文件到 /api/upload/chunk
+3a. 找到已有任务：返回任务信息和起始分片索引（from 已上传的分片数）
+3b. 未找到：创建新任务，返回 upload_id，起始分片索引为 0
    ↓
-4. 每个分片上传后更新 progress
+4. 前端从起始分片索引开始上传
    ↓
-5. 前端上传完成后，调用 /api/upload/merge
+5. 前端分片上传文件到 POST /api/media/upload-tasks/{upload_id}/chunk
    ↓
-6. 服务端检查所有分片是否完整
+6. 每个分片上传后更新 progress
    ↓
-7a. 完整：合并文件，移动到 staging 目录，创建 staging_media 记录
-7b. 缺失：返回缺失的分片索引列表，前端补传后再次调用 merge
+7. 前端上传完成后，调用 POST /api/media/upload-tasks/{upload_id}/merge
+   ↓
+8. 服务端检查所有分片是否完整
+   ↓
+9a. 完整：合并文件，移动到 staging 目录，创建 staging_media 记录
+9b. 缺失：返回缺失的 chunk 索引列表，前端补传后再次调用 merge
 ```
 
 ### 6.2 断点续传
 
 ```
-1. 前端重新连接时调用 /api/upload/progress/{upload_id}
+1. 前端选择文件，计算 MD5
    ↓
-2. 服务端返回已上传的分片数和进度
+2. 前端调用 POST /api/media/upload-tasks 创建任务
    ↓
-3. 前端从未上传的分片继续上传
+3. 服务端根据 MD5 查找已有任务
    ↓
-4. 上传完成后调用 merge
+4a. 找到已有任务：返回任务详情（含已上传分片数）
+   ↓
+4b. 未找到：创建新任务
+   ↓
+5. 前端从返回的 start_chunk_index 开始上传
+   ↓
+6. 上传完成后调用 merge
 ```
 
 ### 6.3 发布流程

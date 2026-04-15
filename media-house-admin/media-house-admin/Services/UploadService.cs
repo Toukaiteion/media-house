@@ -16,7 +16,7 @@ public class UploadService(
     private readonly UploadSettings _settings = uploadSettings.Value;
     private readonly ILogger<UploadService> _logger = logger;
 
-    public async Task<UploadTaskDto> CreateUploadTaskAsync(CreateUploadRequest request)
+    public async Task<CreateUploadTaskResponse> CreateUploadTaskAsync(CreateUploadRequest request)
     {
         // 验证文件大小
         if (request.file_size > _settings.MaxFileSize)
@@ -31,54 +31,82 @@ public class UploadService(
             throw new InvalidOperationException($"File extension {extension} is not allowed");
         }
 
-        var uploadId = Guid.NewGuid().ToString();
-        var totalChunks = (int)Math.Ceiling((double)request.file_size / request.chunk_size);
-
-        var uploadTask = new UploadTask
-        {
-            Id = uploadId,
-            FileName = request.file_name,
-            FileSize = request.file_size,
-            FileMd5 = request.file_md5,
-            ChunkSize = request.chunk_size,
-            TotalChunks = totalChunks,
-            UploadedChunks = 0,
-            UploadedSize = 0,
-            Status = 0, // 待上传
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-
-        _context.UploadTasks.Add(uploadTask);
-        await _context.SaveChangesAsync();
-
-        // 创建上传目录
-        var uploadDir = Path.Combine(_settings.UploadPath, uploadId);
-        Directory.CreateDirectory(uploadDir);
-        Directory.CreateDirectory(Path.Combine(uploadDir, "chunks"));
-
-        _logger.LogInformation("Created upload task {UploadId} for file {FileName}", uploadId, request.file_name);
-
-        return new UploadTaskDto
-        {
-            upload_id = uploadId,
-            total_chunks = totalChunks,
-            status = "pending"
-        };
-    }
-
-    public async Task<UploadProgressDto?> FindByMd5Async(string fileMd5)
-    {
-        var task = await _context.UploadTasks
-            .Where(t => t.FileMd5 == fileMd5 && t.Status != 2) // 不是已完成
+        // 根据 MD5 查找已有任务
+        var existingTask = await _context.UploadTasks
+            .Where(t => t.FileMd5 == request.file_md5 && t.Status != 2)
             .FirstOrDefaultAsync();
 
-        if (task == null)
+        if (existingTask != null)
         {
-            return null;
-        }
+            // 创建新任务
+            var uploadId = Guid.NewGuid().ToString();
+            var totalChunks = (int)Math.Ceiling((double)request.file_size / request.chunk_size);
 
-        return MapToDto(task);
+            var uploadTask = new UploadTask
+            {
+                Id = uploadId,
+                FileName = request.file_name,
+                FileSize = request.file_size,
+                FileMd5 = request.file_md5,
+                ChunkSize = request.chunk_size,
+                TotalChunks = totalChunks,
+                UploadedChunks = 0,
+                UploadedSize = 0,
+                Status = 0, // 待上传
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.UploadTasks.Add(uploadTask);
+            await _context.SaveChangesAsync();
+
+            // 创建上传目录
+            var uploadDir = Path.Combine(_settings.UploadPath, uploadId);
+            Directory.CreateDirectory(uploadDir);
+            Directory.CreateDirectory(Path.Combine(uploadDir, "chunks"));
+
+            _logger.LogInformation("Created upload task {UploadId} for file {FileName}", uploadId, request.file_name);
+
+            return new CreateUploadTaskResponse
+            {
+                upload_id = uploadId,
+                file_name = request.file_name,
+                file_size = request.file_size,
+                file_md5 = request.file_md5,
+                chunk_size = request.chunk_size,
+                total_chunks = totalChunks,
+                uploaded_chunks = 0,
+                uploaded_size = 0,
+                start_chunk_index = 0,
+                progress = 0,
+                status = "pending",
+                created_at = DateTime.UtcNow.ToString("o"),
+                is_new = true
+            };
+        }
+        else
+        {
+            // 返回已有任务信息
+            _logger.LogInformation("Found existing upload task {UploadId} for file {FileName}", existingTask.Id, request.file_name);
+
+            return new CreateUploadTaskResponse
+            {
+                upload_id = existingTask.Id,
+                file_name = existingTask.FileName,
+                file_size = existingTask.FileSize,
+                file_md5 = existingTask.FileMd5 ?? string.Empty!;,
+                chunk_size = existingTask.ChunkSize,
+                total_chunks = existingTask.TotalChunks,
+                uploaded_chunks = existingTask.UploadedChunks,
+                uploaded_size = existingTask.UploadedSize,
+                start_chunk_index = existingTask.UploadedChunks,
+                progress = existingTask.FileSize > 0 ? (double)existingTask.UploadedSize / existingTask.FileSize : 0,
+                status = GetStatusString(existingTask.Status),
+                created_at = existingTask.CreatedAt.ToString("o"),
+                updated_at = existingTask.UpdatedAt.ToString("o"),
+                is_new = false
+            };
+        }
     }
 
     public async Task<UploadProgressDto> GetUploadProgressAsync(string uploadId)
@@ -90,6 +118,12 @@ public class UploadService(
         }
 
         return MapToDto(task);
+    }
+
+    public async Task<List<UploadProgressDto>> GetAllUploadTasksAsync()
+    {
+        var tasks = await _context.UploadTasks.ToListAsync();
+        return tasks.Select(MapToDto).ToList();
     }
 
     public async Task<bool> DeleteUploadTaskAsync(string uploadId)
@@ -109,12 +143,6 @@ public class UploadService(
 
         _logger.LogInformation("Deleted upload task {UploadId}", uploadId);
         return true;
-    }
-
-    public async Task<List<UploadProgressDto>> GetAllUploadTasksAsync()
-    {
-        var tasks = await _context.UploadTasks.ToListAsync();
-        return tasks.Select(MapToDto).ToList();
     }
 
     public async Task<MergeResponse> MergeAsync(string uploadId)
@@ -236,7 +264,7 @@ public class UploadService(
     {
         0 => "pending",
         1 => "uploading",
-            2 => "completed",
+        2 => "completed",
         3 => "cancelled",
         4 => "failed",
         _ => "unknown"
