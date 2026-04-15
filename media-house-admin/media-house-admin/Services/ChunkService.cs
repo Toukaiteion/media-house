@@ -1,8 +1,6 @@
-using MediaHouse.Data.Entities;
 using MediaHouse.Interfaces;
 using MediaHouse.DTOs;
 using MediaHouse.Data;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace MediaHouse.Services;
@@ -10,7 +8,6 @@ namespace MediaHouse.Services;
 public class ChunkService(
     MediaHouseDbContext context,
     IOptions<UploadSettings> uploadSettings,
-    IOptions<StagingSettings> stagingSettings,
     ILogger<ChunkService> logger) : IChunkService
 {
     private readonly MediaHouseDbContext _context = context;
@@ -20,11 +17,7 @@ public class ChunkService(
 
     public async Task<bool> UploadChunkAsync(string uploadId, UploadChunkRequest request)
     {
-        var task = await _context.UploadTasks.FindAsync(uploadId);
-        if (task == null)
-        {
-            throw new InvalidOperationException($"Upload task not found: {uploadId}");
-        }
+        var task = await _context.UploadTasks.FindAsync(uploadId) ?? throw new InvalidOperationException($"Upload task not found: {uploadId}");
 
         if (task.Status == 2) // 已完成
         {
@@ -97,7 +90,7 @@ public class ChunkService(
         return true;
     }
 
-    public async Task<CheckChunksResponse> CheckChunksAsync(string uploadId, int index)
+    public async Task<CheckChunksResponse> CheckChunksAsync(string uploadId, int? index)
     {
         var task = await _context.UploadTasks.FindAsync(uploadId);
         if (task == null)
@@ -112,6 +105,7 @@ public class ChunkService(
         var chunkDir = Path.Combine(_uploadSettings.UploadPath, uploadId, "chunks");
         var missingChunks = new List<int>();
 
+        index ??= task.TotalChunks - 1; // 默认检查所有分片
         // 检查从 0 到 index 的所有分片
         for (int i = 0; i <= index && i < task.TotalChunks; i++)
         {
@@ -129,9 +123,9 @@ public class ChunkService(
             {
                 upload_id = uploadId,
                 from_index = 0,
-                to_index = index,
+                to_index = index ?? task.TotalChunks,
                 all_uploaded = missingChunks.Count == 0,
-                missing_chunks = missingChunks.ToArray()
+                missing_chunks = [.. missingChunks]
             }
         };
     }

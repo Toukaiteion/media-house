@@ -677,19 +677,22 @@ class ApiClient {
    * 上传分片
    */
   async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob): Promise<UploadChunkResponse> {
+    const formData = new FormData();
+    formData.append('upload_id', uploadId);
+    formData.append('chunk_index', chunkIndex.toString());
+    formData.append('chunk_data', chunk);
+
     const token = this.getAuthToken();
-    const headers: HeadersInit = {
-      'Content-Type': 'application/octet-stream',
-    };
+    const headers: HeadersInit = {};
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const url = `${this.baseUrl}/upload/chunk/${uploadId}/${chunkIndex}`;
+    const url = `${this.baseUrl}/upload/chunk`;
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: chunk,
+      body: formData,
     });
 
     if (!response.ok) {
@@ -752,10 +755,9 @@ class ApiClient {
    * 合并分片，创建待发布媒体
    */
   async mergeUpload(upload_id: string, dto: MergeUploadRequest): Promise<MergeUploadResponse> {
-    dto.upload_id = upload_id; // 将 upload_id 添加到请求体中
     return this.request<MergeUploadResponse>(`/upload/merge`, {
       method: 'POST',
-      body: JSON.stringify({ ...dto }),
+      body: JSON.stringify({ upload_id, ...dto }),
     });
   }
 

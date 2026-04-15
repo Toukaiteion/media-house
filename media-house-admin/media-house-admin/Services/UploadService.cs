@@ -36,7 +36,7 @@ public class UploadService(
             .Where(t => t.FileMd5 == request.file_md5 && t.Status != 2)
             .FirstOrDefaultAsync();
 
-        if (existingTask != null)
+        if (existingTask == null)
         {
             // 创建新任务
             var uploadId = Guid.NewGuid().ToString();
@@ -94,7 +94,7 @@ public class UploadService(
                 upload_id = existingTask.Id,
                 file_name = existingTask.FileName,
                 file_size = existingTask.FileSize,
-                file_md5 = existingTask.FileMd5 ?? string.Empty!;,
+                file_md5 = existingTask.FileMd5 ?? string.Empty!,
                 chunk_size = existingTask.ChunkSize,
                 total_chunks = existingTask.TotalChunks,
                 uploaded_chunks = existingTask.UploadedChunks,
@@ -111,11 +111,7 @@ public class UploadService(
 
     public async Task<UploadProgressDto> GetUploadProgressAsync(string uploadId)
     {
-        var task = await _context.UploadTasks.FindAsync(uploadId);
-        if (task == null)
-        {
-            throw new InvalidOperationException($"Upload task not found: {uploadId}");
-        }
+        var task = await _context.UploadTasks.FindAsync(uploadId) ?? throw new InvalidOperationException($"Upload task not found: {uploadId}");
 
         return MapToDto(task);
     }
@@ -123,7 +119,7 @@ public class UploadService(
     public async Task<List<UploadProgressDto>> GetAllUploadTasksAsync()
     {
         var tasks = await _context.UploadTasks.ToListAsync();
-        return tasks.Select(MapToDto).ToList();
+        return [.. tasks.Select(MapToDto)];
     }
 
     public async Task<bool> DeleteUploadTaskAsync(string uploadId)

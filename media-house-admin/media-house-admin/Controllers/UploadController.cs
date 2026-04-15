@@ -63,7 +63,7 @@ public class UploadController(
     }
 
     [HttpPost("{upload_id}/chunk")]
-    [RequestSizeLimit(10 * 1024 * 1024)] // 10.24MB limit per chunk
+    [RequestSizeLimit(50 * 1024 * 1024)] // 50MB limit per chunk
     public async Task<ActionResult> UploadChunk(string upload_id, [FromBody] UploadChunkRequest request)
     {
         try
@@ -101,7 +101,7 @@ public class UploadController(
     }
 
     [HttpGet("{upload_id}/check-chunk")]
-    public async Task<ActionResult<CheckChunksResponse>> CheckChunks(string upload_id, [FromQuery] int index = -1)
+    public async Task<ActionResult<CheckChunksResponse>> CheckChunks(string upload_id, [FromQuery] int? index = null)
     {
         try
         {
