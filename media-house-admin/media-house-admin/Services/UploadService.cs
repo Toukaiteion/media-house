@@ -148,8 +148,8 @@ public class UploadService(
         {
             return new MergeResponse
             {
-                success = false,
-                error = "Upload task not found"
+                Success = false,
+                Error = "Upload task not found"
             };
         }
 
@@ -170,9 +170,9 @@ public class UploadService(
         {
             return new MergeResponse
             {
-                success = false,
-                error = "missing_chunks",
-                missing_chunks = missingChunks.ToArray()
+                Success = false,
+                Error = "missing_chunks",
+                MissingChunks = [.. missingChunks]
             };
         }
 
@@ -195,8 +195,8 @@ public class UploadService(
         {
             return new MergeResponse
             {
-                success = false,
-                error = "File size mismatch after merge"
+                Success = false,
+                Error = "File size mismatch after merge"
             };
         }
 
@@ -228,11 +228,11 @@ public class UploadService(
 
         return new MergeResponse
         {
-            success = true,
-            data = new MergeData
+            Success = true,
+            Data = new MergeData
             {
-                media_id = mediaId,
-                status = "completed"
+                MediaId = mediaId,
+                Status = "completed"
             }
         };
     }
@@ -241,18 +241,18 @@ public class UploadService(
     {
         return new UploadProgressDto
         {
-            upload_id = task.Id,
-            file_name = task.FileName,
-            file_size = task.FileSize,
-            file_md5 = task.FileMd5 ?? string.Empty,
-            chunk_size = task.ChunkSize,
-            uploaded_size = task.UploadedSize,
-            total_chunks = task.TotalChunks,
-            uploaded_chunks = task.UploadedChunks,
-            progress = task.FileSize > 0 ? (double)task.UploadedSize / task.FileSize : 0,
-            status = GetStatusString(task.Status),
-            created_at = task.CreatedAt.ToString("o"),
-            updated_at = task.UpdatedAt.ToString("o")
+            UploadId = task.Id,
+            FileName = task.FileName,
+            FileSize = task.FileSize,
+            FileMd5 = task.FileMd5 ?? string.Empty,
+            ChunkSize = task.ChunkSize,
+            UploadedSize = task.UploadedSize,
+            TotalChunks = task.TotalChunks,
+            UploadedChunks = task.UploadedChunks,
+            Progress = task.FileSize > 0 ? (double)task.UploadedSize / task.FileSize : 0,
+            Status = GetStatusString(task.Status),
+            CreatedAt = task.CreatedAt.ToString("o"),
+            UpdatedAt = task.UpdatedAt.ToString("o")
         };
     }
 

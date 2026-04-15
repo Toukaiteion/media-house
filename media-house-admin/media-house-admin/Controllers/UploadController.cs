@@ -64,23 +64,23 @@ public class UploadController(
 
     [HttpPost("{upload_id}/chunk")]
     [RequestSizeLimit(50 * 1024 * 1024)] // 50MB limit per chunk
-    public async Task<ActionResult> UploadChunk(string upload_id, [FromBody] UploadChunkRequest request)
+    public async Task<ActionResult> UploadChunk(string upload_id, [FromQuery] int chunk_index)
     {
         try
         {
-            await _chunkService.UploadChunkAsync(upload_id, request);
+            await _chunkService.UploadChunkAsync(upload_id, chunk_index, Request.ContentLength ?? 0, Request.Body);
             var progress = await _uploadService.GetUploadProgressAsync(upload_id);
 
             return Ok(new
             {
-                chunk_index = request.chunk_index,
-                uploaded_chunks = progress.uploaded_chunks,
-                progress = progress.progress
+                chunk_index,
+                progress.UploadedChunks,
+                progress.Progress
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error uploading chunk {ChunkIndex} for task {UploadId}", request.chunk_index, upload_id);
+            _logger.LogError(ex, "Error uploading chunk {ChunkIndex} for task {UploadId}", chunk_index, upload_id);
             return BadRequest(new { error = ex.Message });
         }
     }

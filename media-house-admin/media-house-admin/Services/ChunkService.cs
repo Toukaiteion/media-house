@@ -15,7 +15,7 @@ public class ChunkService(
     private readonly ILogger<ChunkService> _logger = logger;
     private const int BufferSize = 81920; // 80KB buffer for faster copy
 
-    public async Task<bool> UploadChunkAsync(string uploadId, UploadChunkRequest request)
+    public async Task<bool> UploadChunkAsync(string uploadId, int chunkIndex, long chunkSize, Stream data)
     {
         var task = await _context.UploadTasks.FindAsync(uploadId) ?? throw new InvalidOperationException($"Upload task not found: {uploadId}");
 
@@ -24,20 +24,10 @@ public class ChunkService(
             throw new InvalidOperationException($"Upload task already completed: {uploadId}");
         }
 
-        // 解码 base64 数据
-        byte[] chunkData;
-        try
-        {
-            chunkData = Convert.FromBase64String(request.chunk_data);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Invalid base64 data for chunk {request.chunk_index}: {ex.Message}");
-        }
 
         // 保存分片
         var chunkDir = Path.Combine(_uploadSettings.UploadPath, uploadId, "chunks");
-        var chunkFile = Path.Combine(chunkDir, $"{request.chunk_index}.chunk");
+        var chunkFile = Path.Combine(chunkDir, $"{chunkIndex}.chunk");
 
         // 确保目录存在
         if (!Directory.Exists(chunkDir))
@@ -46,11 +36,12 @@ public class ChunkService(
         }
 
         // 使用超时保护保存文件
-        var saveTask = Task.Run(() =>
+        var saveTask = Task.Run(async () =>
         {
             using var fileStream = new FileStream(chunkFile, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize);
-            fileStream.Write(chunkData, 0, chunkData.Length);
-            fileStream.Flush();
+            {
+                await data.CopyToAsync(fileStream);
+            }
         });
 
         // 5分钟超时
@@ -60,10 +51,8 @@ public class ChunkService(
         }
         else
         {
-            throw new TimeoutException($"Timeout saving chunk {request.chunk_index} for upload {uploadId}");
+            throw new TimeoutException($"Timeout saving chunk {chunkIndex} for upload {uploadId}");
         }
-
-        var chunkSize = chunkData.Length;
 
         // 更新任务状态
         var updateTask = Task.Run(async () =>
@@ -83,10 +72,10 @@ public class ChunkService(
         }
         else
         {
-            _logger.LogWarning("Database update timeout for chunk {ChunkIndex}, but file saved successfully", request.chunk_index);
+            _logger.LogWarning("Database update timeout for chunk {ChunkIndex}, but file saved successfully", chunkIndex);
         }
 
-        _logger.LogDebug("Uploaded chunk {ChunkIndex} ({Size} bytes) for task {UploadId}", request.chunk_index, chunkSize, uploadId);
+        _logger.LogDebug("Uploaded chunk {ChunkIndex} ({Size} bytes) for task {UploadId}", chunkIndex, chunkSize, uploadId);
         return true;
     }
 

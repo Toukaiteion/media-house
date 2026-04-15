@@ -548,15 +548,18 @@ export interface UploadTask {
   upload_id: string;
   file_name: string;
   file_size: number;
+  file_md5: string;
   chunk_size: number;
   total_chunks: number;
   uploaded_chunks: number;
   uploaded_size: number;
+  progress?: number; // 进度百分比 (0-1)
   status: UploadStatus;
   mime_type?: string;
   created_at: string;
   updated_at: string;
   completed_at?: string;
+  is_new?: boolean; // 仅在创建任务响应中出现
 }
 
 /**
@@ -584,24 +587,6 @@ export interface UploadRequest {
 }
 
 /**
- * 根据 MD5 查找上传任务响应（用于断点续传）
- */
-export interface FindUploadTaskByMd5Response {
-  upload_id: string;
-  file_name: string;
-  file_size: number;
-  file_md5: string;
-  chunk_size: number;
-  total_chunks: number;
-  uploaded_chunks: number;
-  uploaded_size: number;
-  progress: number;
-  status: UploadStatus;
-  created_at: string;
-  updated_at: string;
-}
-
-/**
  * 检查已上传分片响应
  */
 export interface CheckChunksResponse {
@@ -622,12 +607,29 @@ export interface MergeUploadRequest {
 }
 
 /**
+ * 合并上传成功响应
+ */
+export interface MergeUploadSuccessResponse {
+  success: true;
+  data: {
+    media_id: string;
+    status: string;
+  };
+}
+
+/**
+ * 合并上传失败响应（缺失分片）
+ */
+export interface MergeUploadFailureResponse {
+  success: false;
+  error: 'missing_chunks';
+  missing_chunks: number[];
+}
+
+/**
  * 合并上传响应
  */
-export interface MergeUploadResponse {
-  media_id: string;
-  status: string;
-}
+export type MergeUploadResponse = MergeUploadSuccessResponse | MergeUploadFailureResponse;
 
 /**
  * 上传分片响应

@@ -48,7 +48,6 @@ import type {
   UpdateStagingMetadataDto,
   PublishRequest,
   PublishResponse,
-  FindUploadTaskByMd5Response,
   CheckChunksResponse,
   MergeUploadRequest,
   MergeUploadResponse,
@@ -658,41 +657,31 @@ class ApiClient {
 
   /**
    * 创建上传任务
+   * 根据设计文档，如果 MD5 匹配已存在的任务，会返回已有任务信息
    */
-  async createUploadTask(dto: UploadRequest): Promise<{ upload_id: string; total_chunks: number; status: string }> {
-    return this.request('/upload/create', {
+  async createUploadTask(dto: UploadRequest): Promise<UploadTask> {
+    return this.request<UploadTask>('/media/upload-tasks', {
       method: 'POST',
       body: JSON.stringify(dto),
     });
   }
 
   /**
-   * 根据 MD5 查找上传任务（用于断点续传）
-   */
-  async findUploadTaskByMd5(fileMd5: string): Promise<FindUploadTaskByMd5Response> {
-    return this.request<FindUploadTaskByMd5Response>(`/upload/find-by-md5/${fileMd5}`);
-  }
-
-  /**
    * 上传分片
    */
   async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob): Promise<UploadChunkResponse> {
-    const formData = new FormData();
-    formData.append('upload_id', uploadId);
-    formData.append('chunk_index', chunkIndex.toString());
-    formData.append('chunk_data', chunk);
-
     const token = this.getAuthToken();
     const headers: HeadersInit = {};
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
+    headers['Content-Type'] = 'application/octet-stream';
 
-    const url = `${this.baseUrl}/upload/chunk`;
+    const url = `${this.baseUrl}/media/upload-tasks/${uploadId}/chunk?chunk_index=${chunkIndex}`;
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: formData,
+      body: chunk,
     });
 
     if (!response.ok) {
@@ -707,14 +696,14 @@ class ApiClient {
    * 检查已上传的分片（用于断点续传）
    */
   async checkUploadedChunks(uploadId: string, index: number = 0): Promise<CheckChunksResponse> {
-    return this.request<CheckChunksResponse>(`/upload/check-chunks/${uploadId}?index=${index}`);
+    return this.request<CheckChunksResponse>(`/media/upload-tasks/${uploadId}/check-chunk?index=${index}`);
   }
 
   /**
    * 获取上传进度
    */
   async getUploadProgress(uploadId: string): Promise<UploadProgress> {
-    return this.request<UploadProgress>(`/upload/progress/${uploadId}`);
+    return this.request<UploadProgress>(`/media/upload-tasks/${uploadId}`);
   }
 
   /**
@@ -739,7 +728,7 @@ class ApiClient {
    * 删除上传任务
    */
   async deleteUploadTask(uploadId: string): Promise<void> {
-    await this.request(`/upload/${uploadId}`, {
+    await this.request(`/media/upload-tasks/${uploadId}`, {
       method: 'DELETE',
     });
   }
@@ -748,17 +737,17 @@ class ApiClient {
    * 获取所有上传任务
    */
   async getUploadTasks(): Promise<UploadTask[]> {
-    return this.request<UploadTask[]>('/upload/list');
+    return this.request<UploadTask[]>('/media/upload-tasks');
   }
 
   /**
    * 合并分片，创建待发布媒体
    */
-  async mergeUpload(upload_id: string, dto: MergeUploadRequest): Promise<MergeUploadResponse> {
-    dto.upload_id = upload_id; // 确保 upload_id 在请求体中
-    return this.request<MergeUploadResponse>(`/upload/merge`, {
+  async mergeUpload(dto: MergeUploadRequest): Promise<MergeUploadResponse> {
+    const { upload_id, ...requestData } = dto;
+    return this.request<MergeUploadResponse>(`/media/upload-tasks/${upload_id}/merge`, {
       method: 'POST',
-      body: JSON.stringify({ ...dto }),
+      body: JSON.stringify(requestData),
     });
   }
 

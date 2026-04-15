@@ -30,7 +30,7 @@ import { StagingMediaCard } from '../../components/StagingMediaCard';
 import { MediaEditDialog } from '../../components/MediaEditDialog';
 import { MetadataScrapeDialog } from '../../components/MetadataScrapeDialog';
 import { PublishDialog } from '../../components/PublishDialog';
-import type { UploadTask, StagingMedia, Plugin, PluginConfig, MediaLibrary, FindUploadTaskByMd5Response } from '../../types';
+import type { UploadTask, StagingMedia, Plugin, PluginConfig, MediaLibrary } from '../../types';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -107,7 +107,7 @@ export function MediaPublishPage() {
   // 断点续传相关状态
   const [calculatingMd5, setCalculatingMd5] = useState(false);
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
-  const [existingUploadTask, setExistingUploadTask] = useState<FindUploadTaskByMd5Response | null>(null);
+  const [existingUploadTask, setExistingUploadTask] = useState<UploadTask | null>(null);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<StagingMedia | null>(null);
@@ -282,31 +282,26 @@ export function MediaPublishPage() {
       // 计算 MD5
       const fileMd5 = await calculateFileMd5(selectedFile);
 
-      // 查找是否有已存在的上传任务
-      try {
-        const existingTask = await api.findUploadTaskByMd5(fileMd5);
-        if (existingTask) {
-          // 验证文件大小是否匹配
-          if (existingTask.file_size !== selectedFile.size) {
-            throw new Error('文件大小不匹配，请选择正确的文件');
-          }
-          // 显示恢复对话框
-          setExistingUploadTask(existingTask);
-          setResumeDialogOpen(true);
-          setCalculatingMd5(false);
-          return;
-        }
-      } catch (err) {
-        // 未找到已存在的任务，继续创建新任务
-      }
-
-      // 创建新上传任务
+      // 创建上传任务（如果 MD5 匹配已存在的任务，会返回已有任务）
       const task = await api.createUploadTask({
         file_name: selectedFile.name,
         file_size: selectedFile.size,
         file_md5: fileMd5,
         chunk_size: CHUNK_SIZE,
       });
+
+      // 检查是否为新任务
+      if (!task.is_new) {
+        // 验证文件大小是否匹配
+        if (task.file_size !== selectedFile.size) {
+          throw new Error('文件大小不匹配，请选择正确的文件');
+        }
+        // 显示恢复对话框
+        setExistingUploadTask(task);
+        setResumeDialogOpen(true);
+        setCalculatingMd5(false);
+        return;
+      }
 
       handleCloseUploadDialog();
       setMessage({ type: 'success', text: '上传任务已创建' });
@@ -318,6 +313,99 @@ export function MediaPublishPage() {
     } finally {
       setCalculatingMd5(false);
     }
+  };
+
+  // 执行合并（处理缺失分片）
+  const performMerge = async (uploadId: string, type: 'movie' | 'tvshow', title: string) => {
+    try {
+      const result = await api.mergeUpload({
+        upload_id: uploadId,
+        type,
+        title: title || undefined,
+      });
+
+      if (result.success) {
+        setMessage({ type: 'success', text: '上传完成' });
+        refreshUploadTasks();
+        refreshStagingMedias();
+      } else if (result.error === 'missing_chunks') {
+        // 有缺失的分片，重新上传
+        const file = await findFileForTask(uploadId);
+        if (!file) {
+          setMessage({ type: 'error', text: '无法找到对应的文件，请重新选择文件' });
+          return;
+        }
+
+        await uploadMissingChunks(uploadId, file, result.missing_chunks);
+
+        // 再次尝试合并
+        await performMerge(uploadId, type, title);
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : '完成上传失败' });
+    }
+  };
+
+  // 查找任务对应的文件（从当前选中的文件）
+  const findFileForTask = async (_uploadId: string): Promise<File | null> => {
+    // 简单实现：使用当前选中的文件
+    // 实际场景可能需要让用户重新选择文件
+    return selectedFile || null;
+  };
+
+  // 上传缺失的分片
+  const uploadMissingChunks = async (uploadId: string, file: File, missingChunks: number[]) => {
+    const chunkQueue = [...missingChunks];
+    let uploadedCount = 0;
+
+    const uploadChunkWithRetry = async (chunkIndex: number, retries = 3): Promise<void> => {
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          const start = chunkIndex * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, file.size);
+          const chunk = file.slice(start, end);
+
+          await api.uploadChunk(uploadId, chunkIndex, chunk);
+          uploadedCount++;
+
+          // 更新本地进度
+          setUploadTasks(prev =>
+            prev.map(t =>
+              t.upload_id === uploadId
+                ? {
+                    ...t,
+                    uploaded_chunks: uploadedCount,
+                    uploaded_size: Math.min(uploadedCount * CHUNK_SIZE, file.size),
+                    status: 'uploading',
+                  }
+                : t
+            )
+          );
+          return;
+        } catch (err) {
+          if (attempt === retries - 1) throw err;
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      }
+    };
+
+    const workers: Promise<void>[] = [];
+    const workerCount = Math.min(CONCURRENCY, chunkQueue.length);
+
+    const runWorker = async () => {
+      while (chunkQueue.length > 0) {
+        const chunkIndex = chunkQueue.shift();
+        if (chunkIndex !== undefined) {
+          await uploadChunkWithRetry(chunkIndex);
+        }
+      }
+    };
+
+    for (let i = 0; i < workerCount; i++) {
+      workers.push(runWorker());
+    }
+
+    await Promise.all(workers);
   };
 
   // 执行分片上传
@@ -386,19 +474,7 @@ export function MediaPublishPage() {
     }
 
     // 所有分片上传完成，请求合并
-    try {
-      const result = await api.mergeUpload(uploadId, {
-        upload_id: uploadId,
-        type: type,
-        title: title || undefined,
-      });
-
-      setMessage({ type: 'success', text: '上传完成' });
-      refreshUploadTasks();
-      refreshStagingMedias();
-    } catch (err) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : '完成上传失败' });
-    }
+    await performMerge(uploadId, type, title);
   };
 
   // 暂停上传
@@ -440,17 +516,12 @@ export function MediaPublishPage() {
 
       if (missingChunks.length === 0) {
         // 所有分片已上传，直接合并
-        const result = await api.mergeUpload(existingUploadTask.upload_id, {
-          upload_id: existingUploadTask.upload_id,
-          type: mediaType,
-          title: mediaTitle || undefined,
-        });
-        setMessage({ type: 'success', text: '上传完成' });
-        refreshUploadTasks();
-        refreshStagingMedias();
+        await performMerge(existingUploadTask.upload_id, mediaType, mediaTitle);
       } else {
         // 上传缺失的分片
-        await performResumeUpload(existingUploadTask.upload_id, selectedFile, missingChunks);
+        await uploadMissingChunks(existingUploadTask.upload_id, selectedFile, missingChunks);
+        // 上传完成后合并
+        await performMerge(existingUploadTask.upload_id, mediaType, mediaTitle);
       }
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : '恢复上传失败' });
@@ -475,76 +546,6 @@ export function MediaPublishPage() {
   const handleCloseResumeDialog = () => {
     setResumeDialogOpen(false);
     setExistingUploadTask(null);
-  };
-
-  // 恢复上传缺失的分片
-  const performResumeUpload = async (uploadId: string, file: File, missingChunks: number[]) => {
-    const chunkQueue = [...missingChunks];
-    let uploadedCount = 0;
-
-    const uploadChunkWithRetry = async (chunkIndex: number, retries = 3): Promise<void> => {
-      for (let attempt = 0; attempt < retries; attempt++) {
-        try {
-          const start = chunkIndex * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, file.size);
-          const chunk = file.slice(start, end);
-
-          await api.uploadChunk(uploadId, chunkIndex, chunk);
-          uploadedCount++;
-
-          // 更新本地进度
-          setUploadTasks(prev =>
-            prev.map(t =>
-              t.upload_id === uploadId
-                ? {
-                      ...t,
-                      uploaded_chunks: t.uploaded_chunks + 1,
-                      uploaded_size: Math.min((t.uploaded_chunks + 1) * CHUNK_SIZE, file.size),
-                      status: 'uploading',
-                    }
-                : t
-            )
-          );
-          return;
-        } catch (err) {
-          if (attempt === retries - 1) throw err;
-          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-        }
-      }
-    };
-
-    const workers: Promise<void>[] = [];
-    const workerCount = Math.min(CONCURRENCY, chunkQueue.length);
-
-    const runWorker = async () => {
-      while (chunkQueue.length > 0) {
-        const chunkIndex = chunkQueue.shift();
-        if (chunkIndex !== undefined) {
-          await uploadChunkWithRetry(chunkIndex);
-        }
-      }
-    };
-
-    for (let i = 0; i < workerCount; i++) {
-      workers.push(runWorker());
-    }
-
-    try {
-      await Promise.all(workers);
-
-      // 所有缺失分片上传完成，请求合并
-      const result = await api.mergeUpload(uploadId, {
-        upload_id: uploadId,
-        type: mediaType,
-        title: mediaTitle || undefined,
-      });
-
-      setMessage({ type: 'success', text: '上传完成' });
-      refreshUploadTasks();
-      refreshStagingMedias();
-    } catch (err) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : '上传失败' });
-    }
   };
 
   // 删除上传任务
@@ -823,7 +824,7 @@ export function MediaPublishPage() {
           <DialogTitle>发现未完成的上传</DialogTitle>
           <DialogContent>
             <Alert severity="info" sx={{ mb: 2 }}>
-              检测到您之前正在上传 "{existingUploadTask.file_name}"，已上传 {(existingUploadTask.progress * 100).toFixed(1)}%。
+              检测到您之前正在上传 "{existingUploadTask.file_name}"，已上传 {((existingUploadTask.uploaded_size / existingUploadTask.file_size) * 100).toFixed(1)}%。
               您可以继续上传或删除旧任务重新开始。
             </Alert>
             <List dense>
