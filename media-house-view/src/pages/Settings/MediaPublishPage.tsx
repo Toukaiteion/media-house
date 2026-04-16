@@ -16,9 +16,6 @@ import {
   CircularProgress,
   TextField,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -49,26 +46,6 @@ function TabPanel({ children, value, index }: TabPanelProps) {
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
 const CONCURRENCY = 3; // 并发上传数
 
-// 格式化文件大小
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-}
-
-// 格式化日期
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 // 计算文件 MD5
 async function calculateFileMd5(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -83,7 +60,6 @@ export function MediaPublishPage() {
 
   // 上传任务状态
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
-  const [uploadingTasks, setUploadingTasks] = useState(true);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   // 待发布媒体状态
@@ -106,8 +82,6 @@ export function MediaPublishPage() {
 
   // 断点续传相关状态
   const [calculatingMd5, setCalculatingMd5] = useState(false);
-  const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
-  const [existingUploadTask, setExistingUploadTask] = useState<UploadTask | null>(null);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<StagingMedia | null>(null);
@@ -122,20 +96,6 @@ export function MediaPublishPage() {
 
   // 消息提示
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  // 加载上传任务
-  const refreshUploadTasks = async () => {
-    try {
-      setUploadingTasks(true);
-      setUploadError(null);
-      const data = await api.getUploadTasks();
-      setUploadTasks(data);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : '加载上传任务失败');
-    } finally {
-      setUploadingTasks(false);
-    }
-  };
 
   // 加载待发布媒体
   const refreshStagingMedias = async () => {
@@ -184,7 +144,6 @@ export function MediaPublishPage() {
   };
 
   useEffect(() => {
-    refreshUploadTasks();
     refreshStagingMedias();
     loadLibraries();
     loadPlugins();
@@ -256,7 +215,6 @@ export function MediaPublishPage() {
 
       if (result.success) {
         setMessage({ type: 'success', text: '上传完成' });
-        refreshUploadTasks();
         refreshStagingMedias();
       } else if (result.error === 'missing_chunks') {
         // 有缺失的分片，重新上传
@@ -405,7 +363,6 @@ export function MediaPublishPage() {
     } catch (err) {
       console.error('上传失败:', err);
       setMessage({ type: 'error', text: `上传失败: ${err instanceof Error ? err.message : '未知错误'}` });
-      refreshUploadTasks();
       return;
     }
 
@@ -416,8 +373,14 @@ export function MediaPublishPage() {
   // 暂停上传
   const handlePauseUpload = async (taskId: string) => {
     try {
-      await api.pauseUpload(taskId);
-      refreshUploadTasks();
+      uploadTasks.map(task =>
+        task.upload_id === taskId
+          ? {
+              ...task,
+              status: 'paused',
+            }
+          : task
+      );
     } catch (err) {
       console.error('暂停上传失败:', err);
     }
@@ -426,69 +389,23 @@ export function MediaPublishPage() {
   // 恢复上传
   const handleResumeUpload = async (taskId: string) => {
     try {
-      await api.resumeUpload(taskId);
-      refreshUploadTasks();
+      uploadTasks.map(task =>
+        task.upload_id === taskId
+          ? {
+              ...task,
+              status: 'uploading',
+            }
+          : task
+      );
     } catch (err) {
       console.error('恢复上传失败:', err);
     }
-  };
-
-  // 确认恢复上传
-  const handleConfirmResume = async () => {
-    if (!existingUploadTask || !selectedFile) return;
-
-    setResumeDialogOpen(false);
-    handleCloseUploadDialog();
-
-    try {
-      // 检查已上传的分片
-      const checkResult = await api.checkUploadedChunks(existingUploadTask.upload_id, 0);
-
-      // 计算缺失的分片
-      const totalChunks = Math.ceil(selectedFile.size / CHUNK_SIZE);
-      const missingChunks = checkResult.missing_chunks.length > 0
-        ? checkResult.missing_chunks
-        : Array.from({ length: totalChunks }, (_, i) => i).filter(i => i >= checkResult.to_index);
-
-      if (missingChunks.length === 0) {
-        // 所有分片已上传，直接合并
-        await performMerge(existingUploadTask.upload_id, mediaType, mediaTitle);
-      } else {
-        // 上传缺失的分片
-        await uploadMissingChunks(existingUploadTask.upload_id, selectedFile, missingChunks);
-        // 上传完成后合并
-        await performMerge(existingUploadTask.upload_id, mediaType, mediaTitle);
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : '恢复上传失败' });
-    }
-  };
-
-  // 拒绝恢复，删除旧任务
-  const handleRejectResume = async () => {
-    if (!existingUploadTask) return;
-
-    try {
-      await api.deleteUploadTask(existingUploadTask.upload_id);
-      setResumeDialogOpen(false);
-      setExistingUploadTask(null);
-      setMessage({ type: 'success', text: '旧上传任务已删除，请重新开始上传' });
-    } catch (err) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : '删除旧任务失败' });
-    }
-  };
-
-  // 关闭恢复对话框
-  const handleCloseResumeDialog = () => {
-    setResumeDialogOpen(false);
-    setExistingUploadTask(null);
   };
 
   // 删除上传任务
   const handleDeleteUploadTask = async (taskId: string) => {
     try {
       await api.deleteUploadTask(taskId);
-      refreshUploadTasks();
       setMessage({ type: 'success', text: '上传任务已删除' });
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : '删除上传任务失败' });
@@ -593,7 +510,7 @@ export function MediaPublishPage() {
       >
         <Typography variant="h4">媒体发布</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <IconButton onClick={() => { refreshUploadTasks(); refreshStagingMedias(); }} aria-label="刷新">
+          <IconButton onClick={() => { refreshStagingMedias(); }} aria-label="刷新">
             <RefreshIcon />
           </IconButton>
           {tabValue === 0 && (
@@ -665,11 +582,7 @@ export function MediaPublishPage() {
 
       {/* Tab 2: 上传任务 */}
       <TabPanel value={tabValue} index={1}>
-        {uploadingTasks ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
-            <CircularProgress />
-          </Box>
-        ) : uploadTasks.length === 0 ? (
+        {uploadTasks.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 8 }}>
             <Typography variant="h6" color="text.secondary">
               暂无上传任务
@@ -755,41 +668,6 @@ export function MediaPublishPage() {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* 恢复上传对话框 */}
-      {existingUploadTask && (
-        <Dialog open={resumeDialogOpen} onClose={handleCloseResumeDialog} maxWidth="sm" fullWidth>
-          <DialogTitle>发现未完成的上传</DialogTitle>
-          <DialogContent>
-            <Alert severity="info" sx={{ mb: 2 }}>
-              检测到您之前正在上传 "{existingUploadTask.file_name}"，已上传 {((existingUploadTask.uploaded_size / existingUploadTask.file_size) * 100).toFixed(1)}%。
-              您可以继续上传或删除旧任务重新开始。
-            </Alert>
-            <List dense>
-              <ListItem>
-                <ListItemText primary="文件大小" secondary={formatFileSize(existingUploadTask.file_size)} />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="已上传" secondary={`${formatFileSize(existingUploadTask.uploaded_size)} / ${formatFileSize(existingUploadTask.file_size)}`} />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="分片进度" secondary={`${existingUploadTask.uploaded_chunks} / ${existingUploadTask.total_chunks}`} />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="创建时间" secondary={formatDate(existingUploadTask.created_at)} />
-              </ListItem>
-            </List>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleRejectResume} color="error">
-              删除旧任务
-            </Button>
-            <Button onClick={handleConfirmResume} variant="contained" color="primary">
-              继续上传
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
 
       {/* 编辑媒体对话框 */}
       <MediaEditDialog

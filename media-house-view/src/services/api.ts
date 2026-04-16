@@ -707,24 +707,6 @@ class ApiClient {
   }
 
   /**
-   * 暂停上传
-   */
-  async pauseUpload(uploadId: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>(`/upload/pause/${uploadId}`, {
-      method: 'POST',
-    });
-  }
-
-  /**
-   * 恢复上传
-   */
-  async resumeUpload(uploadId: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>(`/upload/resume/${uploadId}`, {
-      method: 'POST',
-    });
-  }
-
-  /**
    * 删除上传任务
    */
   async deleteUploadTask(uploadId: string): Promise<void> {
