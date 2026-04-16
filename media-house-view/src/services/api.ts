@@ -707,13 +707,6 @@ class ApiClient {
   }
 
   /**
-   * 获取所有上传任务
-   */
-  async getUploadTasks(): Promise<UploadTask[]> {
-    return this.request<UploadTask[]>('/media/upload-tasks');
-  }
-
-  /**
    * 合并分片，创建待发布媒体
    */
   async mergeUpload(dto: MergeUploadRequest): Promise<MergeUploadResponse> {

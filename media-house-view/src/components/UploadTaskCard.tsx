@@ -8,6 +8,7 @@ import type { UploadTask } from '../types';
 
 interface UploadTaskCardProps {
   task: UploadTask;
+  speed?: number;
   onPause: (taskId: string) => void;
   onResume: (taskId: string) => void;
   onDelete: (taskId: string) => void;
@@ -31,13 +32,21 @@ const STATUS_COLORS: Record<string, 'default' | 'primary' | 'success' | 'error' 
   failed: 'error',
 };
 
-export function UploadTaskCard({ task, onPause, onResume, onDelete }: UploadTaskCardProps) {
+export function UploadTaskCard({ task, speed, onPause, onResume, onDelete }: UploadTaskCardProps) {
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+  };
+
+  const formatSpeed = (bytesPerSecond: number): string => {
+    if (bytesPerSecond === 0 || !isFinite(bytesPerSecond)) return '0 B/s';
+    const k = 1024;
+    const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
+    return `${(bytesPerSecond / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
   };
 
   const progress = task.file_size > 0 ? (task.uploaded_size / task.file_size) * 100 : 0;
@@ -80,9 +89,16 @@ export function UploadTaskCard({ task, onPause, onResume, onDelete }: UploadTask
             value={progress}
             sx={{ height: 8, borderRadius: 4 }}
           />
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-            {progress.toFixed(1)}%
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary">
+              {progress.toFixed(1)}%
+            </Typography>
+            {speed !== undefined && task.status === 'uploading' && (
+              <Typography variant="caption" color="text.secondary">
+                {formatSpeed(speed)}
+              </Typography>
+            )}
+          </Box>
         </Box>
       </CardContent>
 

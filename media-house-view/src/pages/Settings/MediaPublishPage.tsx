@@ -60,9 +60,15 @@ const uploadChunkWithRetry = async (
   file: File,
   chunkIndex: number,
   onProgress?: () => void,
-  retries = 3
+  retries = 3,
+  signal?: AbortSignal
 ): Promise<void> => {
   for (let attempt = 0; attempt < retries; attempt++) {
+    // 检查是否被取消
+    if (signal?.aborted) {
+      throw new DOMException('Upload was aborted', 'AbortError');
+    }
+
     try {
       const start = chunkIndex * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, file.size);
@@ -72,6 +78,10 @@ const uploadChunkWithRetry = async (
       onProgress?.();
       return;
     } catch (err) {
+      // 如果是取消错误，直接抛出
+      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
+        throw err;
+      }
       if (attempt === retries - 1) throw err;
       // 指数退避
       await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
@@ -86,6 +96,15 @@ export function MediaPublishPage() {
   // 上传任务状态
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // 存储上传任务的文件引用（用于恢复时获取原文件）
+  const [uploadTaskFiles, setUploadTaskFiles] = useState<Map<string, { file: File; type: 'movie' | 'tvshow'; title: string }>>(new Map());
+
+  // 存储上传任务的 AbortController（用于取消上传）
+  const [uploadControllers, setUploadControllers] = useState<Map<string, AbortController>>(new Map());
+
+  // 上传速度状态
+  const [uploadSpeeds, setUploadSpeeds] = useState<Map<string, number>>(new Map());
 
   // 待发布媒体状态
   const [stagingMedias, setStagingMedias] = useState<StagingMedia[]>([]);
@@ -217,9 +236,14 @@ export function MediaPublishPage() {
         chunk_size: CHUNK_SIZE,
       });
 
+      // 保存文件引用用于恢复
+      setUploadTaskFiles(prev => new Map(prev).set(task.upload_id, { file: selectedFile, type: mediaType, title: mediaTitle }));
+
       handleCloseUploadDialog();
       setMessage({ type: 'success', text: '上传任务已创建' });
 
+      setUploadTasks(prev => [...prev, task]);
+      setTabValue(1);
       // 执行分片上传
       performUpload(task, selectedFile, mediaType, mediaTitle);
     } catch (err) {
@@ -309,6 +333,11 @@ export function MediaPublishPage() {
   const performUpload = async (task: UploadTask, file: File, type: 'movie' | 'tvshow', title: string) => {
     const uploadId = task.upload_id;
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+    // 创建 AbortController
+    const controller = new AbortController();
+    setUploadControllers(prev => new Map(prev).set(uploadId, controller));
+
     // 构造chunk数组
     const init_list = task.missing_chunks_in_uploaded_range || [];
     const start_index = (task.max_uploaded_chunk_index + 1) || 0;
@@ -316,6 +345,22 @@ export function MediaPublishPage() {
     const range = Array.from({ length: end_index - start_index + 1 }, (_, i) => start_index + i);
     const chunkQueue = [...new Set([...init_list, ...range])];
     let uploadedChunks = task.uploaded_chunks || 0;
+
+    // 速度计算
+    const startTime = Date.now();
+    const startBytes = task.uploaded_size || 0;
+    let speedInterval = null;
+
+    // 定期更新速度
+    speedInterval = setInterval(() => {
+      const currentTask = uploadTasks.find(t => t.upload_id === uploadId);
+      if (currentTask) {
+        const elapsed = (Date.now() - startTime) / 1000;
+        const bytesUploaded = currentTask.uploaded_size - startBytes;
+        const speed = elapsed > 0 ? bytesUploaded / elapsed : 0;
+        setUploadSpeeds(prev => new Map(prev).set(uploadId, speed));
+      }
+    }, 1000);
 
     // 并发上传
     const workers: Promise<void>[] = [];
@@ -336,12 +381,11 @@ export function MediaPublishPage() {
                       ...t,
                       uploaded_chunks: uploadedChunks,
                       uploaded_size: end,
-                      status: 'uploading',
                     }
                   : t
               )
             );
-          });
+          }, undefined, controller.signal);
         }
       }
     };
@@ -352,7 +396,42 @@ export function MediaPublishPage() {
 
     try {
       await Promise.all(workers);
+      // 清理速度定时器
+      if (speedInterval) clearInterval(speedInterval);
+      // 清理 AbortController
+      setUploadControllers(prev => {
+        const next = new Map(prev);
+        next.delete(uploadId);
+        return next;
+      });
+      // 清理速度
+      setUploadSpeeds(prev => {
+        const next = new Map(prev);
+        next.delete(uploadId);
+        return next;
+      });
     } catch (err) {
+      // 清理速度定时器
+      if (speedInterval) clearInterval(speedInterval);
+      // 清理 AbortController
+      setUploadControllers(prev => {
+        const next = new Map(prev);
+        next.delete(uploadId);
+        return next;
+      });
+      // 清理速度
+      setUploadSpeeds(prev => {
+        const next = new Map(prev);
+        next.delete(uploadId);
+        return next;
+      });
+
+      // 检查是否是用户取消
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // 用户主动暂停，不需要显示错误消息
+        return;
+      }
+
       console.error('上传失败:', err);
       setMessage({ type: 'error', text: `上传失败: ${err instanceof Error ? err.message : '未知错误'}` });
       return;
@@ -365,14 +444,32 @@ export function MediaPublishPage() {
   // 暂停上传
   const handlePauseUpload = async (taskId: string) => {
     try {
-      uploadTasks.map(task =>
-        task.upload_id === taskId
-          ? {
-              ...task,
-              status: 'paused',
-            }
-          : task
+      // 获取 AbortController 并取消
+      const controller = uploadControllers.get(taskId);
+      if (controller) {
+        controller.abort();
+        setUploadControllers(prev => {
+          const next = new Map(prev);
+          next.delete(taskId);
+          return next;
+        });
+      }
+
+      // 更新任务状态
+      setUploadTasks(prev =>
+        prev.map(task =>
+          task.upload_id === taskId
+            ? { ...task, status: 'paused' }
+            : task
+        )
       );
+
+      // 清理速度
+      setUploadSpeeds(prev => {
+        const next = new Map(prev);
+        next.delete(taskId);
+        return next;
+      });
     } catch (err) {
       console.error('暂停上传失败:', err);
     }
@@ -381,16 +478,44 @@ export function MediaPublishPage() {
   // 恢复上传
   const handleResumeUpload = async (taskId: string) => {
     try {
-      uploadTasks.map(task =>
-        task.upload_id === taskId
-          ? {
-              ...task,
-              status: 'uploading',
-            }
-          : task
+      // 更新状态为上传中
+      setUploadTasks(prev =>
+        prev.map(task =>
+          task.upload_id === taskId
+            ? { ...task, status: 'uploading' }
+            : task
+        )
       );
+
+      // 从 API 获取任务最新状态
+      const task = await api.getUploadTask(taskId);
+
+      // 获取文件引用
+      const taskFile = uploadTaskFiles.get(taskId);
+      if (!taskFile) {
+        setMessage({ type: 'error', text: '无法找到对应的文件，请重新上传' });
+        setUploadTasks(prev =>
+          prev.map(t =>
+            t.upload_id === taskId
+              ? { ...t, status: 'failed' }
+              : t
+          )
+        );
+        return;
+      }
+
+      // 执行上传
+      performUpload(task, taskFile.file, taskFile.type, taskFile.title);
     } catch (err) {
       console.error('恢复上传失败:', err);
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : '恢复上传失败' });
+      setUploadTasks(prev =>
+        prev.map(t =>
+          t.upload_id === taskId
+            ? { ...t, status: 'failed' }
+            : t
+        )
+      );
     }
   };
 
@@ -398,6 +523,32 @@ export function MediaPublishPage() {
   const handleDeleteUploadTask = async (taskId: string) => {
     try {
       await api.deleteUploadTask(taskId);
+
+      // 清理文件引用
+      setUploadTaskFiles(prev => {
+        const next = new Map(prev);
+        next.delete(taskId);
+        return next;
+      });
+
+      // 清理 AbortController
+      const controller = uploadControllers.get(taskId);
+      if (controller) {
+        controller.abort();
+      }
+      setUploadControllers(prev => {
+        const next = new Map(prev);
+        next.delete(taskId);
+        return next;
+      });
+
+      // 清理速度
+      setUploadSpeeds(prev => {
+        const next = new Map(prev);
+        next.delete(taskId);
+        return next;
+      });
+
       setMessage({ type: 'success', text: '上传任务已删除' });
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : '删除上传任务失败' });
@@ -450,8 +601,6 @@ export function MediaPublishPage() {
   // 执行发布
   const handleExecutePublish = async (request: { library_id: number; media_name: string }) => {
     if (!mediaToPublish) return;
-
-;
 
     try {
       await api.publishStagingMedia(mediaToPublish.id, request);
@@ -589,6 +738,7 @@ export function MediaPublishPage() {
               <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={task.upload_id}>
                 <UploadTaskCard
                   task={task}
+                  speed={uploadSpeeds.get(task.upload_id)}
                   onPause={handlePauseUpload}
                   onResume={handleResumeUpload}
                   onDelete={handleDeleteUploadTask}
@@ -604,8 +754,6 @@ export function MediaPublishPage() {
           </Alert>
         )}
       </TabPanel>
-
-      
 
       {/* 上传对话框 */}
       <Dialog open={uploadDialogOpen} onClose={handleCloseUploadDialog} maxWidth="sm" fullWidth>
