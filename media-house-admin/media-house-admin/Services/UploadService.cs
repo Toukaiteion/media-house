@@ -4,6 +4,7 @@ using MediaHouse.Interfaces;
 using MediaHouse.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using MediaHouse.DTOs.Upload;
 
 namespace MediaHouse.Services;
 
@@ -69,42 +70,46 @@ public class UploadService(
 
             return new CreateUploadTaskResponse
             {
-                upload_id = uploadId,
-                file_name = request.file_name,
-                file_size = request.file_size,
-                file_md5 = request.file_md5,
-                chunk_size = request.chunk_size,
-                total_chunks = totalChunks,
-                uploaded_chunks = 0,
-                uploaded_size = 0,
-                start_chunk_index = 0,
-                progress = 0,
-                status = "pending",
-                created_at = DateTime.UtcNow.ToString("o"),
-                is_new = true
+                UploadId = uploadId,
+                FileName = request.file_name,
+                FileSize = request.file_size,
+                FileMd5 = request.file_md5,
+                ChunkSize = request.chunk_size,
+                TotalChunks = totalChunks,
+                UploadedChunks = 0,
+                UploadedSize = 0,
+                StartChunkIndex = 0,
+                Progress = 0,
+                Status = "pending",
+                CreatedAt = DateTime.UtcNow.ToString("o"),
+                IsNew = true
             };
         }
         else
         {
             // 返回已有任务信息
             _logger.LogInformation("Found existing upload task {UploadId} for file {FileName}", existingTask.Id, request.file_name);
+            var uploadedChunkInfo = CalculateUploadedChunk(existingTask.Id, existingTask.TotalChunks);
+            existingTask.UploadedChunks = uploadedChunkInfo.UploadedChunks;
+            existingTask.UploadedSize = uploadedChunkInfo.UploadedSize;
 
             return new CreateUploadTaskResponse
             {
-                upload_id = existingTask.Id,
-                file_name = existingTask.FileName,
-                file_size = existingTask.FileSize,
-                file_md5 = existingTask.FileMd5 ?? string.Empty!,
-                chunk_size = existingTask.ChunkSize,
-                total_chunks = existingTask.TotalChunks,
-                uploaded_chunks = existingTask.UploadedChunks,
-                uploaded_size = existingTask.UploadedSize,
-                start_chunk_index = existingTask.UploadedChunks,
-                progress = existingTask.FileSize > 0 ? (double)existingTask.UploadedSize / existingTask.FileSize : 0,
-                status = GetStatusString(existingTask.Status),
-                created_at = existingTask.CreatedAt.ToString("o"),
-                updated_at = existingTask.UpdatedAt.ToString("o"),
-                is_new = false
+                UploadId = existingTask.Id,
+                FileName = existingTask.FileName,
+                FileSize = existingTask.FileSize,
+                FileMd5 = existingTask.FileMd5 ?? string.Empty!,
+                ChunkSize = existingTask.ChunkSize,
+                TotalChunks = existingTask.TotalChunks,
+                UploadedChunks = uploadedChunkInfo.UploadedChunks,
+                UploadedSize = uploadedChunkInfo.UploadedSize,
+                StartChunkIndex = uploadedChunkInfo.MaxUploadedIndex + 1,
+                MissingChunksInUploadedRange = uploadedChunkInfo.MissingChunksInUploadedRange,
+                Progress = existingTask.FileSize > 0 ? (double)uploadedChunkInfo.UploadedSize / existingTask.FileSize : 0,
+                Status = GetStatusString(existingTask.Status),
+                CreatedAt = existingTask.CreatedAt.ToString("o"),
+                UpdatedAt = existingTask.UpdatedAt.ToString("o"),
+                IsNew = false
             };
         }
     }
@@ -235,6 +240,66 @@ public class UploadService(
                 Status = "completed"
             }
         };
+    }
+
+    private UploadedChunkInfo CalculateUploadedChunk(string uploadId, int totalChunks)
+    {
+        var uploadedInfo = new UploadedChunkInfo
+        {
+            MaxUploadedIndex = -1,
+            UploadedChunks = 0,
+            UploadedSize = 0
+        };
+        var chunkDir = Path.Combine(_settings.UploadPath, uploadId, "chunks");
+
+        var MissingChunksInUploadedRange = new List<int>();
+        
+        // 1. 新增：用于累加文件大小
+        long totalUploadedSize = 0;
+
+        if (Directory.Exists(chunkDir))
+        {
+            var dirInfo = new DirectoryInfo(chunkDir);
+            
+            // 2. 使用 HashSet 提高查找效率 (O(1))，替代 List + OrderByDescending
+            // 同时在这里计算总大小
+            var uploadedChunkSet = new HashSet<int>();
+
+            foreach (var file in dirInfo.EnumerateFiles("*.chunk")) // 只遍历 .chunk 文件
+            {
+                // 提取索引 (去掉 .chunk 后缀)
+                var fileNameWithoutExt = Path.GetFileNameWithoutExtension(file.Name);
+                
+                if (!string.IsNullOrEmpty(fileNameWithoutExt) && int.TryParse(fileNameWithoutExt, out int index))
+                {
+                    uploadedChunkSet.Add(index);
+                    
+                    // 3. 累加文件大小
+                    totalUploadedSize += file.Length;
+                }
+            }
+
+            // 4. 计算起始索引 (即：下一个该传的索引 = 目前已传的最大索引 + 1)
+            // 如果没有分片，默认为 0
+            uploadedInfo.MaxUploadedIndex = uploadedChunkSet.Count > 0 ? uploadedChunkSet.Max() : -1;
+            uploadedInfo.UploadedChunks = uploadedChunkSet.Count;
+            uploadedInfo.UploadedSize = totalUploadedSize;
+
+            // 5. 计算缺失的分片
+            // 使用 HashSet 的 Contains 方法，速度极快
+            for (int i = 0; i < totalChunks && i < uploadedInfo.MaxUploadedIndex; i++)
+            {
+                if (!uploadedChunkSet.Contains(i))
+                {
+                    MissingChunksInUploadedRange.Add(i);
+                }
+            }
+            
+        }
+        
+        // 6. 赋值
+        uploadedInfo.MissingChunksInUploadedRange = [.. MissingChunksInUploadedRange];
+        return uploadedInfo;
     }
 
     private UploadProgressDto MapToDto(UploadTask task)
