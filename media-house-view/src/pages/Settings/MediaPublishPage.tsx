@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Container,
   Typography,
@@ -123,9 +123,6 @@ export function MediaPublishPage() {
   // 消息提示
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // 上传进度跟踪
-  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   // 加载上传任务
   const refreshUploadTasks = async () => {
     try {
@@ -186,66 +183,12 @@ export function MediaPublishPage() {
     }
   };
 
-  // 初始化加载
   useEffect(() => {
     refreshUploadTasks();
     refreshStagingMedias();
     loadLibraries();
     loadPlugins();
   }, []);
-
-  // 上传进度轮询
-  useEffect(() => {
-    const startProgressPolling = () => {
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-      }
-
-      progressIntervalRef.current = setInterval(async () => {
-        const activeTasks = uploadTasks.filter(
-          t => t.status === 'uploading' || t.status === 'pending'
-        );
-
-        if (activeTasks.length === 0) {
-          if (progressIntervalRef.current) {
-            clearInterval(progressIntervalRef.current);
-            progressIntervalRef.current = null;
-          }
-          return;
-        }
-
-        // 更新进度
-        for (const task of activeTasks) {
-          try {
-            const progress = await api.getUploadProgress(task.upload_id);
-            setUploadTasks(prev =>
-              prev.map(t =>
-                t.upload_id === task.upload_id
-                  ? { ...t, ...progress }
-                  : t
-              )
-            );
-
-            // 检查是否完成
-            if (progress.status === 'completed') {
-              refreshUploadTasks();
-              refreshStagingMedias();
-            }
-          } catch (err) {
-            console.error('获取上传进度失败:', err);
-          }
-        }
-      }, 1000);
-    };
-
-    startProgressPolling();
-
-    return () => {
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-      }
-    };
-  }, [uploadTasks]);
 
   // 打开上传对话框
   const handleOpenUploadDialog = () => {
@@ -660,7 +603,7 @@ export function MediaPublishPage() {
           <IconButton onClick={() => { refreshUploadTasks(); refreshStagingMedias(); }} aria-label="刷新">
             <RefreshIcon />
           </IconButton>
-          {tabValue === 1 && (
+          {tabValue === 0 && (
             <Button variant="contained" startIcon={<UploadIcon />} onClick={handleOpenUploadDialog}>
               上传媒体
             </Button>
@@ -681,49 +624,12 @@ export function MediaPublishPage() {
         onChange={(_, v) => setTabValue(v)}
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
-        <Tab label={`上传任务 (${uploadTasks.length})`} />
         <Tab label={`待发布媒体 (${stagingMedias.length})`} />
+        <Tab label={`上传任务 (${uploadTasks.length})`} />
       </Tabs>
 
-      {/* Tab 1: 上传任务 */}
+      {/* Tab 1: 待发布媒体 */}
       <TabPanel value={tabValue} index={0}>
-        {uploadingTasks ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
-            <CircularProgress />
-          </Box>
-        ) : uploadTasks.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 8 }}>
-            <Typography variant="h6" color="text.secondary">
-              暂无上传任务
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              切换到"待发布媒体"标签页上传新媒体
-            </Typography>
-          </Box>
-        ) : (
-          <Grid container spacing={3}>
-            {uploadTasks.map((task) => (
-              <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={task.upload_id}>
-                <UploadTaskCard
-                  task={task}
-                  onPause={handlePauseUpload}
-                  onResume={handleResumeUpload}
-                  onDelete={handleDeleteUploadTask}
-                />
-              </Grid>
-            ))}
-          </Grid>
-        )}
-
-        {uploadError && (
-          <Alert severity="error" sx={{ mt: 2 }} onClose={() => setUploadError(null)}>
-            {uploadError}
-          </Alert>
-        )}
-      </TabPanel>
-
-      {/* Tab 2: 待发布媒体 */}
-      <TabPanel value={tabValue} index={1}>
         {loadingMedias ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
             <CircularProgress />
@@ -763,6 +669,45 @@ export function MediaPublishPage() {
           </Alert>
         )}
       </TabPanel>
+
+      {/* Tab 2: 上传任务 */}
+      <TabPanel value={tabValue} index={1}>
+        {uploadingTasks ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+            <CircularProgress />
+          </Box>
+        ) : uploadTasks.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 8 }}>
+            <Typography variant="h6" color="text.secondary">
+              暂无上传任务
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              切换到"待发布媒体"标签页上传新媒体
+            </Typography>
+          </Box>
+        ) : (
+          <Grid container spacing={3}>
+            {uploadTasks.map((task) => (
+              <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={task.upload_id}>
+                <UploadTaskCard
+                  task={task}
+                  onPause={handlePauseUpload}
+                  onResume={handleResumeUpload}
+                  onDelete={handleDeleteUploadTask}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        )}
+
+        {uploadError && (
+          <Alert severity="error" sx={{ mt: 2 }} onClose={() => setUploadError(null)}>
+            {uploadError}
+          </Alert>
+        )}
+      </TabPanel>
+
+      
 
       {/* 上传对话框 */}
       <Dialog open={uploadDialogOpen} onClose={handleCloseUploadDialog} maxWidth="sm" fullWidth>
