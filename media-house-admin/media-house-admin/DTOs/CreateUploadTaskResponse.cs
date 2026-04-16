@@ -10,7 +10,7 @@ public class CreateUploadTaskResponse
     public int TotalChunks { get; set; }
     public int UploadedChunks { get; set; }
     public long UploadedSize { get; set; }
-    public int StartChunkIndex { get; set; }
+    public int MaxUploadedChunkIndex { get; set; }
     public int[] MissingChunksInUploadedRange { get; set; } = [];
     public double Progress { get; set; }
     public string Status { get; set; } = string.Empty;

@@ -553,6 +553,8 @@ export interface UploadTask {
   total_chunks: number;
   uploaded_chunks: number;
   uploaded_size: number;
+  max_uploaded_chunk_index: number; // 最大已上传分片索引
+  missing_chunks_in_uploaded_range?: number[]; // 已上传范围中缺少的分片索引
   progress?: number; // 进度百分比 (0-1)
   status: UploadStatus;
   mime_type?: string;
