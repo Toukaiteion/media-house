@@ -233,24 +233,11 @@ export function MediaPublishPage() {
         chunk_size: CHUNK_SIZE,
       });
 
-      // 检查是否为新任务
-      if (!task.is_new) {
-        // 验证文件大小是否匹配
-        if (task.file_size !== selectedFile.size) {
-          throw new Error('文件大小不匹配，请选择正确的文件');
-        }
-        // 显示恢复对话框
-        setExistingUploadTask(task);
-        setResumeDialogOpen(true);
-        setCalculatingMd5(false);
-        return;
-      }
-
       handleCloseUploadDialog();
       setMessage({ type: 'success', text: '上传任务已创建' });
 
       // 执行分片上传
-      performUpload(task.upload_id, selectedFile, mediaType, mediaTitle);
+      performUpload(task, selectedFile, mediaType, mediaTitle);
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : '创建上传任务失败' });
     } finally {
@@ -352,9 +339,15 @@ export function MediaPublishPage() {
   };
 
   // 执行分片上传
-  const performUpload = async (uploadId: string, file: File, type: 'movie' | 'tvshow', title: string) => {
+  const performUpload = async (task: UploadTask, file: File, type: 'movie' | 'tvshow', title: string) => {
+    const uploadId = task.upload_id;
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    const chunkQueue = Array.from({ length: totalChunks }, (_, i) => i);
+    // 构造chunk数组
+    const init_list = task.missing_chunks_in_uploaded_range || [];
+    const start_index = (task.max_uploaded_chunk_index + 1) || 0;
+    const end_index = totalChunks -1;
+    const range = Array.from({ length: end_index - start_index + 1 }, (_, i) => start_index + i);
+    const chunkQueue = [...new Set([...init_list, ...range])];
     let uploadedChunks = 0;
 
     // 上传单个分片（带重试）
