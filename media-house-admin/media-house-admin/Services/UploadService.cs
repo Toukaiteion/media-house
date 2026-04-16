@@ -17,7 +17,7 @@ public class UploadService(
     private readonly UploadSettings _settings = uploadSettings.Value;
     private readonly ILogger<UploadService> _logger = logger;
 
-    public async Task<CreateUploadTaskResponse> CreateUploadTaskAsync(CreateUploadRequest request)
+    public async Task<UploadTaskDto> CreateUploadTaskAsync(CreateUploadRequest request)
     {
         // 验证文件大小
         if (request.file_size > _settings.MaxFileSize)
@@ -68,7 +68,7 @@ public class UploadService(
 
             _logger.LogInformation("Created upload task {UploadId} for file {FileName}", uploadId, request.file_name);
 
-            return new CreateUploadTaskResponse
+            return new UploadTaskDto
             {
                 UploadId = uploadId,
                 FileName = request.file_name,
@@ -79,6 +79,7 @@ public class UploadService(
                 UploadedChunks = 0,
                 UploadedSize = 0,
                 MaxUploadedChunkIndex = -1,
+                MissingChunksInUploadedRange = [],
                 Progress = 0,
                 Status = "pending",
                 CreatedAt = DateTime.UtcNow.ToString("o"),
@@ -93,7 +94,7 @@ public class UploadService(
             existingTask.UploadedChunks = uploadedChunkInfo.UploadedChunks;
             existingTask.UploadedSize = uploadedChunkInfo.UploadedSize;
 
-            return new CreateUploadTaskResponse
+            return new UploadTaskDto
             {
                 UploadId = existingTask.Id,
                 FileName = existingTask.FileName,
@@ -114,14 +115,14 @@ public class UploadService(
         }
     }
 
-    public async Task<UploadProgressDto> GetUploadProgressAsync(string uploadId)
+    public async Task<UploadTaskDto> GetUploadProgressAsync(string uploadId)
     {
         var task = await _context.UploadTasks.FindAsync(uploadId) ?? throw new InvalidOperationException($"Upload task not found: {uploadId}");
 
         return MapToDto(task);
     }
 
-    public async Task<List<UploadProgressDto>> GetAllUploadTasksAsync()
+    public async Task<List<UploadTaskDto>> GetAllUploadTasksAsync()
     {
         var tasks = await _context.UploadTasks.ToListAsync();
         return [.. tasks.Select(MapToDto)];
@@ -302,22 +303,26 @@ public class UploadService(
         return uploadedInfo;
     }
 
-    private UploadProgressDto MapToDto(UploadTask task)
+    private UploadTaskDto MapToDto(UploadTask task)
     {
-        return new UploadProgressDto
+        var uploadedChunkInfo = CalculateUploadedChunk(task.Id, task.TotalChunks);
+        return new UploadTaskDto
         {
             UploadId = task.Id,
             FileName = task.FileName,
             FileSize = task.FileSize,
             FileMd5 = task.FileMd5 ?? string.Empty,
             ChunkSize = task.ChunkSize,
-            UploadedSize = task.UploadedSize,
+            UploadedSize = uploadedChunkInfo.UploadedSize,
             TotalChunks = task.TotalChunks,
-            UploadedChunks = task.UploadedChunks,
-            Progress = task.FileSize > 0 ? (double)task.UploadedSize / task.FileSize : 0,
+            UploadedChunks = uploadedChunkInfo.UploadedChunks,
+            MaxUploadedChunkIndex = uploadedChunkInfo.MaxUploadedIndex,
+            MissingChunksInUploadedRange = uploadedChunkInfo.MissingChunksInUploadedRange,
+            Progress = task.FileSize > 0 ? (double)uploadedChunkInfo.UploadedSize / task.FileSize : 0,
             Status = GetStatusString(task.Status),
             CreatedAt = task.CreatedAt.ToString("o"),
-            UpdatedAt = task.UpdatedAt.ToString("o")
+            UpdatedAt = task.UpdatedAt.ToString("o"),
+            IsNew = false
         };
     }
 

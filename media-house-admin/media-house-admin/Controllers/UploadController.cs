@@ -18,7 +18,7 @@ public class UploadController(
     private readonly ILogger<UploadController> _logger = logger;
 
     [HttpGet]
-    public async Task<ActionResult<List<UploadProgressDto>>> GetUploadTasks()
+    public async Task<ActionResult<List<UploadTaskDto>>> GetUploadTasks()
     {
         try
         {
@@ -33,7 +33,7 @@ public class UploadController(
     }
 
     [HttpPost]
-    public async Task<ActionResult<CreateUploadTaskResponse>> CreateUploadTask([FromBody] CreateUploadRequest request)
+    public async Task<ActionResult<UploadTaskDto>> CreateUploadTask([FromBody] CreateUploadRequest request)
     {
         try
         {
@@ -48,7 +48,7 @@ public class UploadController(
     }
 
     [HttpGet("{upload_id}")]
-    public async Task<ActionResult<UploadProgressDto>> GetUploadTask(string upload_id)
+    public async Task<ActionResult<UploadTaskDto>> GetUploadTask(string upload_id)
     {
         try
         {
