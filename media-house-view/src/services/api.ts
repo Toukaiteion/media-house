@@ -42,13 +42,11 @@ import type {
   UploadTask,
   UploadRequest,
   UploadChunkResponse,
-  UploadProgress,
   StagingMedia,
   StagingMediaDetail,
   UpdateStagingMetadataDto,
   PublishRequest,
   PublishResponse,
-  CheckChunksResponse,
   MergeUploadRequest,
   MergeUploadResponse,
 } from '../types';
@@ -693,17 +691,10 @@ class ApiClient {
   }
 
   /**
-   * 检查已上传的分片（用于断点续传）
+   * 获取上传任务信息
    */
-  async checkUploadedChunks(uploadId: string, index: number = 0): Promise<CheckChunksResponse> {
-    return this.request<CheckChunksResponse>(`/media/upload-tasks/${uploadId}/check-chunk?index=${index}`);
-  }
-
-  /**
-   * 获取上传进度
-   */
-  async getUploadProgress(uploadId: string): Promise<UploadProgress> {
-    return this.request<UploadProgress>(`/media/upload-tasks/${uploadId}`);
+  async getUploadTask(uploadId: string): Promise<UploadTask> {
+    return this.request<UploadTask>(`/media/upload-tasks/${uploadId}`);
   }
 
   /**

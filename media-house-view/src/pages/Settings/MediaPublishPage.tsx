@@ -54,6 +54,31 @@ async function calculateFileMd5(file: File): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// 上传单个分片（带重试）
+const uploadChunkWithRetry = async (
+  uploadId: string,
+  file: File,
+  chunkIndex: number,
+  onProgress?: () => void,
+  retries = 3
+): Promise<void> => {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const start = chunkIndex * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
+
+      await api.uploadChunk(uploadId, chunkIndex, chunk);
+      onProgress?.();
+      return;
+    } catch (err) {
+      if (attempt === retries - 1) throw err;
+      // 指数退避
+      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
+  }
+};
+
 export function MediaPublishPage() {
   // Tab 状态
   const [tabValue, setTabValue] = useState(0);
@@ -246,37 +271,6 @@ export function MediaPublishPage() {
     const chunkQueue = [...missingChunks];
     let uploadedCount = 0;
 
-    const uploadChunkWithRetry = async (chunkIndex: number, retries = 3): Promise<void> => {
-      for (let attempt = 0; attempt < retries; attempt++) {
-        try {
-          const start = chunkIndex * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, file.size);
-          const chunk = file.slice(start, end);
-
-          await api.uploadChunk(uploadId, chunkIndex, chunk);
-          uploadedCount++;
-
-          // 更新本地进度
-          setUploadTasks(prev =>
-            prev.map(t =>
-              t.upload_id === uploadId
-                ? {
-                    ...t,
-                    uploaded_chunks: uploadedCount,
-                    uploaded_size: Math.min(uploadedCount * CHUNK_SIZE, file.size),
-                    status: 'uploading',
-                  }
-                : t
-            )
-          );
-          return;
-        } catch (err) {
-          if (attempt === retries - 1) throw err;
-          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-        }
-      }
-    };
-
     const workers: Promise<void>[] = [];
     const workerCount = Math.min(CONCURRENCY, chunkQueue.length);
 
@@ -284,7 +278,22 @@ export function MediaPublishPage() {
       while (chunkQueue.length > 0) {
         const chunkIndex = chunkQueue.shift();
         if (chunkIndex !== undefined) {
-          await uploadChunkWithRetry(chunkIndex);
+          await uploadChunkWithRetry(uploadId, file, chunkIndex, () => {
+            uploadedCount++;
+            // 更新本地进度
+            setUploadTasks(prev =>
+              prev.map(t =>
+                t.upload_id === uploadId
+                  ? {
+                      ...t,
+                      uploaded_chunks: uploadedCount,
+                      uploaded_size: Math.min(uploadedCount * CHUNK_SIZE, file.size),
+                      status: 'uploading',
+                    }
+                  : t
+              )
+            );
+          });
         }
       }
     };
@@ -306,40 +315,7 @@ export function MediaPublishPage() {
     const end_index = totalChunks -1;
     const range = Array.from({ length: end_index - start_index + 1 }, (_, i) => start_index + i);
     const chunkQueue = [...new Set([...init_list, ...range])];
-    let uploadedChunks = 0;
-
-    // 上传单个分片（带重试）
-    const uploadChunkWithRetry = async (chunkIndex: number, retries = 3): Promise<void> => {
-      for (let attempt = 0; attempt < retries; attempt++) {
-        try {
-          const start = chunkIndex * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, file.size);
-          const chunk = file.slice(start, end);
-
-          await api.uploadChunk(uploadId, chunkIndex, chunk);
-          uploadedChunks++;
-
-          // 更新本地进度
-          setUploadTasks(prev =>
-            prev.map(t =>
-              t.upload_id === uploadId
-                ? {
-                    ...t,
-                    uploaded_chunks: uploadedChunks,
-                    uploaded_size: end,
-                    status: 'uploading',
-                  }
-                : t
-            )
-          );
-          return;
-        } catch (err) {
-          if (attempt === retries - 1) throw err;
-          // 指数退避
-          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-        }
-      }
-    };
+    let uploadedChunks = task.uploaded_chunks || 0;
 
     // 并发上传
     const workers: Promise<void>[] = [];
@@ -349,7 +325,23 @@ export function MediaPublishPage() {
       while (chunkQueue.length > 0) {
         const chunkIndex = chunkQueue.shift();
         if (chunkIndex !== undefined) {
-          await uploadChunkWithRetry(chunkIndex);
+          const end = Math.min((chunkIndex + 1) * CHUNK_SIZE, file.size);
+          await uploadChunkWithRetry(uploadId, file, chunkIndex, () => {
+            uploadedChunks++;
+            // 更新本地进度
+            setUploadTasks(prev =>
+              prev.map(t =>
+                t.upload_id === uploadId
+                  ? {
+                      ...t,
+                      uploaded_chunks: uploadedChunks,
+                      uploaded_size: end,
+                      status: 'uploading',
+                    }
+                  : t
+              )
+            );
+          });
         }
       }
     };
