@@ -293,7 +293,8 @@ export function MediaPublishPage() {
   // 上传缺失的分片
   const uploadMissingChunks = async (uploadId: string, file: File, missingChunks: number[]) => {
     const chunkQueue = [...missingChunks];
-    let uploadedCount = 0;
+    const uploadedChunkIndices = new Set<number>();
+    let lastUpdateTime = 0;
 
     const workers: Promise<void>[] = [];
     const workerCount = Math.min(CONCURRENCY, chunkQueue.length);
@@ -303,20 +304,7 @@ export function MediaPublishPage() {
         const chunkIndex = chunkQueue.shift();
         if (chunkIndex !== undefined) {
           await uploadChunkWithRetry(uploadId, file, chunkIndex, () => {
-            uploadedCount++;
-            // 更新本地进度
-            setUploadTasks(prev =>
-              prev.map(t =>
-                t.upload_id === uploadId
-                  ? {
-                      ...t,
-                      uploaded_chunks: uploadedCount,
-                      uploaded_size: Math.min(uploadedCount * CHUNK_SIZE, file.size),
-                      status: 'uploading',
-                    }
-                  : t
-              )
-            );
+            uploadedChunkIndices.add(chunkIndex); // 只添加索引，不直接更新 UI
           });
         }
       }
@@ -326,7 +314,30 @@ export function MediaPublishPage() {
       workers.push(runWorker());
     }
 
-    await Promise.all(workers);
+    // 定期更新 UI
+    const updateInterval = setInterval(() => {
+      const now = Date.now();
+      if (now - lastUpdateTime < 300) return; // 限制更新频率
+      lastUpdateTime = now;
+
+      const currentUploaded = uploadedChunkIndices.size;
+      if (currentUploaded > 0) {
+        const uploadedSize = Math.min(currentUploaded * CHUNK_SIZE, file.size);
+        setUploadTasks(prev =>
+          prev.map(t =>
+            t.upload_id === uploadId
+              ? { ...t, uploaded_chunks: currentUploaded, uploaded_size: uploadedSize, status: 'uploading' }
+              : t
+          )
+        );
+      }
+    }, 500);
+
+    try {
+      await Promise.all(workers);
+    } finally {
+      if (updateInterval) clearInterval(updateInterval);
+    }
   };
 
   // 执行分片上传
@@ -341,26 +352,42 @@ export function MediaPublishPage() {
     // 构造chunk数组
     const init_list = task.missing_chunks_in_uploaded_range || [];
     const start_index = (task.max_uploaded_chunk_index + 1) || 0;
-    const end_index = totalChunks -1;
+    const end_index = totalChunks - 1;
     const range = Array.from({ length: end_index - start_index + 1 }, (_, i) => start_index + i);
     const chunkQueue = [...new Set([...init_list, ...range])];
-    let uploadedChunks = task.uploaded_chunks || 0;
+
+    // 使用 Set 追踪已上传的分片索引（避免竞态条件）
+    const uploadedChunkIndices = new Set<number>();
+    let lastUpdateTime = 0;
 
     // 速度计算
     const startTime = Date.now();
     const startBytes = task.uploaded_size || 0;
-    let speedInterval = null;
+    let updateInterval = null;
 
-    // 定期更新速度
-    speedInterval = setInterval(() => {
-      const currentTask = uploadTasks.find(t => t.upload_id === uploadId);
-      if (currentTask) {
-        const elapsed = (Date.now() - startTime) / 1000;
-        const bytesUploaded = currentTask.uploaded_size - startBytes;
-        const speed = elapsed > 0 ? bytesUploaded / elapsed : 0;
+    // 定期更新 UI 和速度
+    updateInterval = setInterval(() => {
+      const now = Date.now();
+      if (now - lastUpdateTime < 300) return; // 限制更新频率
+      lastUpdateTime = now;
+
+      const currentUploaded = uploadedChunkIndices.size;
+      if (currentUploaded > 0) {
+        const uploadedSize = Math.min(currentUploaded * CHUNK_SIZE, file.size);
+        setUploadTasks(prev =>
+          prev.map(t =>
+            t.upload_id === uploadId
+              ? { ...t, uploaded_chunks: currentUploaded, uploaded_size: uploadedSize }
+              : t
+          )
+        );
+
+        // 速度计算
+        const elapsed = (now - startTime) / 1000;
+        const speed = elapsed > 0 ? (uploadedSize - startBytes) / elapsed : 0;
         setUploadSpeeds(prev => new Map(prev).set(uploadId, speed));
       }
-    }, 1000);
+    }, 500);
 
     // 并发上传
     const workers: Promise<void>[] = [];
@@ -370,21 +397,8 @@ export function MediaPublishPage() {
       while (chunkQueue.length > 0) {
         const chunkIndex = chunkQueue.shift();
         if (chunkIndex !== undefined) {
-          const end = Math.min((chunkIndex + 1) * CHUNK_SIZE, file.size);
           await uploadChunkWithRetry(uploadId, file, chunkIndex, () => {
-            uploadedChunks++;
-            // 更新本地进度
-            setUploadTasks(prev =>
-              prev.map(t =>
-                t.upload_id === uploadId
-                  ? {
-                      ...t,
-                      uploaded_chunks: uploadedChunks,
-                      uploaded_size: end,
-                    }
-                  : t
-              )
-            );
+            uploadedChunkIndices.add(chunkIndex); // 只添加索引，不直接更新 UI
           }, undefined, controller.signal);
         }
       }
@@ -396,8 +410,8 @@ export function MediaPublishPage() {
 
     try {
       await Promise.all(workers);
-      // 清理速度定时器
-      if (speedInterval) clearInterval(speedInterval);
+      // 清理更新定时器
+      if (updateInterval) clearInterval(updateInterval);
       // 清理 AbortController
       setUploadControllers(prev => {
         const next = new Map(prev);
@@ -411,8 +425,8 @@ export function MediaPublishPage() {
         return next;
       });
     } catch (err) {
-      // 清理速度定时器
-      if (speedInterval) clearInterval(speedInterval);
+      // 清理更新定时器
+      if (updateInterval) clearInterval(updateInterval);
       // 清理 AbortController
       setUploadControllers(prev => {
         const next = new Map(prev);
@@ -651,7 +665,7 @@ export function MediaPublishPage() {
       >
         <Typography variant="h4">媒体发布</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <IconButton onClick={() => { refreshStagingMedias(); }} aria-label="刷新">
+          <IconButton onClick={() => { { refreshStagingMedias(); } }} aria-label="刷新">
             <RefreshIcon />
           </IconButton>
           {tabValue === 0 && (
@@ -707,7 +721,7 @@ export function MediaPublishPage() {
                   media={media}
                   onEdit={handleEditMedia}
                   onPublish={handlePublishMedia}
-                  onDelete={() => { handleDeleteMedia(media); }}
+                  onDelete={() => { { handleDeleteMedia(media); } }}
                 />
               </Grid>
             ))}
@@ -790,7 +804,7 @@ export function MediaPublishPage() {
             <Typography variant="subtitle2" gutterBottom>选择文件</Typography>
             <input
               type="file"
-              accept="video/*"
+            accept="video/*"
               onChange={handleFileChange}
               style={{ display: 'block', width: '100%' }}
             />
@@ -829,7 +843,7 @@ export function MediaPublishPage() {
         onApply={handleApplyScrapeResult}
       />
 
-      {/* 发布对话框 */}
+      {/* 发布对话框对话框 */}
       {mediaToPublish && (
         <PublishDialog
           open={publishDialogOpen}
