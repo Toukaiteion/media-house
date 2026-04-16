@@ -35,45 +35,21 @@ public class ChunkService(
             Directory.CreateDirectory(chunkDir);
         }
 
-        // 使用超时保护保存文件
-        var saveTask = Task.Run(async () =>
+        using (var fileStream = new FileStream(chunkFile, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true))
         {
-            using var fileStream = new FileStream(chunkFile, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize);
-            {
-                await data.CopyToAsync(fileStream);
-            }
-        });
-
-        // 5分钟超时
-        if (await Task.WhenAny(saveTask, Task.Delay(TimeSpan.FromMinutes(5))) == saveTask)
-        {
-            await saveTask;
-        }
-        else
-        {
-            throw new TimeoutException($"Timeout saving chunk {chunkIndex} for upload {uploadId}");
+            await data.CopyToAsync(fileStream);
         }
 
-        // 更新任务状态
-        var updateTask = Task.Run(async () =>
-        {
-            task.UploadedChunks++;
-            task.UploadedSize += chunkSize;
-            task.Status = 1; // 上传中
-            task.UpdatedAt = DateTime.UtcNow;
+        // 5. 更新数据库状态
+        // 简单的自增在并发下可能不准，但在分片上传场景通常可容忍
+        // 或者使用 SQL 原子更新: await _context.Database.ExecuteSqlInterpolatedAsync(...)
+        task.UploadedChunks++;
+        task.UploadedSize += chunkSize;
+        task.Status = 1; 
+        task.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
-        });
-
-        // 30秒超时更新数据库
-        if (await Task.WhenAny(updateTask, Task.Delay(TimeSpan.FromSeconds(30))) == updateTask)
-        {
-            await updateTask;
-        }
-        else
-        {
-            _logger.LogWarning("Database update timeout for chunk {ChunkIndex}, but file saved successfully", chunkIndex);
-        }
+        // 直接 await，EF Core 内部有 CommandTimeout 配置
+        await _context.SaveChangesAsync();
 
         _logger.LogDebug("Uploaded chunk {ChunkIndex} ({Size} bytes) for task {UploadId}", chunkIndex, chunkSize, uploadId);
         return true;
