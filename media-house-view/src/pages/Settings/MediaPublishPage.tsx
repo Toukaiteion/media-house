@@ -264,6 +264,7 @@ export function MediaPublishPage() {
 
       if (result.success) {
         setMessage({ type: 'success', text: '上传完成' });
+        setUploadTasks(prev => prev.map(task => task.upload_id === uploadId ? { ...task, status: 'completed' } : task))
         refreshStagingMedias();
       } else if (result.error === 'missing_chunks') {
         // 有缺失的分片，重新上传
@@ -357,6 +358,8 @@ export function MediaPublishPage() {
     const chunkQueue = [...new Set([...init_list, ...range])];
 
     // 使用 Set 追踪已上传的分片索引（避免竞态条件）
+    // 初始已上传数 = 总数 - 待上传数
+    const startUploadedCount = task.uploaded_chunks || 0;
     const uploadedChunkIndices = new Set<number>();
     let lastUpdateTime = 0;
 
@@ -371,7 +374,7 @@ export function MediaPublishPage() {
       if (now - lastUpdateTime < 300) return; // 限制更新频率
       lastUpdateTime = now;
 
-      const currentUploaded = uploadedChunkIndices.size;
+      const currentUploaded = startUploadedCount + uploadedChunkIndices.size;
       if (currentUploaded > 0) {
         const uploadedSize = Math.min(currentUploaded * CHUNK_SIZE, file.size);
         setUploadTasks(prev =>
@@ -407,11 +410,15 @@ export function MediaPublishPage() {
     for (let i = 0; i < workerCount; i++) {
       workers.push(runWorker());
     }
-
+    setUploadTasks(prev =>
+      prev.map(t =>
+        t.upload_id === uploadId
+          ? { ...t, status: 'uploading' }
+          : t
+      )
+    );
     try {
       await Promise.all(workers);
-      // 清理更新定时器
-      if (updateInterval) clearInterval(updateInterval);
       // 清理 AbortController
       setUploadControllers(prev => {
         const next = new Map(prev);
@@ -453,6 +460,7 @@ export function MediaPublishPage() {
 
     // 所有分片上传完成，请求合并
     await performMerge(uploadId, type, title);
+    if (updateInterval) clearInterval(updateInterval);
   };
 
   // 暂停上传
