@@ -174,7 +174,7 @@ public class UploadService(
             {
                 // 验证分片大小
                 var chunkFileInfo = new FileInfo(chunkFile);
-                bool isLastChunk = (i == task.TotalChunks - 1);
+                bool isLastChunk = i == task.TotalChunks - 1;
                 bool sizeValid;
                 if (isLastChunk)
                 {
