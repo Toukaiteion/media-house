@@ -253,6 +253,12 @@ public class UploadService(
 
         _logger.LogInformation("Merged upload task {UploadId} and created staging media {MediaId}", uploadId, mediaId);
 
+        // 删除分片目录
+        if (Directory.Exists(chunkDir))
+        {
+            Directory.Delete(chunkDir, true);
+        }
+
         return new MergeResponse
         {
             Success = true,
