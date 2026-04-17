@@ -90,7 +90,7 @@ public class UploadService(
         {
             // 返回已有任务信息
             _logger.LogInformation("Found existing upload task {UploadId} for file {FileName}", existingTask.Id, request.file_name);
-            var uploadedChunkInfo = CalculateUploadedChunk(existingTask.Id, existingTask.TotalChunks);
+            var uploadedChunkInfo = CalculateUploadedChunk(existingTask.Id, existingTask.TotalChunks, existingTask.ChunkSize, existingTask.FileSize);
             existingTask.UploadedChunks = uploadedChunkInfo.UploadedChunks;
             existingTask.UploadedSize = uploadedChunkInfo.UploadedSize;
 
@@ -243,7 +243,7 @@ public class UploadService(
         };
     }
 
-    private UploadedChunkInfo CalculateUploadedChunk(string uploadId, int totalChunks)
+    private UploadedChunkInfo CalculateUploadedChunk(string uploadId, int totalChunks, int chunkSize, long fileSize)
     {
         var uploadedInfo = new UploadedChunkInfo
         {
@@ -270,13 +270,32 @@ public class UploadService(
             {
                 // 提取索引 (去掉 .chunk 后缀)
                 var fileNameWithoutExt = Path.GetFileNameWithoutExtension(file.Name);
-                
+
                 if (!string.IsNullOrEmpty(fileNameWithoutExt) && int.TryParse(fileNameWithoutExt, out int index))
                 {
-                    uploadedChunkSet.Add(index);
-                    
-                    // 3. 累加文件大小
-                    totalUploadedSize += file.Length;
+                    // 验证分片大小
+                    bool isLastChunk = index == totalChunks - 1;
+                    bool sizeValid;
+                    if (isLastChunk)
+                    {
+                        // 最后一个分片：精确计算期望大小
+                        long expectedLastChunkSize = fileSize - (long)(totalChunks - 1) * chunkSize;
+                        sizeValid = file.Length == expectedLastChunkSize;
+                    }
+                    else
+                    {
+                        // 其他分片：大小必须等于 chunkSize
+                        sizeValid = file.Length == chunkSize;
+                    }
+
+                    if (sizeValid)
+                    {
+                        uploadedChunkSet.Add(index);
+
+                        // 3. 累加文件大小
+                        totalUploadedSize += file.Length;
+                    }
+                    // 如果大小不正确，不加入已上传集合，会被标记为缺失
                 }
             }
 
@@ -305,7 +324,7 @@ public class UploadService(
 
     private UploadTaskDto MapToDto(UploadTask task)
     {
-        var uploadedChunkInfo = CalculateUploadedChunk(task.Id, task.TotalChunks);
+        var uploadedChunkInfo = CalculateUploadedChunk(task.Id, task.TotalChunks, task.ChunkSize, task.FileSize);
         return new UploadTaskDto
         {
             UploadId = task.Id,
