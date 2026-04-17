@@ -21,6 +21,9 @@ import {
 import {
   Refresh as RefreshIcon,
   CloudUpload as UploadIcon,
+  CloudUploadOutlined as CloudUploadOutlinedIcon,
+  VideoFileOutlined as VideoFileIcon,
+  DeleteOutlined as DeleteIcon,
 } from '@mui/icons-material';
 import { api } from '../../services/api';
 import { UploadTaskCard } from '../../components/UploadTaskCard';
@@ -219,6 +222,12 @@ export function MediaPublishPage() {
       const title = file.name.replace(/\.[^/.]+$/, '');
       setMediaTitle(title);
     }
+  };
+
+  // 清除文件
+  const handleClearFile = () => {
+    setSelectedFile(null);
+    setMediaTitle('');
   };
 
   // 开始上传
@@ -823,14 +832,60 @@ export function MediaPublishPage() {
             <Typography variant="subtitle2" gutterBottom>选择文件</Typography>
             <input
               type="file"
-            accept="video/*"
+              id="video-file-input"
+              accept="video/*"
               onChange={handleFileChange}
-              style={{ display: 'block', width: '100%' }}
+              style={{ display: 'none' }}
             />
-            {selectedFile && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                已选择: {selectedFile.name} ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
-              </Typography>
+            {!selectedFile ? (
+              <Button
+                variant="outlined"
+                startIcon={<CloudUploadOutlinedIcon />}
+                onClick={() => document.getElementById('video-file-input')?.click()}
+                fullWidth
+                sx={{
+                  height: 56,
+                  borderStyle: 'dashed',
+                  borderColor: 'text.secondary',
+                  '&:hover': {
+                    borderStyle: 'solid',
+                  }
+                }}
+              >
+                点击选择视频文件
+              </Button>
+            ) : (
+              <Box
+                sx={{
+                  p: 2,
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  bgcolor: 'background.paper'
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 0 }}>
+                  <VideoFileIcon sx={{ color: 'primary.main', fontSize: 32 }} />
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {selectedFile.name}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+                    </Typography>
+                  </Box>
+                </Box>
+                <IconButton
+                  onClick={handleClearFile}
+                  size="small"
+                  sx={{ color: 'text.secondary', ml: 1 }}
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </Box>
             )}
           </Box>
         </DialogContent>
