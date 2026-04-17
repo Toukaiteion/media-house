@@ -16,6 +16,7 @@ import {
   CircularProgress,
   TextField,
   Chip,
+  Badge,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -141,6 +142,8 @@ export function MediaPublishPage() {
   // 消息提示
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // 计算正在上传的任务数量
+  const uploadingCount = uploadTasks.filter(task => task.status === 'uploading').length;
   // 加载待发布媒体
   const refreshStagingMedias = async () => {
     try {
@@ -698,7 +701,15 @@ export function MediaPublishPage() {
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
         <Tab label={`待发布媒体 (${stagingMedias.length})`} />
-        <Tab label={`上传任务 (${uploadTasks.length})`} />
+        <Tab label={
+          uploadingCount > 0 ? (
+            <Badge badgeContent={uploadingCount} color="error">
+              上传任务
+            </Badge>
+          ) : (
+            uploadTasks.length > 0 ? `上传任务 (${uploadTasks.length})` : '上传任务'
+          )
+        } />
       </Tabs>
 
       {/* Tab 1: 待发布媒体 */}
