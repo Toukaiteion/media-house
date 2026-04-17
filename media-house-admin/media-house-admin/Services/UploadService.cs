@@ -235,7 +235,7 @@ public class UploadService(
             UploadTaskId = uploadId,
             Type = "movie",
             Title = Path.GetFileNameWithoutExtension(task.FileName),
-            VideoPath = $"upload/{uploadId}/{task.FileName}",
+            VideoPath = $"staging/{mediaId}/{task.FileName}",
             VideoSize = task.FileSize,
             Status = 0, // 待编辑
             CreatedAt = DateTime.UtcNow,
@@ -253,10 +253,17 @@ public class UploadService(
 
         _logger.LogInformation("Merged upload task {UploadId} and created staging media {MediaId}", uploadId, mediaId);
 
-        // 删除分片目录
-        if (Directory.Exists(chunkDir))
+        // 创建 staging 目录并移动文件
+        var stagingDir = Path.Combine(_settings.StagingPath, mediaId);
+        Directory.CreateDirectory(stagingDir);
+
+        var stagingFile = Path.Combine(stagingDir, task.FileName);
+        File.Move(mergedFile, stagingFile);
+
+        // 删除上传目录（包含 chunks 子目录）
+        if (Directory.Exists(uploadDir))
         {
-            Directory.Delete(chunkDir, true);
+            Directory.Delete(uploadDir, true);
         }
 
         return new MergeResponse
