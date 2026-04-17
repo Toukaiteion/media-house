@@ -170,6 +170,27 @@ public class UploadService(
             {
                 missingChunks.Add(i);
             }
+            else
+            {
+                // 验证分片大小
+                var chunkFileInfo = new FileInfo(chunkFile);
+                bool isLastChunk = (i == task.TotalChunks - 1);
+                bool sizeValid;
+                if (isLastChunk)
+                {
+                    long expectedLastChunkSize = task.FileSize - (long)(task.TotalChunks - 1) * task.ChunkSize;
+                    sizeValid = chunkFileInfo.Length == expectedLastChunkSize;
+                }
+                else
+                {
+                    sizeValid = chunkFileInfo.Length == task.ChunkSize;
+                }
+
+                if (!sizeValid)
+                {
+                    missingChunks.Add(i);
+                }
+            }
         }
 
         if (missingChunks.Count > 0)
