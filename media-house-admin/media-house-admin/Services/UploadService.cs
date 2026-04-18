@@ -200,7 +200,8 @@ public class UploadService(
             {
                 Success = false,
                 Error = "missing_chunks",
-                MissingChunks = [.. missingChunks]
+                MissingChunks = [.. missingChunks],
+                UploadedChunksNum = task.TotalChunks - missingChunks.Count
             };
         }
 

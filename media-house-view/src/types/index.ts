@@ -626,6 +626,7 @@ export interface MergeUploadFailureResponse {
   success: false;
   error: 'missing_chunks';
   missing_chunks: number[];
+  uploaded_chunks_num: number;
 }
 
 /**

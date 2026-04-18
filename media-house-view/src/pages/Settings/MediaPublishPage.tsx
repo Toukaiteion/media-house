@@ -286,7 +286,7 @@ export function MediaPublishPage() {
           return;
         }
 
-        await uploadMissingChunks(uploadId, file, result.missing_chunks);
+        await uploadMissingChunks(uploadId, file, result.missing_chunks, result.uploaded_chunks_num);
 
         // 再次尝试合并
         await performMerge(uploadId, type, title);
@@ -305,7 +305,7 @@ export function MediaPublishPage() {
   };
 
   // 上传缺失的分片
-  const uploadMissingChunks = async (uploadId: string, file: File, missingChunks: number[]) => {
+  const uploadMissingChunks = async (uploadId: string, file: File, missingChunks: number[], uploadChunksNum: number) => {
     const chunkQueue = [...missingChunks];
     const uploadedChunkIndices = new Set<number>();
     let lastUpdateTime = 0;
@@ -334,13 +334,13 @@ export function MediaPublishPage() {
       if (now - lastUpdateTime < 300) return; // 限制更新频率
       lastUpdateTime = now;
 
-      const currentUploaded = uploadedChunkIndices.size;
+      const currentUploaded = uploadChunksNum + uploadedChunkIndices.size;
       if (currentUploaded > 0) {
         const uploadedSize = Math.min(currentUploaded * CHUNK_SIZE, file.size);
         setUploadTasks(prev =>
           prev.map(t =>
             t.upload_id === uploadId
-              ? { ...t, uploaded_chunks: currentUploaded, uploaded_size: uploadedSize, status: 'uploading' }
+              ? { ...t, uploaded_chunks_num: currentUploaded, uploaded_size: uploadedSize, status: 'uploading' }
               : t
           )
         );
@@ -393,7 +393,7 @@ export function MediaPublishPage() {
         setUploadTasks(prev =>
           prev.map(t =>
             t.upload_id === uploadId
-              ? { ...t, uploaded_chunks: currentUploaded, uploaded_size: uploadedSize }
+              ? { ...t, uploaded_chunks_num: currentUploaded, uploaded_size: uploadedSize }
               : t
           )
         );

@@ -7,6 +7,7 @@ public class MergeResponse
     public string? Message { get; set; }
     public MergeData? Data { get; set; }
     public int[]? MissingChunks { get; set; }
+    public int UploadedChunksNum { get; set; }
 }
 
 public class MergeData
