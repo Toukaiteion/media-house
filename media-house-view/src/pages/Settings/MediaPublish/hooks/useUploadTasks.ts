@@ -352,8 +352,9 @@ export function useUploadTasks() {
       const { calculateFileMd5 } = await import('../constants');
       const fileMd5 = await calculateFileMd5(file);
 
+      const ext = file.name.substring(file.name.lastIndexOf('.'));
       const task = await api.createUploadTask({
-        file_name: title ?? file.name,
+        file_name: title ? `${title}${ext}` : file.name,
         file_size: file.size,
         file_md5: fileMd5,
         chunk_size: CHUNK_SIZE,

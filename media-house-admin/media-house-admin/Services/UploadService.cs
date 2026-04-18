@@ -217,16 +217,16 @@ public class UploadService(
             using var inputStream = new FileStream(chunkFile, FileMode.Open, FileAccess.Read);
             await inputStream.CopyToAsync(outputStream);
         }
+        outputStream.Dispose();
 
         // 验证文件大小
         var fileInfo = new FileInfo(mergedFile);
         if (fileInfo.Length != task.FileSize)
         {
-            outputStream.Dispose();
             return new MergeResponse
             {
                 Success = false,
-                Error = "File size mismatch after merge"
+                Error = "File size mismatch after merge - expected: " + task.FileSize + ", actual: " + fileInfo.Length
             };
         }
 
@@ -255,9 +255,6 @@ public class UploadService(
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Merged upload task {UploadId} and created staging media {MediaId}", uploadId, mediaId);
-
-        // 释放 outputStream 以便移动文件
-        outputStream.Dispose();
 
         // 创建 staging 目录并移动文件
         var stagingDir = Path.Combine(_settings.StagingPath, mediaId);
