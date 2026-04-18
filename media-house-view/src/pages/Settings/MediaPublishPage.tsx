@@ -372,7 +372,7 @@ export function MediaPublishPage() {
 
     // 使用 Set 追踪已上传的分片索引（避免竞态条件）
     // 初始已上传数 = 总数 - 待上传数
-    const startUploadedCount = task.uploaded_chunks || 0;
+    const startUploadedCount = task.uploaded_chunks_num || 0;
     const uploadedChunkIndices = new Set<number>();
     let lastUpdateTime = 0;
 

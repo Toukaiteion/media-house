@@ -296,7 +296,7 @@ CREATE TABLE upload_tasks (
     file_md5 VARCHAR(32),               -- 文件MD5值（32位十六进制字符串）
     chunk_size INTEGER NOT NULL,         -- 分片大小（默认5MB）
     total_chunks INTEGER NOT NULL,       -- 总分片数
-    uploaded_chunks INTEGER DEFAULT 0,    -- 已上传分片数
+    uploaded_chunks_num INTEGER DEFAULT 0,    -- 已上传分片数
     uploaded_size BIGINT DEFAULT 0,     -- 已上传大小（字节）
     status INTEGER DEFAULT 0,            -- 状态：0=待上传，1=上传中，2=已完成，3=已取消，4=失败
     mime_type VARCHAR(100),             -- 文件MIME类型

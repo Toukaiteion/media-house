@@ -44,7 +44,7 @@ public class ChunkService(
         // 5. 更新数据库状态
         // 简单的自增在并发下可能不准，但在分片上传场景通常可容忍
         // 或者使用 SQL 原子更新: await _context.Database.ExecuteSqlInterpolatedAsync(...)
-        task.UploadedChunks++;
+        task.UploadedChunksNum++;
         task.UploadedSize += chunkSize;
         task.Status = 1; 
         task.UpdatedAt = DateTime.UtcNow;

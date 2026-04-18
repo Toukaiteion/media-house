@@ -52,7 +52,7 @@ public class UploadService(
                 FileMd5 = request.file_md5,
                 ChunkSize = request.chunk_size,
                 TotalChunks = totalChunks,
-                UploadedChunks = 0,
+                UploadedChunksNum = 0,
                 UploadedSize = 0,
                 Status = 0, // 待上传
                 CreatedAt = DateTime.UtcNow,
@@ -77,7 +77,7 @@ public class UploadService(
                 FileMd5 = request.file_md5,
                 ChunkSize = request.chunk_size,
                 TotalChunks = totalChunks,
-                UploadedChunks = 0,
+                UploadedChunksNum = 0,
                 UploadedSize = 0,
                 MaxUploadedChunkIndex = -1,
                 MissingChunksInUploadedRange = [],
@@ -92,7 +92,7 @@ public class UploadService(
             // 返回已有任务信息
             _logger.LogInformation("Found existing upload task {UploadId} for file {FileName}", existingTask.Id, request.file_name);
             var uploadedChunkInfo = CalculateUploadedChunk(existingTask.Id, existingTask.TotalChunks, existingTask.ChunkSize, existingTask.FileSize);
-            existingTask.UploadedChunks = uploadedChunkInfo.UploadedChunks;
+            existingTask.UploadedChunksNum = uploadedChunkInfo.UploadedChunks;
             existingTask.UploadedSize = uploadedChunkInfo.UploadedSize;
 
             return new UploadTaskDto
@@ -103,7 +103,7 @@ public class UploadService(
                 FileMd5 = existingTask.FileMd5 ?? string.Empty!,
                 ChunkSize = existingTask.ChunkSize,
                 TotalChunks = existingTask.TotalChunks,
-                UploadedChunks = uploadedChunkInfo.UploadedChunks,
+                UploadedChunksNum = uploadedChunkInfo.UploadedChunks,
                 UploadedSize = uploadedChunkInfo.UploadedSize,
                 MaxUploadedChunkIndex = uploadedChunkInfo.MaxUploadedIndex,
                 MissingChunksInUploadedRange = uploadedChunkInfo.MissingChunksInUploadedRange,
@@ -373,7 +373,7 @@ public class UploadService(
             ChunkSize = task.ChunkSize,
             UploadedSize = uploadedChunkInfo.UploadedSize,
             TotalChunks = task.TotalChunks,
-            UploadedChunks = uploadedChunkInfo.UploadedChunks,
+            UploadedChunksNum = uploadedChunkInfo.UploadedChunks,
             MaxUploadedChunkIndex = uploadedChunkInfo.MaxUploadedIndex,
             MissingChunksInUploadedRange = uploadedChunkInfo.MissingChunksInUploadedRange,
             Progress = task.FileSize > 0 ? (double)uploadedChunkInfo.UploadedSize / task.FileSize : 0,

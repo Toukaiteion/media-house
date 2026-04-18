@@ -551,7 +551,7 @@ export interface UploadTask {
   file_md5: string;
   chunk_size: number;
   total_chunks: number;
-  uploaded_chunks: number;
+  uploaded_chunks_num: number;
   uploaded_size: number;
   max_uploaded_chunk_index: number; // 最大已上传分片索引
   missing_chunks_in_uploaded_range?: number[]; // 已上传范围中缺少的分片索引
