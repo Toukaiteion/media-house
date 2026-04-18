@@ -257,7 +257,6 @@ export function MediaPublishPage() {
       <MetadataScrapeDialog
         open={scrapeDialogOpen}
         stagingMediaId={selectedMedia?.id}
-        mediaTitle={selectedMedia?.title}
         plugins={plugins}
         pluginsConfig={pluginsConfig}
         onClose={handleCloseScrapeDialog}

@@ -238,7 +238,7 @@ public class UploadService(
             UploadTaskId = uploadId,
             Type = "movie",
             Title = Path.GetFileNameWithoutExtension(task.FileName),
-            VideoPath = $"{_settings.StagingPath}/{mediaId}/{task.FileName}",
+            VideoPath = Path.Combine(_settings.StagingPath, mediaId, task.FileName),
             VideoSize = task.FileSize,
             Status = 0, // 待编辑
             CreatedAt = DateTime.UtcNow,

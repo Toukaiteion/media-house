@@ -22,7 +22,6 @@ import { api } from '../services/api';
 interface MetadataScrapeDialogProps {
   open: boolean;
   stagingMediaId?: string;
-  mediaTitle?: string;
   plugins: Plugin[];
   pluginsConfig: Map<string, PluginConfig[]>;
   onClose: () => void;
@@ -32,7 +31,6 @@ interface MetadataScrapeDialogProps {
 export function MetadataScrapeDialog({
   open,
   stagingMediaId,
-  mediaTitle,
   plugins,
   pluginsConfig,
   onClose,
@@ -40,7 +38,6 @@ export function MetadataScrapeDialog({
 }: MetadataScrapeDialogProps) {
   const [selectedPluginKey, setSelectedPluginKey] = useState('');
   const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null);
-  const [scrapeTitle, setScrapeTitle] = useState('');
 
   const [executing, setExecuting] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<PluginExecutionLog | null>(null);
@@ -49,7 +46,6 @@ export function MetadataScrapeDialog({
   // 初始化表单
   useState(() => {
     if (open) {
-      setScrapeTitle(mediaTitle || '');
       setError(null);
       setScrapeResult(null);
     }
