@@ -177,6 +177,13 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
         modelBuilder.Entity<PluginExecutionLog>()
             .HasIndex(pel => pel.StartTime);
 
+        modelBuilder.Entity<PluginExecutionLog>()
+            .HasIndex(pel => pel.BusinessType);
+
+        modelBuilder.Entity<PluginExecutionLog>()
+            .Property(pel => pel.BusinessType)
+            .HasConversion<string>();
+
         // Upload configurations
         modelBuilder.Entity<UploadTask>()
             .HasIndex(ut => ut.Status);

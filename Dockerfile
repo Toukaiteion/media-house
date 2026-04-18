@@ -42,25 +42,21 @@ RUN dotnet publish -c Release -o /app/publish
 # ===========================================
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 
-# Install system dependencies including Chrome
+# Install system dependencies including Chrome (headless mode only)
 RUN apt-get update && apt-get install -y \
-    # Chrome dependencies
+    # Chrome dependencies for headless mode
     ca-certificates \
     fonts-liberation \
-    libappindicator3-1 \
-    libasound2t64 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
     libc6 \
     libcairo2 \
-    libcups2 \
     libdbus-1-3 \
     libexpat1 \
     libfontconfig1 \
     libgbm1 \
     libgcc1 \
     libglib2.0-0 \
-    libgtk-3-0 \
     libnspr4 \
     libnss3 \
     libpango-1.0-0 \
@@ -88,12 +84,13 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome (stable)
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
+# Install Chrome (stable) using modern GPG key method
+RUN wget -q -O /tmp/google-chrome-key.pub https://dl-ssl.google.com/linux/linux_signing_key.pub \
+    && cat /tmp/google-chrome-key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-archive-keyring.gpg \
+    && sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-archive-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /tmp/google-chrome-key.pub
 
 # Add Chrome to PATH and set up for headless mode
 ENV CHROME_BIN=/usr/bin/google-chrome-stable \

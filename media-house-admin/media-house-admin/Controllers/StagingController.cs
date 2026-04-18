@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MediaHouse.DTOs;
 using MediaHouse.Interfaces;
+using MediaHouse.Data.Entities;
 
 namespace MediaHouse.Controllers;
 
@@ -216,7 +217,8 @@ public class StagingController(
                 outputDir: stagingMedia.VideoPath,
                 pluginVersion: request.PluginVersion,
                 configName: request.ConfigName,
-                businessId: businessId
+                businessId: businessId,
+                businessType: PluginBusinessType.Staging
             );
 
             var response = new ScrapeMetadataResponseDto

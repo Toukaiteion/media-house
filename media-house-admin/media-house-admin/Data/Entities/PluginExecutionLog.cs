@@ -6,6 +6,7 @@ public class PluginExecutionLog
     public string PluginKey { get; set; } = string.Empty;
     public string? PluginVersion { get; set; }
     public int? BusinessId { get; set; }
+    public PluginBusinessType? BusinessType { get; set; } // None, Staging, Media, Custom
     public string ExecutionType { get; set; } = string.Empty;
     public string? SourceDir { get; set; }
     public string Status { get; set; } = string.Empty;

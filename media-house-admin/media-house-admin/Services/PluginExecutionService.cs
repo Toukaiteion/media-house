@@ -17,6 +17,7 @@ public class PluginExecutionService(
     private readonly ILogger<PluginExecutionService> _logger = logger;
     private readonly IPluginService _pluginService = pluginService;
     private readonly IPluginConfigService _pluginConfigService = pluginConfigService;
+    private readonly IEventBus _eventBus = eventBus;
 
     private static readonly Dictionary<int, CancellationTokenSource> _executionCancellations = [];
     private static readonly object _lock = new();
@@ -27,7 +28,8 @@ public class PluginExecutionService(
         string? outputDir = null,
         string? pluginVersion = null,
         string? configName = null,
-        int? businessId = null)
+        int? businessId = null,
+        PluginBusinessType? businessType = null)
     {
         using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<MediaHouseDbContext>();
@@ -73,6 +75,7 @@ public class PluginExecutionService(
             PluginKey = pluginKey,
             PluginVersion = plugin.Version,
             BusinessId = businessId,
+            BusinessType = businessType,
             ExecutionType = "manual",
             SourceDir = sourceDir,
             Status = "pending",
@@ -93,7 +96,8 @@ public class PluginExecutionService(
         int libraryId,
         List<int> mediaIds,
         string? configName = null,
-        string? pluginVersion = null)
+        string? pluginVersion = null,
+        PluginBusinessType? businessType = null)
     {
         using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<MediaHouseDbContext>();
@@ -148,6 +152,7 @@ public class PluginExecutionService(
                 PluginKey = pluginKey,
                 PluginVersion = plugin.Version,
                 BusinessId = media.Id,
+                BusinessType = businessType,
                 ExecutionType = "batch",
                 SourceDir = media.Name, // Use media name as source dir identifier
                 Status = "pending",
@@ -387,12 +392,13 @@ public class PluginExecutionService(
                         ExecutionId = log.Id,
                         PluginKey = plugin.PluginKey,
                         BusinessId = log.BusinessId,
+                        BusinessType = log.BusinessType,
                         Status = "success",
                         MetadataOutput = result.MetadataOutput,
                         StartTime = dbLog.StartTime,
                         EndTime = dbLog.EndTime
                     };
-                    await eventBus.PublishAsync(completedEvent);
+                    await _eventBus.PublishAsync(completedEvent);
                 }
             }
 

@@ -259,6 +259,7 @@ CREATE TABLE plugin_execution_logs (
     plugin_key VARCHAR(50) NOT NULL,
     plugin_version VARCHAR(20),
     business_id INTEGER,
+	business_type VARCHAR(64),
     execution_type VARCHAR(50) NOT NULL,
     source_dir VARCHAR(500),
     status VARCHAR(20) NOT NULL,

@@ -10,14 +10,16 @@ public interface IPluginExecutionService
         string? outputDir = null,
         string? pluginVersion = null,
         string? configName = null,
-        int? businessId = null);
+        int? businessId = null,
+        PluginBusinessType? businessType = null);
 
     Task<List<PluginExecutionLog>> ExecuteBatchPluginAsync(
         string pluginKey,
         int libraryId,
         List<int> mediaIds,
         string? configName = null,
-        string? pluginVersion = null);
+        string? pluginVersion = null,
+        PluginBusinessType? businessType = null);
 
     Task<PluginExecutionLog?> GetExecutionLogAsync(int executionId);
     Task<List<PluginExecutionLog>> GetPluginLogsAsync(string pluginKey, int? mediaId = null, int limit = 10);

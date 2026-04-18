@@ -1,5 +1,6 @@
 using MediaHouse.Events;
 using MediaHouse.Interfaces;
+using MediaHouse.Data.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace MediaHouse.Services;
@@ -49,19 +50,50 @@ public class StagingMetadataHandler(
             }
 
             _logger.LogInformation(
-                "Processing plugin execution completion: ExecutionId={ExecutionId}, PluginKey={PluginKey}, BusinessId={BusinessId}",
+                "Processing plugin execution completion: ExecutionId={ExecutionId}, PluginKey={PluginKey}, BusinessId={BusinessId}, BusinessType={BusinessType}",
                 @event.ExecutionId,
                 @event.PluginKey,
-                @event.BusinessId.Value);
+                @event.BusinessId.Value,
+                @event.BusinessType?.ToString() ?? "null");
 
-            using var scope = _serviceScopeFactory.CreateScope();
-            var _stagingService = scope.ServiceProvider.GetRequiredService<IStagingService>();
-            // 调用 StagingService 更新元数据
-            await _stagingService.TryUpdateMetadataFromPluginExecutionAsync(@event.BusinessId.Value, @event.MetadataOutput);
+            // 根据 BusinessType 路由到不同的处理
+            switch (@event.BusinessType)
+            {
+                case PluginBusinessType.Staging:
+                    await HandleStagingMetadataAsync(@event);
+                    break;
+                case PluginBusinessType.Media:
+                    await HandleMediaMetadataAsync(@event);
+                    break;
+                case null:
+                case PluginBusinessType.None:
+                case PluginBusinessType.Custom:
+                    _logger.LogDebug("Skipping plugin execution with unhandled BusinessType '{BusinessType}': {ExecutionId}", @event.BusinessType?.ToString() ?? "null", @event.ExecutionId);
+                    break;
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error handling PluginExecutionCompletedEvent for ExecutionId {ExecutionId}", @event.ExecutionId);
         }
+    }
+
+    private async Task HandleStagingMetadataAsync(PluginExecutionCompletedEvent @event)
+    {
+        _logger.LogInformation("Processing staging media metadata update for ExecutionId: {ExecutionId}", @event.ExecutionId);
+
+        using var scope = _serviceScopeFactory.CreateScope();
+        var _stagingService = scope.ServiceProvider.GetRequiredService<IStagingService>();
+        await _stagingService.TryUpdateMetadataFromPluginExecutionAsync(@event.BusinessId!.Value, @event.MetadataOutput!);
+    }
+
+    private async Task HandleMediaMetadataAsync(PluginExecutionCompletedEvent @event)
+    {
+        _logger.LogInformation("Processing media metadata update for ExecutionId: {ExecutionId} - Future feature", @event.ExecutionId);
+
+        // TODO: 实现媒体表元数据更新逻辑
+        // using var scope = _serviceScopeFactory.CreateScope();
+        // var _mediaService = scope.ServiceProvider.GetRequiredService<IMediaService>();
+        // await _mediaService.UpdateMetadataFromPluginAsync(@event.BusinessId!.Value, @event.MetadataOutput!);
     }
 }

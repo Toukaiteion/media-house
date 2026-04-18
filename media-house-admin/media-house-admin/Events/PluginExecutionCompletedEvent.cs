@@ -1,3 +1,5 @@
+using MediaHouse.Data.Entities;
+
 namespace MediaHouse.Events;
 
 /// <summary>
@@ -19,6 +21,11 @@ public class PluginExecutionCompletedEvent
     /// 业务 ID（用于关联业务数据）
     /// </summary>
     public int? BusinessId { get; set; }
+
+    /// <summary>
+    /// 业务类型（用于路由到不同的处理器）
+    /// </summary>
+    public PluginBusinessType? BusinessType { get; set; }
 
     /// <summary>
     /// 执行状态

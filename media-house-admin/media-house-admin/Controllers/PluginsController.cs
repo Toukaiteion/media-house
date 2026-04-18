@@ -311,7 +311,8 @@ public class PluginsController(
                 dto.SourceDir,
                 outputDir: dto.OutputDir,
                 dto.ConfigName,
-                dto.PluginVersion
+                dto.PluginVersion,
+                businessType: PluginBusinessType.Media
             );
 
             var response = new ExecutePluginResponseDto
@@ -340,7 +341,8 @@ public class PluginsController(
                 dto.LibraryId,
                 dto.MediaIds,
                 dto.ConfigName,
-                dto.PluginVersion
+                dto.PluginVersion,
+                businessType: PluginBusinessType.Media
             );
 
             var response = new ExecutePluginBatchResponseDto
