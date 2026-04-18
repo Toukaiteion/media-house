@@ -11,7 +11,6 @@ public interface IPluginExecutionService
         string? pluginVersion = null,
         int? mediaId = null,
         int? mediaLibraryId = null,
-        System.Text.Json.JsonElement? mediaInfo = null,
         string? outputDir = null);
 
     Task<List<PluginExecutionLog>> ExecuteBatchPluginAsync(

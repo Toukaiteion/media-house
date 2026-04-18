@@ -26,7 +26,6 @@ public class PluginExecutionService(
         string? pluginVersion = null,
         int? mediaId = null,
         int? mediaLibraryId = null,
-        System.Text.Json.JsonElement? mediaInfo = null,
         string? outputDir = null)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -84,7 +83,7 @@ public class PluginExecutionService(
         await context.SaveChangesAsync();
 
         // Execute plugin in background
-        _ = Task.Run(() => ExecutePluginInternalAsync(plugin, config, log, sourceDir, outputDir, mediaInfo), CancellationToken.None);
+        _ = Task.Run(() => ExecutePluginInternalAsync(plugin, config, log, sourceDir, outputDir), CancellationToken.None);
 
         return log;
     }
@@ -162,7 +161,7 @@ public class PluginExecutionService(
             logs.Add(log);
 
             // Execute plugin in background
-            _ = Task.Run(() => ExecutePluginInternalAsync(plugin, config, log, media.Name, null, null), CancellationToken.None);
+            _ = Task.Run(() => ExecutePluginInternalAsync(plugin, config, log, media.Name, null), CancellationToken.None);
         }
 
         return logs;
@@ -278,7 +277,7 @@ public class PluginExecutionService(
         if (status == "success" || status == "failed" || status == "timeout")
         {
             log.EndTime = DateTime.UtcNow;
-            log.DurationSeconds = (int)((log.EndTime.Value - log.StartTime).TotalSeconds);
+            log.DurationSeconds = (int)(log.EndTime.Value - log.StartTime).TotalSeconds;
         }
 
         await context.SaveChangesAsync();
@@ -291,8 +290,7 @@ public class PluginExecutionService(
         PluginConfig config,
         PluginExecutionLog log,
         string sourceDir,
-        string? outputDir,
-        System.Text.Json.JsonElement? mediaInfo)
+        string? outputDir)
     {
         using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<MediaHouseDbContext>();
@@ -309,7 +307,7 @@ public class PluginExecutionService(
             await UpdateExecutionStatusAsync(log.Id, "running");
 
             // Prepare input JSON
-            var inputJson = PrepareInputJson(sourceDir, config.ConfigData, mediaInfo, outputDir);
+            var inputJson = PrepareInputJson(sourceDir, config.ConfigData, outputDir);
 
             // Get runtime requirements
             int maxExecutionTimeSeconds = 300; // Default 5 minutes
@@ -404,7 +402,7 @@ public class PluginExecutionService(
         }
     }
 
-    private string PrepareInputJson(string sourceDir, string? configData, System.Text.Json.JsonElement? mediaInfo, string? outputDir)
+    private string PrepareInputJson(string sourceDir, string? configData, string? outputDir)
     {
         // Handle empty/missing config - use empty object {}
         var configDataToUse = string.IsNullOrEmpty(configData) ? "{}" : configData;

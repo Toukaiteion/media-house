@@ -317,7 +317,6 @@ public class PluginsController(
                 dto.SourceDir,
                 dto.ConfigName,
                 dto.PluginVersion,
-                mediaInfo: dto.MediaInfo != null ? JsonDocument.Parse(JsonSerializer.Serialize(dto.MediaInfo)).RootElement : default,
                 outputDir: dto.OutputDir
             );
 
