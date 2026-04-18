@@ -4,6 +4,7 @@ using MediaHouse.Interfaces;
 using MediaHouse.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
 using MediaHouse.DTOs.Upload;
 using MediaHouse.Config;
 
@@ -12,11 +13,22 @@ namespace MediaHouse.Services;
 public class UploadService(
     MediaHouseDbContext context,
     IOptions<UploadSettings> uploadSettings,
+    IHostEnvironment environment,
     ILogger<UploadService> logger) : IUploadService
 {
     private readonly MediaHouseDbContext _context = context;
     private readonly UploadSettings _settings = uploadSettings.Value;
+    private readonly IHostEnvironment _environment = environment;
     private readonly ILogger<UploadService> _logger = logger;
+
+    private string GetAbsolutePath(string path)
+    {
+        if (Path.IsPathRooted(path))
+        {
+            return path;
+        }
+        return Path.Combine(_environment.ContentRootPath, path);
+    }
 
     public async Task<UploadTaskDto> CreateUploadTaskAsync(CreateUploadRequest request)
     {
@@ -238,7 +250,7 @@ public class UploadService(
             UploadTaskId = uploadId,
             Type = "movie",
             Title = Path.GetFileNameWithoutExtension(task.FileName),
-            VideoPath = Path.Combine(_settings.StagingPath, mediaId, task.FileName),
+            VideoPath = GetAbsolutePath(Path.Combine(_settings.StagingPath, mediaId, task.FileName)),
             VideoSize = task.FileSize,
             Status = 0, // 待编辑
             CreatedAt = DateTime.UtcNow,

@@ -84,13 +84,11 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome (stable) using modern GPG key method
-RUN wget -q -O /tmp/google-chrome-key.pub https://dl-ssl.google.com/linux/linux_signing_key.pub \
-    && cat /tmp/google-chrome-key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-archive-keyring.gpg \
-    && sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-archive-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
-    && rm -rf /var/lib/apt/lists/* /tmp/google-chrome-key.pub
+# Install Chrome from local deb package (download first using ./docker/download-chrome.sh)
+COPY docker/google-chrome-stable.deb /tmp/google-chrome-stable.deb
+RUN apt-get update && apt-get install -y /tmp/google-chrome-stable.deb \
+    && rm /tmp/google-chrome-stable.deb \
+    && rm -rf /var/lib/apt/lists/*
 
 # Add Chrome to PATH and set up for headless mode
 ENV CHROME_BIN=/usr/bin/google-chrome-stable \
