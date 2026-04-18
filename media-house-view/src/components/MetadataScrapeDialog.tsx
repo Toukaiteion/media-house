@@ -5,7 +5,6 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  TextField,
   Box,
   Typography,
   FormControl,
@@ -22,8 +21,8 @@ import { api } from '../services/api';
 
 interface MetadataScrapeDialogProps {
   open: boolean;
+  stagingMediaId?: string;
   mediaTitle?: string;
-  mediaYear?: number;
   plugins: Plugin[];
   pluginsConfig: Map<string, PluginConfig[]>;
   onClose: () => void;
@@ -32,8 +31,8 @@ interface MetadataScrapeDialogProps {
 
 export function MetadataScrapeDialog({
   open,
+  stagingMediaId,
   mediaTitle,
-  mediaYear,
   plugins,
   pluginsConfig,
   onClose,
@@ -42,7 +41,6 @@ export function MetadataScrapeDialog({
   const [selectedPluginKey, setSelectedPluginKey] = useState('');
   const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null);
   const [scrapeTitle, setScrapeTitle] = useState('');
-  const [scrapeYear, setScrapeYear] = useState('');
 
   const [executing, setExecuting] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<PluginExecutionLog | null>(null);
@@ -52,7 +50,6 @@ export function MetadataScrapeDialog({
   useState(() => {
     if (open) {
       setScrapeTitle(mediaTitle || '');
-      setScrapeYear(mediaYear ? mediaYear.toString() : '');
       setError(null);
       setScrapeResult(null);
     }
@@ -62,21 +59,17 @@ export function MetadataScrapeDialog({
   const currentConfigs = pluginsConfig.get(selectedPluginKey) || [];
 
   const handleExecute = async () => {
-    if (!selectedPlugin) return;
+    if (!selectedPlugin || !stagingMediaId) return;
 
     try {
       setExecuting(true);
       setError(null);
       setScrapeResult(null);
 
-      const response = await api.executePlugin(selectedPlugin.plugin_key, {
+      const response = await api.scrapeStagingMetadata(stagingMediaId, {
+        plugin_key: selectedPlugin.plugin_key,
         plugin_version: selectedPlugin.version,
-        source_dir: '', // 暂存区路径由后端处理
         config_name: currentConfigs.find(c => c.id === selectedConfigId)?.config_name,
-        media_info: {
-          title: scrapeTitle,
-          year: scrapeYear,
-        },
       });
 
       // 获取执行结果
@@ -152,22 +145,6 @@ export function MetadataScrapeDialog({
               </Select>
             </FormControl>
           )}
-
-          <TextField
-            fullWidth
-            label="标题"
-            value={scrapeTitle}
-            onChange={(e) => setScrapeTitle(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-
-          <TextField
-            fullWidth
-            label="年份"
-            type="number"
-            value={scrapeYear}
-            onChange={(e) => setScrapeYear(e.target.value)}
-          />
         </Box>
 
         {error && (
@@ -249,7 +226,7 @@ export function MetadataScrapeDialog({
           <Button
             onClick={handleExecute}
             variant="contained"
-            disabled={!selectedPlugin || !scrapeTitle || executing}
+            disabled={!selectedPlugin || executing}
           >
             {executing ? '搜刮中...' : '搜刮'}
           </Button>

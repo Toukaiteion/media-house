@@ -11,10 +11,12 @@ namespace MediaHouse.Controllers;
 public class StagingController(
     IStagingService stagingService,
     IPublishService publishService,
+    IPluginExecutionService pluginExecutionService,
     ILogger<StagingController> logger) : ControllerBase
 {
     private readonly IStagingService _stagingService = stagingService;
     private readonly IPublishService _publishService = publishService;
+    private readonly IPluginExecutionService _pluginExecutionService = pluginExecutionService;
     private readonly ILogger<StagingController> _logger = logger;
 
     [HttpGet("list")]
@@ -187,6 +189,48 @@ public class StagingController(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error publishing staging media {StagingId}", id);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id}/scrape-metadata")]
+    public async Task<ActionResult<ScrapeMetadataResponseDto>> ScrapeMetadata(
+        string id,
+        [FromBody] ScrapeStagingRequest request)
+    {
+        try
+        {
+            // 获取 staging media
+            var stagingMedia = await _stagingService.GetStagingMediaAsync(id);
+            if (stagingMedia == null)
+            {
+                return NotFound(new { error = "Staging media not found" });
+            }
+
+            // 从 staging media id 生成 businessId（使用字符串哈希生成数字）
+            var businessId = Math.Abs(id.GetHashCode());
+
+            var log = await _pluginExecutionService.ExecutePluginAsync(
+                request.PluginKey,
+                sourceDir: stagingMedia.VideoPath,
+                outputDir: stagingMedia.VideoPath,
+                pluginVersion: request.PluginVersion,
+                configName: request.ConfigName,
+                businessId: businessId
+            );
+
+            var response = new ScrapeMetadataResponseDto
+            {
+                ExecutionId = log.Id,
+                Status = log.Status,
+                StagingMediaId = id
+            };
+
+            return Accepted(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error scraping metadata for staging media {StagingId}", id);
             return BadRequest(new { error = ex.Message });
         }
     }

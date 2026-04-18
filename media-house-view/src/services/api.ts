@@ -45,6 +45,8 @@ import type {
   StagingMedia,
   StagingMediaDetail,
   UpdateStagingMetadataDto,
+  ScrapeStagingMetadataRequest,
+  ScrapeStagingMetadataResponse,
   PublishRequest,
   PublishResponse,
   MergeUploadRequest,
@@ -736,6 +738,16 @@ class ApiClient {
    */
   async updateStagingMetadata(id: string, dto: UpdateStagingMetadataDto): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/staging/${id}/metadata`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  /**
+   * 搜刮待发布媒体元数据
+   */
+  async scrapeStagingMetadata(stagingMediaId: string, dto: ScrapeStagingMetadataRequest): Promise<ScrapeStagingMetadataResponse> {
+    return this.request<ScrapeStagingMetadataResponse>(`/staging/${stagingMediaId}/scrape-metadata`, {
       method: 'POST',
       body: JSON.stringify(dto),
     });

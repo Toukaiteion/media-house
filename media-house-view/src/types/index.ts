@@ -687,6 +687,24 @@ export interface UpdateStagingMetadataDto {
 }
 
 /**
+ * 搜刮待发布媒体元数据请求
+ */
+export interface ScrapeStagingMetadataRequest {
+  plugin_key: string;
+  plugin_version: string;
+  config_name?: string;
+}
+
+/**
+ * 搜刮待发布媒体元数据响应
+ */
+export interface ScrapeStagingMetadataResponse {
+  execution_id: number;
+  status: string;
+  staging_media_id: string;
+}
+
+/**
  * 发布到库请求
  */
 export interface PublishRequest {

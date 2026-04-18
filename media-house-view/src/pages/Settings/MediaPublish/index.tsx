@@ -256,8 +256,8 @@ export function MediaPublishPage() {
       {/* 搜刮元数据对话框 */}
       <MetadataScrapeDialog
         open={scrapeDialogOpen}
+        stagingMediaId={selectedMedia?.id}
         mediaTitle={selectedMedia?.title}
-        mediaYear={selectedMedia?.year}
         plugins={plugins}
         pluginsConfig={pluginsConfig}
         onClose={handleCloseScrapeDialog}
