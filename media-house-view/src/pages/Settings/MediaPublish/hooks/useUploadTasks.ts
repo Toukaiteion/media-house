@@ -353,7 +353,7 @@ export function useUploadTasks() {
       const fileMd5 = await calculateFileMd5(file);
 
       const task = await api.createUploadTask({
-        file_name: file.name,
+        file_name: title ?? file.name,
         file_size: file.size,
         file_md5: fileMd5,
         chunk_size: CHUNK_SIZE,

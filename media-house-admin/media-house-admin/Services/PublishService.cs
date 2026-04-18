@@ -2,17 +2,35 @@ using MediaHouse.Data.Entities;
 using MediaHouse.DTOs;
 using MediaHouse.Interfaces;
 using MediaHouse.Data;
+using MediaHouse.Config;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace MediaHouse.Services;
 
 public class PublishService(
     MediaHouseDbContext context,
+    IOptions<UploadSettings> uploadSettings,
     ILogger<PublishService> logger) : IPublishService
 {
     private readonly MediaHouseDbContext _context = context;
+    private readonly UploadSettings _settings = uploadSettings.Value;
     private readonly ILogger<PublishService> _logger = logger;
+
+    private class PublishPathMapping
+    {
+        public string NewVideoPath { get; set; } = string.Empty;
+        public string? NewPosterPath { get; set; }
+        public string? NewFanartPath { get; set; }
+        public List<string> NewScreenshotPaths { get; set; } = new();
+    }
+
+    private static string SanitizeDirectoryName(string name)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        return string.Join("_", name.Split(invalidChars));
+    }
 
     public async Task<PublishResponseDto> PublishAsync(string stagingMediaId, PublishRequest request)
     {
@@ -28,148 +46,50 @@ public class PublishService(
             throw new InvalidOperationException($"Library not found: {request.LibraryId}");
         }
 
-        // 开始事务
-        using var transaction = await _context.Database.BeginTransactionAsync();
+        var stagingDir = Path.Combine(_settings.StagingPath, stagingMediaId);
 
         try
         {
-            // 1. 创建 Media 记录
-            var media = new Media
+            // 阶段1：移动文件到库目录
+            var pathMapping = await MoveFilesToLibraryAsync(stagingMedia, library, request);
+
+            // 阶段2：数据库事务
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
             {
-                LibraryId = request.LibraryId,
-                Type = stagingMedia.Type,
-                Name = request.MediaName,
-                Title = stagingMedia.Title,
-                OriginalTitle = stagingMedia.OriginalTitle,
-                ReleaseDate = stagingMedia.Year?.ToString(),
-                Summary = stagingMedia.Description,
-                CreateTime = DateTime.UtcNow,
-                UpdateTime = DateTime.UtcNow
-            };
+                var (mediaId, movieId) = await CreateMediaRecordsAsync(stagingMedia, library, request, pathMapping);
 
-            _context.Medias.Add(media);
-            await _context.SaveChangesAsync();
+                // 更新 StagingMedia 状态
+                stagingMedia.Status = 2; // 已发布
+                stagingMedia.PublishedAt = DateTime.UtcNow;
+                stagingMedia.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
 
-            // 2. 创建 Movie 记录
-            var movie = new Movie
-            {
-                MediaId = media.Id,
-                LibraryId = request.LibraryId,
-                Studio = stagingMedia.Studio,
-                Runtime = stagingMedia.Runtime,
-                Description = stagingMedia.Description,
-                ScreenshotsPath = stagingMedia.ScreenshotsPath,
-                CreateTime = DateTime.UtcNow,
-                UpdateTime = DateTime.UtcNow
-            };
+                await transaction.CommitAsync();
 
-            _context.Movies.Add(movie);
-            await _context.SaveChangesAsync();
+                // 阶段3：清理暂存目录
+                CleanupStagingDirectory(stagingDir);
 
-            // 3. 创建 MediaFile 记录
-            var fileInfo = new FileInfo(stagingMedia.VideoPath);
-            var mediaFile = new MediaFile
-            {
-                MediaId = media.Id,
-                Path = stagingMedia.VideoPath,
-                FileName = fileInfo.Name,
-                Extension = fileInfo.Extension,
-                SizeBytes = fileInfo.Length,
-                CreateTime = DateTime.UtcNow,
-                UpdateTime = DateTime.UtcNow
-            };
+                _logger.LogInformation("Published staging {StagingId} to library {LibraryId} as media {MediaId}",
+                    stagingMediaId, request.LibraryId, mediaId);
 
-            _context.MediaFiles.Add(mediaFile);
-            await _context.SaveChangesAsync();
-
-            // 4. 创建 MediaImgs 记录
-            if (!string.IsNullOrEmpty(stagingMedia.PosterPath))
-            {
-                await CreateMediaImgAsync(media.Id, stagingMedia.PosterPath, "poster");
-            }
-
-            if (!string.IsNullOrEmpty(stagingMedia.FanartPath))
-            {
-                await CreateMediaImgAsync(media.Id, stagingMedia.FanartPath, "fanart");
-            }
-
-            // 处理截图
-            if (!string.IsNullOrEmpty(stagingMedia.ScreenshotsPath))
-            {
-                var screenshots = stagingMedia.ScreenshotsPath.Split(',');
-                var extrafanartDir = Path.GetDirectoryName(stagingMedia.VideoPath);
-                if (extrafanartDir != null)
+                return new PublishResponseDto
                 {
-                    var screenshotFiles = Directory.GetFiles(Path.Combine(extrafanartDir, "extrafanart"));
-                    foreach (var screenshot in screenshotFiles)
-                    {
-                        await CreateMediaImgAsync(media.Id, screenshot, "screenshot");
-                    }
-                }
+                    MediaId = mediaId,
+                    MovieId = movieId,
+                    Status = "published"
+                };
             }
-
-            // 5. 处理 Tags
-            if (!string.IsNullOrEmpty(stagingMedia.Tags))
+            catch
             {
-                try
-                {
-                    var tags = JsonSerializer.Deserialize<List<string>>(stagingMedia.Tags);
-                    if (tags != null)
-                    {
-                        foreach (var tagName in tags)
-                        {
-                            await CreateTagAsync(request.LibraryId, media.Id, stagingMedia.Type, tagName);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to parse tags for staging media {StagingId}", stagingMediaId);
-                }
+                await transaction.RollbackAsync();
+                await RollbackFileMoveAsync(pathMapping, stagingMedia);
+                throw;
             }
-
-            // 6. 处理 Staff
-            if (!string.IsNullOrEmpty(stagingMedia.Staff))
-            {
-                try
-                {
-                    var staffList = JsonSerializer.Deserialize<List<StaffItemDto>>(stagingMedia.Staff);
-                    if (staffList != null)
-                    {
-                        foreach (var staffItem in staffList)
-                        {
-                            await CreateStaffAsync(request.LibraryId, media.Id, stagingMedia.Type, staffItem);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to parse staff for staging media {StagingId}", stagingMediaId);
-                }
-            }
-
-            // 7. 更新 StagingMedia 状态
-            stagingMedia.Status = 2; // 已发布
-            stagingMedia.PublishedAt = DateTime.UtcNow;
-            stagingMedia.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-
-            // 提交事务
-            await transaction.CommitAsync();
-
-            _logger.LogInformation("Published staging {StagingId} to library {LibraryId} as media {MediaId}",
-                stagingMediaId, request.LibraryId, media.Id);
-
-            return new PublishResponseDto
-            {
-                MediaId = media.Id,
-                MovieId = movie.Id,
-                Status = "published"
-            };
         }
         catch
         {
-            await transaction.RollbackAsync();
+            // 文件移动失败，无需回滚
             throw;
         }
     }
@@ -245,5 +165,262 @@ public class PublishService(
 
         _context.MediaStaffs.Add(mediaStaff);
         await _context.SaveChangesAsync();
+    }
+
+    private async Task<PublishPathMapping> MoveFilesToLibraryAsync(
+        StagingMedia stagingMedia,
+        MediaLibrary library,
+        PublishRequest request)
+    {
+        var mapping = new PublishPathMapping();
+
+        // 构建目标目录路径
+        var title = request.MediaName;
+        var sanitizedTitle = SanitizeDirectoryName(title);
+        var targetMediaDir = Path.Combine(library.Path, sanitizedTitle);
+
+        // 创建目标目录
+        Directory.CreateDirectory(targetMediaDir);
+
+        // 移动视频文件
+        var videoFileName = Path.GetFileName(stagingMedia.VideoPath);
+        mapping.NewVideoPath = Path.Combine(targetMediaDir, videoFileName);
+        File.Move(stagingMedia.VideoPath, mapping.NewVideoPath);
+        _logger.LogInformation("Moved video from {Source} to {Destination}", stagingMedia.VideoPath, mapping.NewVideoPath);
+
+        // 移动海报
+        if (!string.IsNullOrEmpty(stagingMedia.PosterPath))
+        {
+            var posterFileName = Path.GetFileName(stagingMedia.PosterPath);
+            mapping.NewPosterPath = Path.Combine(targetMediaDir, posterFileName);
+            File.Move(stagingMedia.PosterPath, mapping.NewPosterPath);
+            _logger.LogInformation("Moved poster from {Source} to {Destination}", stagingMedia.PosterPath, mapping.NewPosterPath);
+        }
+
+        // 移动粉丝图
+        if (!string.IsNullOrEmpty(stagingMedia.FanartPath))
+        {
+            var fanartFileName = Path.GetFileName(stagingMedia.FanartPath);
+            mapping.NewFanartPath = Path.Combine(targetMediaDir, fanartFileName);
+            File.Move(stagingMedia.FanartPath, mapping.NewFanartPath);
+            _logger.LogInformation("Moved fanart from {Source} to {Destination}", stagingMedia.FanartPath, mapping.NewFanartPath);
+        }
+
+        // 移动截图
+        if (!string.IsNullOrEmpty(stagingMedia.ScreenshotsPath))
+        {
+            var stagingDir = Path.GetDirectoryName(stagingMedia.VideoPath);
+            if (stagingDir != null)
+            {
+                var extrafanartDir = Path.Combine(stagingDir, "extrafanart");
+                if (Directory.Exists(extrafanartDir))
+                {
+                    var targetExtrafanartDir = Path.Combine(targetMediaDir, "extrafanart");
+                    Directory.CreateDirectory(targetExtrafanartDir);
+
+                    var screenshotFiles = Directory.GetFiles(extrafanartDir);
+                    foreach (var screenshotFile in screenshotFiles)
+                    {
+                        var fileName = Path.GetFileName(screenshotFile);
+                        var targetPath = Path.Combine(targetExtrafanartDir, fileName);
+                        File.Move(screenshotFile, targetPath);
+                        mapping.NewScreenshotPaths.Add(targetPath);
+                    }
+                    _logger.LogInformation("Moved {Count} screenshots to {Destination}", screenshotFiles.Length, targetExtrafanartDir);
+                }
+            }
+        }
+
+        return mapping;
+    }
+
+    private async Task<(int mediaId, int movieId)> CreateMediaRecordsAsync(
+        StagingMedia stagingMedia,
+        MediaLibrary library,
+        PublishRequest request,
+        PublishPathMapping pathMapping)
+    {
+        // 1. 创建 Media 记录
+        var media = new Media
+        {
+            LibraryId = request.LibraryId,
+            Type = stagingMedia.Type,
+            Name = request.MediaName,
+            Title = stagingMedia.Title,
+            OriginalTitle = stagingMedia.OriginalTitle,
+            ReleaseDate = stagingMedia.Year?.ToString(),
+            Summary = stagingMedia.Description,
+            CreateTime = DateTime.UtcNow,
+            UpdateTime = DateTime.UtcNow
+        };
+
+        _context.Medias.Add(media);
+        await _context.SaveChangesAsync();
+
+        // 2. 创建 Movie 记录
+        var screenshotUrlNames = pathMapping.NewScreenshotPaths
+            .Select(p => MediaUtils.GenerateUrlNameFromPath(p))
+            .ToList();
+
+        var movie = new Movie
+        {
+            MediaId = media.Id,
+            LibraryId = request.LibraryId,
+            Studio = stagingMedia.Studio,
+            Runtime = stagingMedia.Runtime,
+            Description = stagingMedia.Description,
+            ScreenshotsPath = screenshotUrlNames.Count > 0 ? string.Join(",", screenshotUrlNames) : null,
+            CreateTime = DateTime.UtcNow,
+            UpdateTime = DateTime.UtcNow
+        };
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        // 3. 创建 MediaFile 记录
+        var fileInfo = new FileInfo(pathMapping.NewVideoPath);
+        var mediaFile = new MediaFile
+        {
+            MediaId = media.Id,
+            Path = pathMapping.NewVideoPath,
+            FileName = fileInfo.Name,
+            Extension = fileInfo.Extension,
+            SizeBytes = fileInfo.Length,
+            CreateTime = DateTime.UtcNow,
+            UpdateTime = DateTime.UtcNow
+        };
+
+        _context.MediaFiles.Add(mediaFile);
+        await _context.SaveChangesAsync();
+
+        // 4. 创建 MediaImgs 记录
+        if (pathMapping.NewPosterPath != null)
+        {
+            await CreateMediaImgAsync(media.Id, pathMapping.NewPosterPath, "poster");
+        }
+
+        if (pathMapping.NewFanartPath != null)
+        {
+            await CreateMediaImgAsync(media.Id, pathMapping.NewFanartPath, "fanart");
+        }
+
+        foreach (var screenshotPath in pathMapping.NewScreenshotPaths)
+        {
+            await CreateMediaImgAsync(media.Id, screenshotPath, "screenshot");
+        }
+
+        // 5. 处理 Tags
+        if (!string.IsNullOrEmpty(stagingMedia.Tags))
+        {
+            try
+            {
+                var tags = JsonSerializer.Deserialize<List<string>>(stagingMedia.Tags);
+                if (tags != null)
+                {
+                    foreach (var tagName in tags)
+                    {
+                        await CreateTagAsync(request.LibraryId, media.Id, stagingMedia.Type, tagName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse tags for staging media {StagingId}", stagingMedia.Id);
+            }
+        }
+
+        // 6. 处理 Staff
+        if (!string.IsNullOrEmpty(stagingMedia.Staff))
+        {
+            try
+            {
+                var staffList = JsonSerializer.Deserialize<List<StaffItemDto>>(stagingMedia.Staff);
+                if (staffList != null)
+                {
+                    foreach (var staffItem in staffList)
+                    {
+                        await CreateStaffAsync(request.LibraryId, media.Id, stagingMedia.Type, staffItem);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse staff for staging media {StagingId}", stagingMedia.Id);
+            }
+        }
+
+        return (media.Id, movie.Id);
+    }
+
+    private async Task RollbackFileMoveAsync(PublishPathMapping pathMapping, StagingMedia stagingMedia)
+    {
+        try
+        {
+            // 将文件移回暂存目录
+            var stagingDir = Path.GetDirectoryName(stagingMedia.VideoPath);
+
+            if (!string.IsNullOrEmpty(pathMapping.NewVideoPath) && File.Exists(pathMapping.NewVideoPath))
+            {
+                File.Move(pathMapping.NewVideoPath, stagingMedia.VideoPath);
+                _logger.LogInformation("Rolled back video to {Destination}", stagingMedia.VideoPath);
+            }
+
+            if (pathMapping.NewPosterPath != null && stagingMedia.PosterPath != null && File.Exists(pathMapping.NewPosterPath))
+            {
+                File.Move(pathMapping.NewPosterPath, stagingMedia.PosterPath);
+                _logger.LogInformation("Rolled back poster to {Destination}", stagingMedia.PosterPath);
+            }
+
+            if (pathMapping.NewFanartPath != null && stagingMedia.FanartPath != null && File.Exists(pathMapping.NewFanartPath))
+            {
+                File.Move(pathMapping.NewFanartPath, stagingMedia.FanartPath);
+                _logger.LogInformation("Rolled back fanart to {Destination}", stagingMedia.FanartPath);
+            }
+
+            // 回滚截图
+            if (pathMapping.NewScreenshotPaths.Count > 0 && stagingDir != null)
+            {
+                var extrafanartDir = Path.Combine(stagingDir, "extrafanart");
+                if (!Directory.Exists(extrafanartDir))
+                {
+                    Directory.CreateDirectory(extrafanartDir);
+                }
+
+                foreach (var screenshotPath in pathMapping.NewScreenshotPaths)
+                {
+                    if (File.Exists(screenshotPath))
+                    {
+                        var fileName = Path.GetFileName(screenshotPath);
+                        var targetPath = Path.Combine(extrafanartDir, fileName);
+                        File.Move(screenshotPath, targetPath);
+                    }
+                }
+                _logger.LogInformation("Rolled back {Count} screenshots", pathMapping.NewScreenshotPaths.Count);
+            }
+
+            _logger.LogWarning("Rolled back file move for staging media {StagingId}", stagingMedia.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to rollback file move for staging media {StagingId}", stagingMedia.Id);
+            // 无法回滚，记录严重错误
+        }
+    }
+
+    private void CleanupStagingDirectory(string stagingDir)
+    {
+        try
+        {
+            if (Directory.Exists(stagingDir))
+            {
+                Directory.Delete(stagingDir, true);
+                _logger.LogInformation("Cleaned up staging directory {StagingDir}", stagingDir);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to cleanup staging directory {StagingDir}", stagingDir);
+            // 清理失败不影响发布成功，仅记录日志
+        }
     }
 }
