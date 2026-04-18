@@ -34,6 +34,12 @@ builder.Services.AddScoped<IChunkService, ChunkService>();
 builder.Services.AddScoped<IStagingService, StagingService>();
 builder.Services.AddScoped<IPublishService, PublishService>();
 
+// Register event bus (singleton for app-wide event handling)
+builder.Services.AddSingleton<IEventBus, EventBus>();
+
+// Register hosted services
+builder.Services.AddHostedService<StagingMetadataHandler>();
+
 // Configure JWT Settings
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection(JwtSettings.SectionName));

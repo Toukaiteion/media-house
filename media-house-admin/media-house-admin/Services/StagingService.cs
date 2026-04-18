@@ -185,6 +185,83 @@ public class StagingService(
         return true;
     }
 
+    /// <summary>
+    /// 尝试从插件执行结果更新暂存媒体元数据
+    /// </summary>
+    /// <param name="businessBusinessId">业务 ID（StagingMediaId 的哈希值）</param>
+    /// <param name="metadataOutput">插件输出的元数据 JSON</param>
+    public async Task TryUpdateMetadataFromPluginExecutionAsync(int businessBusinessId, string metadataOutput)
+    {
+        try
+        {
+            // 解析元数据
+            var metadataDoc = JsonDocument.Parse(metadataOutput);
+            var metadataRoot = metadataDoc.RootElement;
+
+            // 查找对应的暂存媒体（通过 BusinessId 反向查找）
+            var stagingMedias = await _context.StagingMedias.ToListAsync();
+            var matchedMedia = stagingMedias.FirstOrDefault(sm => Math.Abs(sm.Id.GetHashCode()) == businessBusinessId);
+
+            if (matchedMedia == null)
+            {
+                _logger.LogWarning("No staging media found for BusinessId {BusinessId}", businessBusinessId);
+                return;
+            }
+
+            // 构建更新请求
+            var request = new UpdateStagingMetadataRequest
+            {
+                Title = matchedMedia.Title, // 保持原标题，除非搜刮结果明确要求覆盖
+                OriginalTitle = metadataRoot.TryGetProperty("original_title", out var originalTitle) ? originalTitle.GetString() : null,
+                Year = metadataRoot.TryGetProperty("year", out var year) ? year.GetInt32() : null,
+                Studio = metadataRoot.TryGetProperty("studio", out var studio) ? studio.GetString() : null,
+                Runtime = metadataRoot.TryGetProperty("runtime", out var runtime) ? runtime.GetInt32() : null,
+                Description = metadataRoot.TryGetProperty("summary", out var summary) ? summary.GetString() : null
+            };
+
+            // 处理 Tags
+            if (metadataRoot.TryGetProperty("tags", out var tagsElement) && tagsElement.ValueKind == JsonValueKind.Array)
+            {
+                var tags = new List<string>();
+                foreach (var tag in tagsElement.EnumerateArray())
+                {
+                    tags.Add(tag.GetString() ?? string.Empty);
+                }
+                request.Tags = tags;
+            }
+
+            // 处理 Staff（从 actors 转换）
+            if (metadataRoot.TryGetProperty("actors", out var actorsElement) && actorsElement.ValueKind == JsonValueKind.Array)
+            {
+                var staff = new List<StaffItemDto>();
+                foreach (var actor in actorsElement.EnumerateArray())
+                {
+                    var actorName = actor.GetString();
+                    if (!string.IsNullOrEmpty(actorName))
+                    {
+                        staff.Add(new StaffItemDto { Name = actorName, Type = "actor" });
+                    }
+                }
+                request.Staff = staff;
+            }
+
+            // 更新元数据
+            var updatedMedia = await UpdateStagingMetadataAsync(matchedMedia.Id, request);
+            if (updatedMedia != null)
+            {
+                _logger.LogInformation("Successfully updated staging media {StagingId} metadata from plugin execution", matchedMedia.Id);
+            }
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Failed to parse metadata output for BusinessId {BusinessId}", businessBusinessId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update staging media metadata for BusinessId {BusinessId}", businessBusinessId);
+        }
+    }
+
     private static string SanitizeDirectoryName(string name)
     {
         var invalidChars = Path.GetInvalidFileNameChars();

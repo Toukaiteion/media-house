@@ -1,6 +1,7 @@
 using MediaHouse.Data.Entities;
 using MediaHouse.Interfaces;
 using MediaHouse.Data;
+using MediaHouse.Events;
 using Microsoft.EntityFrameworkCore;
 
 namespace MediaHouse.Services;
@@ -9,7 +10,8 @@ public class PluginExecutionService(
     IServiceScopeFactory scopeFactory,
     ILogger<PluginExecutionService> logger,
     IPluginService pluginService,
-    IPluginConfigService pluginConfigService) : IPluginExecutionService
+    IPluginConfigService pluginConfigService,
+    IEventBus eventBus) : IPluginExecutionService
 {
     private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
     private readonly ILogger<PluginExecutionService> _logger = logger;
@@ -376,6 +378,22 @@ public class PluginExecutionService(
                 dbLog.ProgressPercent = 100;
 
                 await context.SaveChangesAsync();
+
+                // 发布插件执行完成事件
+                if (result.Success && !string.IsNullOrEmpty(result.MetadataOutput))
+                {
+                    var completedEvent = new PluginExecutionCompletedEvent
+                    {
+                        ExecutionId = log.Id,
+                        PluginKey = plugin.PluginKey,
+                        BusinessId = log.BusinessId,
+                        Status = "success",
+                        MetadataOutput = result.MetadataOutput,
+                        StartTime = dbLog.StartTime,
+                        EndTime = dbLog.EndTime
+                    };
+                    await eventBus.PublishAsync(completedEvent);
+                }
             }
 
             _logger.LogInformation("Plugin execution completed: {ExecutionId} - {Status}", log.Id, dbLog?.Status);
