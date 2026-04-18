@@ -86,7 +86,6 @@ export function PluginSettingsPage() {
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [libraries, setLibraries] = useState<{ id: number; name: string; }[]>([]);
 
   // 插件列表对话框状态
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
@@ -114,7 +113,6 @@ export function PluginSettingsPage() {
   const [configToDelete, setConfigToDelete] = useState<PluginConfig | null>(null);
   const [configFormData, setConfigFormData] = useState({
     plugin_key: '',
-    library_id: '',
     config_name: '',
     config_data: '',
     is_active: true,
@@ -144,15 +142,6 @@ export function PluginSettingsPage() {
     }
   };
 
-  const loadLibraries = async () => {
-    try {
-      const data = await api.getLibraries();
-      setLibraries(data);
-    } catch (err) {
-      console.error('Failed to load libraries:', err);
-    }
-  };
-
   const loadConfigs = async (pluginKey: string) => {
     try {
       const data = await api.getPluginConfigs(pluginKey);
@@ -176,7 +165,6 @@ export function PluginSettingsPage() {
 
   useEffect(() => {
     refreshPlugins();
-    loadLibraries();
   }, []);
 
   // ========== 自动刷新逻辑 ==========
@@ -351,7 +339,6 @@ export function PluginSettingsPage() {
     setEditingConfig(null);
     setConfigFormData({
       plugin_key: plugins[0].plugin_key,
-      library_id: '',
       config_name: '',
       config_data: '{}',
       is_active: true,
@@ -364,7 +351,6 @@ export function PluginSettingsPage() {
     setEditingConfig(config);
     setConfigFormData({
       plugin_key: config.plugin_key,
-      library_id: config.library_id?.toString() || '',
       config_name: config.config_name,
       config_data: JSON.stringify(config.config_data, null, 2),
       is_active: config.is_active,
@@ -390,7 +376,6 @@ export function PluginSettingsPage() {
       }
 
       const dto = {
-        library_id: configFormData.library_id ? parseInt(configFormData.library_id) : undefined,
         config_name: configFormData.config_name,
         config_data: configData,
         is_active: configFormData.is_active,
@@ -425,12 +410,6 @@ export function PluginSettingsPage() {
   const handleOpenDeleteConfigDialog = (config: PluginConfig) => {
     setConfigToDelete(config);
     setDeleteConfigDialogOpen(true);
-  };
-
-  const getLibraryName = (libraryId?: number) => {
-    if (!libraryId) return '全局配置';
-    const lib = libraries.find(l => l.id === libraryId);
-    return lib ? lib.name : `库 #${libraryId}`;
   };
 
   // ========== 插件日志相关 ==========
@@ -625,7 +604,6 @@ export function PluginSettingsPage() {
                     <TableRow>
                       <TableCell>ID</TableCell>
                       <TableCell>配置名称</TableCell>
-                      <TableCell>关联库</TableCell>
                       <TableCell>配置数据</TableCell>
                       <TableCell>状态</TableCell>
                       <TableCell>创建时间</TableCell>
@@ -637,14 +615,6 @@ export function PluginSettingsPage() {
                       <TableRow key={config.id}>
                         <TableCell>{config.id}</TableCell>
                         <TableCell>{config.config_name}</TableCell>
-                        <TableCell>
-                          <Chip
-                            label={getLibraryName(config.library_id)}
-                            size="small"
-                            variant={config.library_id ? 'filled' : 'outlined'}
-                            color={config.library_id ? 'primary' : 'default'}
-                          />
-                        </TableCell>
                         <TableCell>
                           <Tooltip title={JSON.stringify(config.config_data, null, 2)}>
                             <Box
@@ -824,19 +794,6 @@ export function PluginSettingsPage() {
                 </Select>
               </FormControl>
             )}
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>关联库（可选）</InputLabel>
-              <Select
-                value={configFormData.library_id}
-                label="关联库（可选）"
-                onChange={(e) => setConfigFormData({ ...configFormData, library_id: e.target.value })}
-              >
-                <MenuItem value="">全局配置</MenuItem>
-                {libraries.map((lib) => (
-                  <MenuItem key={lib.id} value={lib.id.toString()}>{lib.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
             <TextField
               fullWidth
               label="配置名称"
@@ -905,7 +862,6 @@ export function PluginSettingsPage() {
                   selectedLog.execution_type === 'auto' ? '自动' :
                   selectedLog.execution_type === 'batch' ? '批量' : '-'
                 }</Typography>
-                {selectedLog.media_library_id && <Typography variant="body2">媒体库ID: {selectedLog.media_library_id}</Typography>}
                 {selectedLog.media_id && <Typography variant="body2">媒体ID: {selectedLog.media_id}</Typography>}
               </Box>
               <Divider sx={{ my: 2 }} />

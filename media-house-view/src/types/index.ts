@@ -487,7 +487,6 @@ export interface PluginConfig {
   id: number;
   plugin_key: string;
   plugin_version?: string;
-  library_id?: number;
   config_name: string;
   is_active: boolean;
   config_data: Record<string, any>;
@@ -502,7 +501,6 @@ export interface PluginExecutionLog {
   id: number;
   plugin_key: string;
   plugin_version?: string;
-  media_library_id?: number;
   media_id?: number;
   execution_type: 'manual' | 'auto' | 'batch';
   source_dir?: string;
