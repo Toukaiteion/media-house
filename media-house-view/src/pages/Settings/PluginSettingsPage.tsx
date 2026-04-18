@@ -227,13 +227,12 @@ export function PluginSettingsPage() {
     setSelectedPlugin(null);
   };
 
-  const handleSaveConfig = async (library_id: number | null, configName: string, configData: Record<string, any>) => {
+  const handleSaveConfig = async (configName: string, configData: Record<string, any>) => {
     if (!selectedPlugin) return;
 
     try {
       await api.createPluginConfig(selectedPlugin.plugin_key, {
         plugin_version: selectedPlugin.version,
-        library_id: library_id || undefined,
         config_name: configName,
         config_data: configData,
         is_active: true,
@@ -780,7 +779,6 @@ export function PluginSettingsPage() {
         plugin={selectedPlugin}
         onClose={handleCloseConfigDialog}
         onSave={handleSaveConfig}
-        libraries={libraries}
       />
 
       {/* 插件列表卸载确认对话框 */}

@@ -22,14 +22,12 @@ interface PluginConfigDialogProps {
   open: boolean;
   plugin: Plugin | null;
   onClose: () => void;
-  onSave: (library_id: number | null, configName: string, configData: Record<string, any>) => void;
-  libraries?: { id: number; name: string; }[];
+  onSave: (configName: string, configData: Record<string, any>) => void;
 }
 
-export function PluginConfigDialog({ open, plugin, onClose, onSave, libraries }: PluginConfigDialogProps) {
+export function PluginConfigDialog({ open, plugin, onClose, onSave }: PluginConfigDialogProps) {
   const [configName, setConfigName] = useState('default');
   const [configData, setConfigData] = useState<Record<string, any>>({});
-  const [selectedLibrary, setSelectedLibrary] = useState<number | null>(null);
 
   // 重置表单
   useEffect(() => {
@@ -44,7 +42,6 @@ export function PluginConfigDialog({ open, plugin, onClose, onSave, libraries }:
         });
       }
       setConfigData(defaultData);
-      setSelectedLibrary(null);
     }
   }, [open, plugin]);
 
@@ -121,7 +118,7 @@ export function PluginConfigDialog({ open, plugin, onClose, onSave, libraries }:
   // 处理保存
   const handleSave = () => {
     if (plugin) {
-      onSave(selectedLibrary, configName, configData);
+      onSave(configName, configData);
       onClose();
     }
   };
@@ -147,27 +144,6 @@ export function PluginConfigDialog({ open, plugin, onClose, onSave, libraries }:
           helperText="用于标识不同配置"
           sx={{ mb: 2 }}
         />
-
-        {/* 关联媒体库 */}
-        {libraries && libraries.length > 0 && (
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>关联媒体库（可选）</InputLabel>
-            <Select
-              value={selectedLibrary || 0}
-              label="关联媒体库"
-              onChange={(e) => setSelectedLibrary(e.target.value as number | null)}
-            >
-              <MenuItem value={0}>
-                全局配置
-              </MenuItem>
-              {libraries.map((lib) => (
-                <MenuItem key={lib.id} value={lib.id}>
-                  {lib.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        )}
 
         {/* 动态渲染配置字段 */}
         {plugin.config_schema && (
