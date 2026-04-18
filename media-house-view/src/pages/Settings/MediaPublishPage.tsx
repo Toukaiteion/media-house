@@ -292,6 +292,7 @@ export function MediaPublishPage() {
         await performMerge(uploadId, type, title);
       }
     } catch (err) {
+      setUploadTasks(prev => prev.map(task => task.upload_id === uploadId ? { ...task, status: 'failed' } : task))
       setMessage({ type: 'error', text: err instanceof Error ? err.message : '完成上传失败' });
     }
   };

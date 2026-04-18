@@ -5,6 +5,7 @@ using MediaHouse.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MediaHouse.DTOs.Upload;
+using MediaHouse.Config;
 
 namespace MediaHouse.Services;
 
@@ -207,7 +208,7 @@ public class UploadService(
         var uploadDir = Path.Combine(_settings.UploadPath, uploadId);
         var mergedFile = Path.Combine(uploadDir, task.FileName);
 
-        using var outputStream = new FileStream(mergedFile, FileMode.Create, FileAccess.Write);
+        var outputStream = new FileStream(mergedFile, FileMode.Create, FileAccess.Write);
 
         for (int i = 0; i < task.TotalChunks; i++)
         {
@@ -220,6 +221,7 @@ public class UploadService(
         var fileInfo = new FileInfo(mergedFile);
         if (fileInfo.Length != task.FileSize)
         {
+            outputStream.Dispose();
             return new MergeResponse
             {
                 Success = false,
@@ -252,6 +254,9 @@ public class UploadService(
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Merged upload task {UploadId} and created staging media {MediaId}", uploadId, mediaId);
+
+        // 释放 outputStream 以便移动文件
+        outputStream.Dispose();
 
         // 创建 staging 目录并移动文件
         var stagingDir = Path.Combine(_settings.StagingPath, mediaId);

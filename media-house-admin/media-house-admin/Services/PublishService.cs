@@ -3,18 +3,15 @@ using MediaHouse.DTOs;
 using MediaHouse.Interfaces;
 using MediaHouse.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace MediaHouse.Services;
 
 public class PublishService(
     MediaHouseDbContext context,
-    IOptions<UploadSettings> uploadSettings,
     ILogger<PublishService> logger) : IPublishService
 {
     private readonly MediaHouseDbContext _context = context;
-    private readonly UploadSettings _settings = uploadSettings.Value;
     private readonly ILogger<PublishService> _logger = logger;
 
     public async Task<PublishResponseDto> PublishAsync(string stagingMediaId, PublishRequest request)

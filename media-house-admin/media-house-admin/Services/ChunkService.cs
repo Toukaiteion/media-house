@@ -2,6 +2,7 @@ using MediaHouse.Interfaces;
 using MediaHouse.DTOs;
 using MediaHouse.Data;
 using Microsoft.Extensions.Options;
+using MediaHouse.Config;
 
 namespace MediaHouse.Services;
 

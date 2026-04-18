@@ -5,6 +5,7 @@ using MediaHouse.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
+using MediaHouse.Config;
 
 namespace MediaHouse.Services;
 

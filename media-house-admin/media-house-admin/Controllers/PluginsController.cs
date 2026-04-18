@@ -5,6 +5,8 @@ using MediaHouse.DTOs;
 using MediaHouse.Interfaces;
 using System.Text.Json;
 using MediaHouse.Services;
+using MediaHouse.Config;
+using Microsoft.Extensions.Options;
 
 namespace MediaHouse.Controllers;
 
@@ -15,14 +17,15 @@ public class PluginsController(
     IPluginService pluginService,
     IPluginConfigService pluginConfigService,
     IPluginExecutionService pluginExecutionService,
-    ILogger<PluginsController> logger) : ControllerBase
+    ILogger<PluginsController> logger,
+    IOptions<PluginSettings> pluginSettings) : ControllerBase
 {
     private readonly IPluginService _pluginService = pluginService;
     private readonly IPluginConfigService _pluginConfigService = pluginConfigService;
     private readonly IPluginExecutionService _pluginExecutionService = pluginExecutionService;
     private readonly ILogger<PluginsController> _logger = logger;
 
-    private const string PluginsBaseDir = "plugins";
+    private readonly PluginSettings _pluginSettings = pluginSettings.Value;
 
     // GET /api/plugins
     [HttpGet]
@@ -74,14 +77,14 @@ public class PluginsController(
             }
 
             // Ensure plugins directory exists
-            if (!Directory.Exists(PluginsBaseDir))
+            if (!Directory.Exists(_pluginSettings.PluginPath))
             {
-                Directory.CreateDirectory(PluginsBaseDir);
+                Directory.CreateDirectory(_pluginSettings.PluginPath);
             }
 
             // Install plugin
             var installer = new PluginInstaller(_logger);
-            var result = await installer.InstallAsync(file.OpenReadStream(), PluginsBaseDir);
+            var result = await installer.InstallAsync(file.OpenReadStream(), _pluginSettings.PluginPath);
 
             if (!result.Success)
             {

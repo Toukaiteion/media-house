@@ -1,4 +1,4 @@
-using MediaHouse;
+using MediaHouse.Config;
 using MediaHouse.Data;
 using MediaHouse.Data.repository;
 using MediaHouse.Interfaces;
@@ -42,9 +42,8 @@ builder.Services.Configure<JwtSettings>(
 builder.Services.Configure<UploadSettings>(
     builder.Configuration.GetSection("UploadSettings"));
 
-// Configure Staging Settings
-builder.Services.Configure<StagingSettings>(
-    builder.Configuration.GetSection("StagingSettings"));
+builder.Services.Configure<PluginSettings>(
+    builder.Configuration.GetSection("PluginSettings"));
 
 // Register repositories
 builder.Services.AddScoped<IMediaLibraryRepository, MediaLibraryRepository>();
