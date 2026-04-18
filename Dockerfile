@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for MediaHouse - Frontend (React+Vite) + Backend (.NET 10.0)
+# Multi-stage Dockerfile for MediaHouse - Frontend (React+Vite) + Backend (.NET 10.0) + Nginx
 
 # ===========================================
 # Stage 1: Build Frontend (React + Vite)
@@ -42,7 +42,7 @@ RUN dotnet publish -c Release -o /app/publish
 # ===========================================
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 
-# Install system dependencies including Chrome (headless mode only)
+# Install system dependencies including Chrome (headless mode only) and Nginx
 RUN apt-get update && apt-get install -y \
     # Chrome dependencies for headless mode
     ca-certificates \
@@ -80,6 +80,8 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     # FFmpeg for media processing
     ffmpeg \
+    # Nginx
+    nginx \
     # Other useful tools
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -109,19 +111,28 @@ COPY --from=backend-build /app/publish /app
 # Copy frontend build output to wwwroot for static file serving
 COPY --from=frontend-build /app/frontend/dist /app/wwwroot
 
+# Copy nginx configuration
+COPY docker/nginx.conf /etc/nginx/nginx.conf
+
+# Copy startup script
+COPY docker/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
 # Create necessary directories
-RUN mkdir -p /app/data /app/plugins /app/logs
+RUN mkdir -p /app/data /app/plugins /app/logs \
+    && mkdir -p /var/log/nginx \
+    && chown -R www-data:www-data /var/log/nginx
 
 # Set environment variables
-ENV ASPNETCORE_URLS=http://+:80 \
+ENV ASPNETCORE_URLS=http://+:5000 \
     ASPNETCORE_ENVIRONMENT=Production
 
-# Expose port
+# Expose nginx port 80
 EXPOSE 80
 
-# Health check
+# Health check (through nginx)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost/health || exit 1
 
-# Run the application
-ENTRYPOINT ["dotnet", "media-house-admin.dll"]
+# Run startup script (nginx + backend)
+ENTRYPOINT ["/app/start.sh"]
