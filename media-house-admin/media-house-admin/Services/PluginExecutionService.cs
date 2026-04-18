@@ -22,10 +22,10 @@ public class PluginExecutionService(
     public async Task<PluginExecutionLog> ExecutePluginAsync(
         string pluginKey,
         string sourceDir,
-        string? configName = null,
+        string? outputDir = null,
         string? pluginVersion = null,
-        int? businessId = null,
-        string? outputDir = null)
+        string? configName = null,
+        int? businessId = null)
     {
         using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<MediaHouseDbContext>();

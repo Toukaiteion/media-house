@@ -309,9 +309,9 @@ public class PluginsController(
             var log = await _pluginExecutionService.ExecutePluginAsync(
                 pluginKey,
                 dto.SourceDir,
+                outputDir: dto.OutputDir,
                 dto.ConfigName,
-                dto.PluginVersion,
-                outputDir: dto.OutputDir
+                dto.PluginVersion
             );
 
             var response = new ExecutePluginResponseDto
