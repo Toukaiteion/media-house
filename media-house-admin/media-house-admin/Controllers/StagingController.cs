@@ -211,10 +211,16 @@ public class StagingController(
             // 从 staging media id 生成 businessId（使用字符串哈希生成数字）
             var businessId = Math.Abs(id.GetHashCode());
 
+            var videoDir = Path.GetDirectoryName(stagingMedia.VideoPath);
+            if (string.IsNullOrEmpty(videoDir) || !Directory.Exists(videoDir))
+            {
+                return BadRequest(new { error = "Invalid video path or directory not exists" + $" ({stagingMedia.VideoPath})" });
+            }
+
             var log = await _pluginExecutionService.ExecutePluginAsync(
                 request.PluginKey,
-                sourceDir: stagingMedia.VideoPath,
-                outputDir: stagingMedia.VideoPath,
+                sourceDir: videoDir,
+                outputDir: videoDir,
                 pluginVersion: request.PluginVersion,
                 configName: request.ConfigName,
                 businessId: businessId,
