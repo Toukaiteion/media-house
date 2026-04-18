@@ -14,7 +14,7 @@ import { MetadataSettingsPage } from './pages/Settings/MetadataSettingsPage';
 import { AccountSettingsPage } from './pages/Settings/AccountSettingsPage';
 import { LogsManagerPage } from './pages/Settings/LogsManagerPage';
 import { PluginSettingsPage } from './pages/Settings/PluginSettingsPage';
-import { MediaPublishPage } from './pages/Settings/MediaPublishPage';
+import { MediaPublishPage } from './pages/Settings/MediaPublish';
 import { PlayerLayout } from './layouts/PlayerLayout';
 import { PlayerPage } from './pages/Player/PlayerPage';
 import { LoginPage } from './pages/Login/LoginPage';

@@ -6,8 +6,8 @@ import {
   Movie as MovieIcon,
   Tv as TvIcon,
 } from '@mui/icons-material';
-import type { StagingMedia } from '../types';
-import { api } from '../services/api';
+import type { StagingMedia } from '../../../../types';
+import { api } from '../../../../services/api';
 
 interface StagingMediaCardProps {
   media: StagingMedia;

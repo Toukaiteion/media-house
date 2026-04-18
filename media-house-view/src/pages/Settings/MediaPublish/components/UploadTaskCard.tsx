@@ -4,7 +4,7 @@ import {
   PlayArrow as ResumeIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
-import type { UploadTask } from '../types';
+import type { UploadTask } from '../../../../types';
 
 interface UploadTaskCardProps {
   task: UploadTask;
@@ -79,7 +79,7 @@ export function UploadTaskCard({ task, speed, onPause, onResume, onDelete }: Upl
 
         <Box sx={{ mb: 1 }}>
           <Typography variant="body2" color="text.secondary">
-            分片: {task.uploaded_chunks} / {task.total_chunks}
+            分片: {task.uploaded_chunks_num} / {task.total_chunks}
           </Typography>
         </Box>
 

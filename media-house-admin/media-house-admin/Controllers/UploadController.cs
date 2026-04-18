@@ -74,7 +74,7 @@ public class UploadController(
             return Ok(new
             {
                 chunk_index,
-                progress.UploadedChunks,
+                progress.UploadedChunksNum,
                 progress.Progress
             });
         }
