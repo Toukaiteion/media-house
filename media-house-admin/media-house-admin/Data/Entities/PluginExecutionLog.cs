@@ -5,7 +5,7 @@ public class PluginExecutionLog
     public int Id { get; set; }
     public string PluginKey { get; set; } = string.Empty;
     public string? PluginVersion { get; set; }
-    public int? MediaId { get; set; }
+    public int? BusinessId { get; set; }
     public string ExecutionType { get; set; } = string.Empty;
     public string? SourceDir { get; set; }
     public string Status { get; set; } = string.Empty;

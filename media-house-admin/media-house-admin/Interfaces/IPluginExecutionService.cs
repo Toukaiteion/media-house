@@ -9,7 +9,7 @@ public interface IPluginExecutionService
         string sourceDir,
         string? configName = null,
         string? pluginVersion = null,
-        int? mediaId = null,
+        int? businessId = null,
         string? outputDir = null);
 
     Task<List<PluginExecutionLog>> ExecuteBatchPluginAsync(

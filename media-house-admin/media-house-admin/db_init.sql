@@ -258,7 +258,7 @@ CREATE TABLE plugin_execution_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     plugin_key VARCHAR(50) NOT NULL,
     plugin_version VARCHAR(20),
-    media_id INTEGER,
+    business_id INTEGER,
     execution_type VARCHAR(50) NOT NULL,
     source_dir VARCHAR(500),
     status VARCHAR(20) NOT NULL,
@@ -278,7 +278,7 @@ CREATE TABLE plugin_execution_logs (
 CREATE INDEX IF NOT EXISTS idx_plugins_plugin_key ON plugins(plugin_key);
 CREATE INDEX IF NOT EXISTS idx_plugin_configs_plugin_key ON plugin_configs(plugin_key);
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_plugin_key ON plugin_execution_logs(plugin_key);
-CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_media_id ON plugin_execution_logs(media_id);
+CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_business_id ON plugin_execution_logs(business_id);
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_status ON plugin_execution_logs(status);
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_start_time ON plugin_execution_logs(start_time);
 

@@ -24,7 +24,7 @@ public class PluginExecutionService(
         string sourceDir,
         string? configName = null,
         string? pluginVersion = null,
-        int? mediaId = null,
+        int? businessId = null,
         string? outputDir = null)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -70,7 +70,7 @@ public class PluginExecutionService(
         {
             PluginKey = pluginKey,
             PluginVersion = plugin.Version,
-            MediaId = mediaId,
+            BusinessId = businessId,
             ExecutionType = "manual",
             SourceDir = sourceDir,
             Status = "pending",
@@ -145,7 +145,7 @@ public class PluginExecutionService(
             {
                 PluginKey = pluginKey,
                 PluginVersion = plugin.Version,
-                MediaId = media.Id,
+                BusinessId = media.Id,
                 ExecutionType = "batch",
                 SourceDir = media.Name, // Use media name as source dir identifier
                 Status = "pending",
@@ -182,7 +182,7 @@ public class PluginExecutionService(
 
         if (mediaId.HasValue)
         {
-            query = query.Where(l => l.MediaId == mediaId);
+            query = query.Where(l => l.BusinessId == mediaId);
         }
 
         return await query

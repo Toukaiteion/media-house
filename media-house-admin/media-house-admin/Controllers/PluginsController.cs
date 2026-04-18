@@ -466,7 +466,7 @@ public class PluginsController(
             Id = log.Id,
             PluginKey = log.PluginKey,
             PluginVersion = log.PluginVersion,
-            MediaId = log.MediaId,
+            BusinessId = log.BusinessId,
             ExecutionType = log.ExecutionType,
             SourceDir = log.SourceDir,
             Status = log.Status,

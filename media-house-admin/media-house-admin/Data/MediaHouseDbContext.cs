@@ -169,7 +169,7 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
             .HasIndex(pel => pel.PluginKey);
 
         modelBuilder.Entity<PluginExecutionLog>()
-            .HasIndex(pel => pel.MediaId);
+            .HasIndex(pel => pel.BusinessId);
 
         modelBuilder.Entity<PluginExecutionLog>()
             .HasIndex(pel => pel.Status);
