@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogTitle,
@@ -43,6 +44,8 @@ export function MetadataScrapeDialog({
   const [scrapeResult, setScrapeResult] = useState<PluginExecutionLog | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const navigate = useNavigate();
+
   // 初始化表单
   useState(() => {
     if (open) {
@@ -53,6 +56,10 @@ export function MetadataScrapeDialog({
 
   const selectedPlugin = plugins.find(p => p.plugin_key === selectedPluginKey);
   const currentConfigs = pluginsConfig.get(selectedPluginKey) || [];
+
+  const handleViewLogs = () => {
+    navigate('/settings/plugins');
+  };
 
   const handleExecute = async () => {
     if (!selectedPlugin || !stagingMediaId) return;
@@ -214,6 +221,11 @@ export function MetadataScrapeDialog({
 
       <DialogActions>
         <Button onClick={onClose} disabled={executing}>取消</Button>
+        {executing && (
+          <Button onClick={handleViewLogs}>
+            查看日志
+          </Button>
+        )}
         {scrapeResult?.status === 'success' ? (
           <Button onClick={handleApply} variant="contained">
             应用
