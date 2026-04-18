@@ -242,13 +242,12 @@ CREATE TABLE plugin_configs (
     plugin_id INTEGER NOT NULL,
     plugin_key VARCHAR(50) NOT NULL,
     plugin_version VARCHAR(20),
-    library_id INTEGER,
     config_name VARCHAR(100) DEFAULT 'default',
     config_data TEXT NOT NULL,
     is_active BOOLEAN DEFAULT 0,
     create_time TIMESTAMP DEFAULT (datetime('now','localtime')),
     update_time TIMESTAMP DEFAULT (datetime('now','localtime')),
-    UNIQUE(plugin_key, library_id, config_name)
+    UNIQUE(plugin_key, config_name)
 );
 
 -- ==============================
@@ -259,7 +258,6 @@ CREATE TABLE plugin_execution_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     plugin_key VARCHAR(50) NOT NULL,
     plugin_version VARCHAR(20),
-    media_library_id INTEGER,
     media_id INTEGER,
     execution_type VARCHAR(50) NOT NULL,
     source_dir VARCHAR(500),
@@ -279,7 +277,6 @@ CREATE TABLE plugin_execution_logs (
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_plugins_plugin_key ON plugins(plugin_key);
 CREATE INDEX IF NOT EXISTS idx_plugin_configs_plugin_key ON plugin_configs(plugin_key);
-CREATE INDEX IF NOT EXISTS idx_plugin_configs_library_id ON plugin_configs(library_id);
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_plugin_key ON plugin_execution_logs(plugin_key);
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_media_id ON plugin_execution_logs(media_id);
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_status ON plugin_execution_logs(status);

@@ -179,11 +179,11 @@ public class PluginsController(
 
     // GET /api/plugins/{pluginKey}/configs
     [HttpGet("{pluginKey}/configs")]
-    public async Task<ActionResult<List<PluginConfigDto>>> GetPluginConfigs(string pluginKey, [FromQuery] int? libraryId = null)
+    public async Task<ActionResult<List<PluginConfigDto>>> GetPluginConfigs(string pluginKey)
     {
         try
         {
-            var configs = await _pluginConfigService.GetPluginConfigsAsync(pluginKey, libraryId);
+            var configs = await _pluginConfigService.GetPluginConfigsAsync(pluginKey);
             var dtos = configs.Select(MapToConfigDto).ToList();
             return Ok(dtos);
         }
@@ -208,7 +208,7 @@ public class PluginsController(
             }
 
             // Check if config already exists
-            if (await _pluginConfigService.ConfigExistsAsync(pluginKey, dto.LibraryId, dto.ConfigName))
+            if (await _pluginConfigService.ConfigExistsAsync(pluginKey, dto.ConfigName))
             {
                 return BadRequest(new { error = "Config with this name already exists" });
             }
@@ -218,7 +218,6 @@ public class PluginsController(
                 PluginId = plugin.Id,
                 PluginKey = pluginKey,
                 PluginVersion = dto.PluginVersion,
-                LibraryId = dto.LibraryId,
                 ConfigName = dto.ConfigName,
                 ConfigData = dto.ConfigData.GetRawText(),
                 IsActive = dto.IsActive,
@@ -251,11 +250,6 @@ public class PluginsController(
             if (existingConfig.PluginKey != pluginKey)
             {
                 return BadRequest(new { error = "Config does not belong to this plugin" });
-            }
-
-            if (dto.LibraryId.HasValue)
-            {
-                existingConfig.LibraryId = dto.LibraryId.Value;
             }
             if (dto.ConfigName != null)
             {
@@ -457,7 +451,6 @@ public class PluginsController(
             Id = config.Id,
             PluginKey = config.PluginKey,
             PluginVersion = config.PluginVersion,
-            LibraryId = config.LibraryId,
             ConfigName = config.ConfigName,
             ConfigData = JsonDocument.Parse(config.ConfigData).RootElement,
             IsActive = config.IsActive,
@@ -473,7 +466,6 @@ public class PluginsController(
             Id = log.Id,
             PluginKey = log.PluginKey,
             PluginVersion = log.PluginVersion,
-            MediaLibraryId = log.MediaLibraryId,
             MediaId = log.MediaId,
             ExecutionType = log.ExecutionType,
             SourceDir = log.SourceDir,

@@ -10,15 +10,9 @@ public class PluginConfigService(MediaHouseDbContext context, ILogger<PluginConf
     private readonly MediaHouseDbContext _context = context;
     private readonly ILogger<PluginConfigService> _logger = logger;
 
-    public async Task<List<PluginConfig>> GetPluginConfigsAsync(string pluginKey, int? libraryId = null)
+    public async Task<List<PluginConfig>> GetPluginConfigsAsync(string pluginKey)
     {
         var query = _context.PluginConfigs.Where(p => p.PluginKey == pluginKey);
-
-        if (libraryId.HasValue)
-        {
-            query = query.Where(p => p.LibraryId == libraryId);
-        }
-
         return await query.ToListAsync();
     }
 
@@ -27,16 +21,10 @@ public class PluginConfigService(MediaHouseDbContext context, ILogger<PluginConf
         return await _context.PluginConfigs.FindAsync(configId);
     }
 
-    public async Task<PluginConfig?> GetActiveConfigAsync(string pluginKey, int? libraryId = null)
+    public async Task<PluginConfig?> GetActiveConfigAsync(string pluginKey)
     {
         var query = _context.PluginConfigs
             .Where(p => p.PluginKey == pluginKey && p.IsActive);
-
-        if (libraryId.HasValue)
-        {
-            query = query.Where(p => p.LibraryId == libraryId);
-        }
-
         return await query.FirstOrDefaultAsync();
     }
 
@@ -56,7 +44,6 @@ public class PluginConfigService(MediaHouseDbContext context, ILogger<PluginConf
         if (existingConfig == null) return null;
 
         existingConfig.PluginVersion = config.PluginVersion;
-        existingConfig.LibraryId = config.LibraryId;
         existingConfig.ConfigName = config.ConfigName;
         existingConfig.ConfigData = config.ConfigData;
         existingConfig.IsActive = config.IsActive;
@@ -82,16 +69,10 @@ public class PluginConfigService(MediaHouseDbContext context, ILogger<PluginConf
         return true;
     }
 
-    public async Task<bool> ConfigExistsAsync(string pluginKey, int? libraryId, string configName)
+    public async Task<bool> ConfigExistsAsync(string pluginKey, string configName)
     {
         var query = _context.PluginConfigs
             .Where(p => p.PluginKey == pluginKey && p.ConfigName == configName);
-
-        if (libraryId.HasValue)
-        {
-            query = query.Where(p => p.LibraryId == libraryId);
-        }
-
         return await query.AnyAsync();
     }
 }

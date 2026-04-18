@@ -25,7 +25,6 @@ public class PluginExecutionService(
         string? configName = null,
         string? pluginVersion = null,
         int? mediaId = null,
-        int? mediaLibraryId = null,
         string? outputDir = null)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -40,17 +39,17 @@ public class PluginExecutionService(
         if (string.IsNullOrEmpty(configName))
         {
             // Try to get active config first, then fall back to "default" named config
-            config = await _pluginConfigService.GetActiveConfigAsync(pluginKey, mediaLibraryId);
+            config = await _pluginConfigService.GetActiveConfigAsync(pluginKey);
             if (config == null)
             {
-                var configs = await _pluginConfigService.GetPluginConfigsAsync(pluginKey, mediaLibraryId);
+                var configs = await _pluginConfigService.GetPluginConfigsAsync(pluginKey);
                 config = configs.FirstOrDefault(c => c.ConfigName == "default");
             }
             // If still null, we'll proceed with empty config
         }
         else
         {
-            var configs = await _pluginConfigService.GetPluginConfigsAsync(pluginKey, mediaLibraryId);
+            var configs = await _pluginConfigService.GetPluginConfigsAsync(pluginKey);
             config = configs.FirstOrDefault(c => c.ConfigName == configName);
             // If not found, we'll proceed with empty config
         }
@@ -71,7 +70,6 @@ public class PluginExecutionService(
         {
             PluginKey = pluginKey,
             PluginVersion = plugin.Version,
-            MediaLibraryId = mediaLibraryId,
             MediaId = mediaId,
             ExecutionType = "manual",
             SourceDir = sourceDir,
@@ -107,17 +105,17 @@ public class PluginExecutionService(
         if (string.IsNullOrEmpty(configName))
         {
             // Try to get active config first, then fall back to "default" named config
-            config = await _pluginConfigService.GetActiveConfigAsync(pluginKey, libraryId);
+            config = await _pluginConfigService.GetActiveConfigAsync(pluginKey);
             if (config == null)
             {
-                var configs = await _pluginConfigService.GetPluginConfigsAsync(pluginKey, libraryId);
+                var configs = await _pluginConfigService.GetPluginConfigsAsync(pluginKey);
                 config = configs.FirstOrDefault(c => c.ConfigName == "default");
             }
             // If still null, we'll proceed with empty config
         }
         else
         {
-            var configs = await _pluginConfigService.GetPluginConfigsAsync(pluginKey, libraryId);
+            var configs = await _pluginConfigService.GetPluginConfigsAsync(pluginKey);
             config = configs.FirstOrDefault(c => c.ConfigName == configName);
             // If not found, we'll proceed with empty config
         }
@@ -147,7 +145,6 @@ public class PluginExecutionService(
             {
                 PluginKey = pluginKey,
                 PluginVersion = plugin.Version,
-                MediaLibraryId = libraryId,
                 MediaId = media.Id,
                 ExecutionType = "batch",
                 SourceDir = media.Name, // Use media name as source dir identifier

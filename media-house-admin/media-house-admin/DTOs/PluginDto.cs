@@ -32,7 +32,6 @@ public class PluginConfigDto
     public int Id { get; set; }
     public string PluginKey { get; set; } = string.Empty;
     public string? PluginVersion { get; set; }
-    public int? LibraryId { get; set; }
     public string ConfigName { get; set; } = string.Empty;
     public JsonElement ConfigData { get; set; }
     public bool IsActive { get; set; }
@@ -45,7 +44,6 @@ public class PluginExecutionLogDto
     public int Id { get; set; }
     public string PluginKey { get; set; } = string.Empty;
     public string? PluginVersion { get; set; }
-    public int? MediaLibraryId { get; set; }
     public int? MediaId { get; set; }
     public string ExecutionType { get; set; } = string.Empty;
     public string? SourceDir { get; set; }
@@ -77,7 +75,6 @@ public class UpdatePluginRequestDto
 public class CreatePluginConfigRequestDto
 {
     public string? PluginVersion { get; set; }
-    public int? LibraryId { get; set; }
     public string ConfigName { get; set; } = "default";
     public JsonElement ConfigData { get; set; }
     public bool IsActive { get; set; } = false;
@@ -85,7 +82,6 @@ public class CreatePluginConfigRequestDto
 
 public class UpdatePluginConfigRequestDto
 {
-    public int? LibraryId { get; set; }
     public string? ConfigName { get; set; }
     public JsonElement? ConfigData { get; set; }
     public bool? IsActive { get; set; }

@@ -162,10 +162,7 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
             .HasIndex(pc => pc.PluginKey);
 
         modelBuilder.Entity<PluginConfig>()
-            .HasIndex(pc => pc.LibraryId);
-
-        modelBuilder.Entity<PluginConfig>()
-            .HasIndex(pc => new { pc.PluginKey, pc.LibraryId, pc.ConfigName })
+            .HasIndex(pc => new { pc.PluginKey, pc.ConfigName })
             .IsUnique();
 
         modelBuilder.Entity<PluginExecutionLog>()
