@@ -6,7 +6,8 @@
       "Bash(mv /mnt/g/project/MediaHouse/media-house-admin/media-house-admin/Controllers/MoviesController.cs /tmp/movies_backup.cs)",
       "Bash(dotnet clean:*)",
       "Bash(dotnet publish:*)",
-      "Bash(dotnet restore:*)"
+      "Bash(dotnet restore:*)",
+      "Bash(sqlite3:*)"
     ]
   }
 }

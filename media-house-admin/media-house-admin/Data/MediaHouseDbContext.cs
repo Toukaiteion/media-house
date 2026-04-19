@@ -207,6 +207,7 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
 
         // SystemLogs configuration
         modelBuilder.Entity<SystemLog>()
+            .ToTable("system_logs")
             .HasKey(l => l.Id);
 
         modelBuilder.Entity<SystemLog>()

@@ -9,6 +9,7 @@ using Quartz;
 using Serilog;
 using System.Text;
 
+Serilog.Debugging.SelfLog.Enable(msg => Console.WriteLine(msg));
 var builder = WebApplication.CreateBuilder(args);
 
 // Add SQLite database
