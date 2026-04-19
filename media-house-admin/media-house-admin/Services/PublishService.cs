@@ -24,6 +24,7 @@ public class PublishService(
         public string? NewPosterPath { get; set; }
         public string? NewFanartPath { get; set; }
         public List<string> NewScreenshotPaths { get; set; } = new();
+        public List<string> NewOtherFilePaths { get; set; } = new();
     }
 
     private static string SanitizeDirectoryName(string name)
@@ -204,10 +205,10 @@ public class PublishService(
             _logger.LogInformation("Moved fanart from {Source} to {Destination}", stagingMedia.FanartPath, mapping.NewFanartPath);
         }
 
+        var stagingDir = Path.GetDirectoryName(stagingMedia.VideoPath);
         // 移动截图
         if (!string.IsNullOrEmpty(stagingMedia.ScreenshotsPath))
         {
-            var stagingDir = Path.GetDirectoryName(stagingMedia.VideoPath);
             if (stagingDir != null)
             {
                 var extrafanartDir = Path.Combine(stagingDir, "extrafanart");
@@ -225,6 +226,31 @@ public class PublishService(
                         mapping.NewScreenshotPaths.Add(targetPath);
                     }
                     _logger.LogInformation("Moved {Count} screenshots to {Destination}", screenshotFiles.Length, targetExtrafanartDir);
+                }
+            }
+        }
+
+        // 移动源目录下所有剩余文件
+        if (stagingDir != null && Directory.Exists(stagingDir))
+        {
+            var movedFiles = new HashSet<string>
+            {
+                stagingMedia.VideoPath,
+                stagingMedia.PosterPath ?? string.Empty,
+                stagingMedia.FanartPath ?? string.Empty
+            };
+
+            // 获取源目录下所有文件（不包括 extrafanart 子目录的文件，因为已经处理过了）
+            var allFiles = Directory.GetFiles(stagingDir, "*", SearchOption.TopDirectoryOnly);
+            foreach (var sourceFile in allFiles)
+            {
+                if (!movedFiles.Contains(sourceFile))
+                {
+                    var fileName = Path.GetFileName(sourceFile);
+                    var targetPath = Path.Combine(targetMediaDir, fileName);
+                    File.Move(sourceFile, targetPath);
+                    mapping.NewOtherFilePaths.Add(targetPath);
+                    _logger.LogInformation("Moved extra file from {Source} to {Destination}", sourceFile, targetPath);
                 }
             }
         }
@@ -394,6 +420,21 @@ public class PublishService(
                     }
                 }
                 _logger.LogInformation("Rolled back {Count} screenshots", pathMapping.NewScreenshotPaths.Count);
+            }
+
+            // 回滚额外移动的文件
+            if (pathMapping.NewOtherFilePaths.Count > 0 && stagingDir != null)
+            {
+                foreach (var sourceFile in pathMapping.NewOtherFilePaths)
+                {
+                    if (File.Exists(sourceFile))
+                    {
+                        var fileName = Path.GetFileName(sourceFile);
+                        var targetPath = Path.Combine(stagingDir, fileName);
+                        File.Move(sourceFile, targetPath);
+                    }
+                }
+                _logger.LogInformation("Rolled back {Count} extra files", pathMapping.NewOtherFilePaths.Count);
             }
 
             _logger.LogWarning("Rolled back file move for staging media {StagingId}", stagingMedia.Id);
