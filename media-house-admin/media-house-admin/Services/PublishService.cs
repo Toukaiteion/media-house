@@ -20,9 +20,18 @@ public class PublishService(
 
     private class PublishPathMapping
     {
+        // Original paths (before move)
+        public string OriginalStagingDir { get; set; } = string.Empty;
+        public string OriginalVideoPath { get; set; } = string.Empty;
+        public string? OriginalPosterPath { get; set; }
+        public string? OriginalFanartPath { get; set; }
+        public string? OriginalThumbPath { get; set; }
+
+        // New paths (after move)
         public string NewVideoPath { get; set; } = string.Empty;
         public string? NewPosterPath { get; set; }
         public string? NewFanartPath { get; set; }
+        public string? NewThumbPath { get; set; }
         public List<string> NewScreenshotPaths { get; set; } = new();
         public List<string> NewOtherFilePaths { get; set; } = new();
     }
@@ -58,6 +67,12 @@ public class PublishService(
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
+                // 更新 StagingMedia 路径为新的库目录路径（在事务内）
+                stagingMedia.VideoPath = pathMapping.NewVideoPath;
+                stagingMedia.PosterPath = pathMapping.NewPosterPath;
+                stagingMedia.FanartPath = pathMapping.NewFanartPath;
+                stagingMedia.ThumbPath = pathMapping.NewThumbPath;
+
                 var (mediaId, movieId) = await CreateMediaRecordsAsync(stagingMedia, library, request, pathMapping);
 
                 // 更新 StagingMedia 状态
@@ -174,6 +189,14 @@ public class PublishService(
     {
         var mapping = new PublishPathMapping();
 
+        // Store original paths before any moves
+        var stagingDir = Path.GetDirectoryName(stagingMedia.VideoPath) ?? string.Empty;
+        mapping.OriginalStagingDir = stagingDir;
+        mapping.OriginalVideoPath = stagingMedia.VideoPath;
+        mapping.OriginalPosterPath = stagingMedia.PosterPath;
+        mapping.OriginalFanartPath = stagingMedia.FanartPath;
+        mapping.OriginalThumbPath = stagingMedia.ThumbPath;
+
         // 构建目标目录路径
         var sanitizedTitle = SanitizeDirectoryName(stagingMedia.Code ?? stagingMedia.Title);
         var targetMediaDir = Path.Combine(library.Path, sanitizedTitle);
@@ -205,13 +228,21 @@ public class PublishService(
             _logger.LogInformation("Moved fanart from {Source} to {Destination}", stagingMedia.FanartPath, mapping.NewFanartPath);
         }
 
-        var stagingDir = Path.GetDirectoryName(stagingMedia.VideoPath);
+        // 移动缩略图
+        if (!string.IsNullOrEmpty(stagingMedia.ThumbPath))
+        {
+            var thumbFileName = Path.GetFileName(stagingMedia.ThumbPath);
+            mapping.NewThumbPath = Path.Combine(targetMediaDir, thumbFileName);
+            File.Move(stagingMedia.ThumbPath, mapping.NewThumbPath);
+            _logger.LogInformation("Moved thumb from {Source} to {Destination}", stagingMedia.ThumbPath, mapping.NewThumbPath);
+        }
+
         // 移动截图
         if (!string.IsNullOrEmpty(stagingMedia.ScreenshotsPath))
         {
-            if (stagingDir != null)
+            if (mapping.OriginalStagingDir != string.Empty)
             {
-                var extrafanartDir = Path.Combine(stagingDir, "extrafanart");
+                var extrafanartDir = Path.Combine(mapping.OriginalStagingDir, "extrafanart");
                 if (Directory.Exists(extrafanartDir))
                 {
                     var targetExtrafanartDir = Path.Combine(targetMediaDir, "extrafanart");
@@ -231,17 +262,18 @@ public class PublishService(
         }
 
         // 移动源目录下所有剩余文件
-        if (stagingDir != null && Directory.Exists(stagingDir))
+        if (mapping.OriginalStagingDir != string.Empty && Directory.Exists(mapping.OriginalStagingDir))
         {
             var movedFiles = new HashSet<string>
             {
                 stagingMedia.VideoPath,
                 stagingMedia.PosterPath ?? string.Empty,
-                stagingMedia.FanartPath ?? string.Empty
+                stagingMedia.FanartPath ?? string.Empty,
+                stagingMedia.ThumbPath ?? string.Empty
             };
 
             // 获取源目录下所有文件（不包括 extrafanart 子目录的文件，因为已经处理过了）
-            var allFiles = Directory.GetFiles(stagingDir, "*", SearchOption.TopDirectoryOnly);
+            var allFiles = Directory.GetFiles(mapping.OriginalStagingDir, "*", SearchOption.TopDirectoryOnly);
             foreach (var sourceFile in allFiles)
             {
                 if (!movedFiles.Contains(sourceFile))
@@ -380,31 +412,35 @@ public class PublishService(
     {
         try
         {
-            // 将文件移回暂存目录
-            var stagingDir = Path.GetDirectoryName(stagingMedia.VideoPath);
-
+            // Use original paths from mapping instead of staging
             if (!string.IsNullOrEmpty(pathMapping.NewVideoPath) && File.Exists(pathMapping.NewVideoPath))
             {
-                File.Move(pathMapping.NewVideoPath, stagingMedia.VideoPath);
-                _logger.LogInformation("Rolled back video to {Destination}", stagingMedia.VideoPath);
+                File.Move(pathMapping.NewVideoPath, pathMapping.OriginalVideoPath);
+                _logger.LogInformation("Rolled back video to {Destination}", pathMapping.OriginalVideoPath);
             }
 
-            if (pathMapping.NewPosterPath != null && stagingMedia.PosterPath != null && File.Exists(pathMapping.NewPosterPath))
+            if (pathMapping.NewPosterPath != null && pathMapping.OriginalPosterPath != null && File.Exists(pathMapping.NewPosterPath))
             {
-                File.Move(pathMapping.NewPosterPath, stagingMedia.PosterPath);
-                _logger.LogInformation("Rolled back poster to {Destination}", stagingMedia.PosterPath);
+                File.Move(pathMapping.NewPosterPath, pathMapping.OriginalPosterPath);
+                _logger.LogInformation("Rolled back poster to {Destination}", pathMapping.OriginalPosterPath);
             }
 
-            if (pathMapping.NewFanartPath != null && stagingMedia.FanartPath != null && File.Exists(pathMapping.NewFanartPath))
+            if (pathMapping.NewFanartPath != null && pathMapping.OriginalFanartPath != null && File.Exists(pathMapping.NewFanartPath))
             {
-                File.Move(pathMapping.NewFanartPath, stagingMedia.FanartPath);
-                _logger.LogInformation("Rolled back fanart to {Destination}", stagingMedia.FanartPath);
+                File.Move(pathMapping.NewFanartPath, pathMapping.OriginalFanartPath);
+                _logger.LogInformation("Rolled back fanart to {Destination}", pathMapping.OriginalFanartPath);
+            }
+
+            if (pathMapping.NewThumbPath != null && pathMapping.OriginalThumbPath != null && File.Exists(pathMapping.NewThumbPath))
+            {
+                File.Move(pathMapping.NewThumbPath, pathMapping.OriginalThumbPath);
+                _logger.LogInformation("Rolled back thumb to {Destination}", pathMapping.OriginalThumbPath);
             }
 
             // 回滚截图
-            if (pathMapping.NewScreenshotPaths.Count > 0 && stagingDir != null)
+            if (pathMapping.NewScreenshotPaths.Count > 0)
             {
-                var extrafanartDir = Path.Combine(stagingDir, "extrafanart");
+                var extrafanartDir = Path.Combine(pathMapping.OriginalStagingDir, "extrafanart");
                 if (!Directory.Exists(extrafanartDir))
                 {
                     Directory.CreateDirectory(extrafanartDir);
@@ -423,14 +459,14 @@ public class PublishService(
             }
 
             // 回滚额外移动的文件
-            if (pathMapping.NewOtherFilePaths.Count > 0 && stagingDir != null)
+            if (pathMapping.NewOtherFilePaths.Count > 0)
             {
                 foreach (var sourceFile in pathMapping.NewOtherFilePaths)
                 {
                     if (File.Exists(sourceFile))
                     {
                         var fileName = Path.GetFileName(sourceFile);
-                        var targetPath = Path.Combine(stagingDir, fileName);
+                        var targetPath = Path.Combine(pathMapping.OriginalStagingDir, fileName);
                         File.Move(sourceFile, targetPath);
                     }
                 }
