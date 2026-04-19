@@ -77,12 +77,18 @@ public class StagingService(
         var media = await _context.StagingMedias.FindAsync(id);
         if (media == null) return null;
 
+        media.Code = request.Code;
         media.Title = request.Title;
         media.OriginalTitle = request.OriginalTitle;
         media.Year = request.Year;
+        media.ReleaseDate = request.ReleaseDate;
         media.Studio = request.Studio;
         media.Runtime = request.Runtime;
         media.Description = request.Description;
+        media.PosterPath = request.PosterPath;
+        media.FanartPath = request.FanartPath;
+        media.ThumbPath = request.ThumbPath;
+        media.ScreenshotsPath = request.ExtraFanartPaths != null ? string.Join(",", request.ExtraFanartPaths) : null;
         media.Tags = request.Tags != null ? JsonSerializer.Serialize(request.Tags) : null;
         media.Staff = request.Staff != null ? JsonSerializer.Serialize(request.Staff) : null;
         media.Status = 1; // 待发布
@@ -211,9 +217,13 @@ public class StagingService(
             // 构建更新请求
             var request = new UpdateStagingMetadataRequest
             {
-                Title = matchedMedia.Title, // 保持原标题，除非搜刮结果明确要求覆盖
-                OriginalTitle = metadataRoot.TryGetProperty("original_title", out var originalTitle) ? originalTitle.GetString() : null,
+                Title = metadataRoot.TryGetProperty("title", out var title) ? title.GetString() ?? matchedMedia.Title : "UNKOWN", // 保持原标题，除非搜刮结果明确要求覆盖
+                OriginalTitle = metadataRoot.TryGetProperty("originaltitle", out var originalTitle) ? originalTitle.GetString() : null,
+                Code = metadataRoot.TryGetProperty("num", out var code) ? code.GetString() : null,
                 Year = metadataRoot.TryGetProperty("year", out var year) ? year.GetInt32() : null,
+                ReleaseDate = metadataRoot.TryGetProperty("releasedate", out var releaseDate) ? releaseDate.GetString() : 
+                    metadataRoot.TryGetProperty("premiere", out var premieredate) ? premieredate.GetString() : 
+                    metadataRoot.TryGetProperty("release", out var date) ? date.GetString() : null,
                 Studio = metadataRoot.TryGetProperty("studio", out var studio) ? studio.GetString() : null,
                 Runtime = metadataRoot.TryGetProperty("runtime", out var runtime) ? runtime.GetInt32() : null,
                 Description = metadataRoot.TryGetProperty("summary", out var summary) ? summary.GetString() : null
@@ -244,6 +254,51 @@ public class StagingService(
                 }
                 request.Staff = staff;
             }
+
+            var sourceDir = Path.GetDirectoryName(matchedMedia.VideoPath) ?? _settings.StagingPath;
+            // 寻找媒体文件，poster,thumb,fanart，extrafanart 字段，尝试下载到暂存目录（如果 URL 可访问）
+            if (metadataRoot.TryGetProperty("poster", out var posterElement) && posterElement.ValueKind == JsonValueKind.String)
+            {
+                var posterName = posterElement.GetString();
+                var posterPath = Path.Combine(sourceDir, posterName ?? "poster.jpg");
+                if (!File.Exists(posterPath) && !string.IsNullOrEmpty(posterName))
+                {
+                    request.PosterPath = posterPath;
+                }
+            }
+            if (metadataRoot.TryGetProperty("fanart", out var fanartElement) && fanartElement.ValueKind == JsonValueKind.String)
+            {
+                var fanartName = fanartElement.GetString();
+                var fanartPath = Path.Combine(sourceDir, fanartName ?? "fanart.jpg");
+                if (!File.Exists(fanartPath) && !string.IsNullOrEmpty(fanartName))
+                {
+                    request.FanartPath = fanartPath;
+                }
+            }
+            if (metadataRoot.TryGetProperty("thumb", out var thumbElement) && thumbElement.ValueKind == JsonValueKind.String)
+            {
+                var thumbName = thumbElement.GetString();
+                var thumbPath = Path.Combine(sourceDir, thumbName ?? "thumb.jpg");
+                if (!File.Exists(thumbPath) && !string.IsNullOrEmpty(thumbName))
+                {
+                    request.ThumbPath = thumbPath;
+                }
+            }
+            var extrafanartPath = Path.Combine(sourceDir, "extrafanart");
+            if (Directory.Exists(extrafanartPath))
+            {
+                var extrafanartFiles = Directory.GetFiles(extrafanartPath);
+                var extrafanartPaths = new List<string>();
+                foreach (var file in extrafanartFiles)                
+                {
+                    extrafanartPaths.Add(Path.Combine(extrafanartPath, Path.GetFileName(file))); 
+                }
+                if (extrafanartPaths.Count > 0)
+                {
+                    request.ExtraFanartPaths = extrafanartPaths;
+                }
+            }
+            
 
             // 更新元数据
             var updatedMedia = await UpdateStagingMetadataAsync(matchedMedia.Id, request);
@@ -320,4 +375,6 @@ public class StagingService(
             PublishedAt = media.PublishedAt
         };
     }
+
+
 }

@@ -311,17 +311,20 @@ CREATE TABLE staging_medias (
     id VARCHAR(36) PRIMARY KEY,         -- UUID
     upload_task_id VARCHAR(36) NOT NULL,  -- 关联的上传任务ID
     type VARCHAR(20) NOT NULL,            -- 媒体类型：movie, tvshow
+	code VARCHAR(32),
     title VARCHAR(255) NOT NULL,           -- 标题
     original_title VARCHAR(255),            -- 原始标题
     year INTEGER,                          -- 年份
+	release_date VARCHAR(24),
     studio VARCHAR(255),                   -- 制片厂
     runtime INTEGER,                        -- 时长（（分钟）
     description TEXT,                       -- 描述
     video_path VARCHAR(500) NOT NULL,      -- 视频文件相对路径
     video_size BIGINT NOT NULL,             -- 视频文件大小
     poster_path VARCHAR(500),               -- 海报路径
+	thumb_path VARCHAR(500),
     fanart_path VARCHAR(500),               -- 背景图路径
-    screenshots_path VARCHAR(1024),         -- 截图路径（逗号分隔）
+    screenshots_path VARCHAR(2048),         -- 截图路径（逗号分隔）
     tags TEXT,                             -- 标签 JSON 数组
     staff TEXT,                            -- 演职员 JSON 数组
     status INTEGER DEFAULT 0,               -- 状态：0=待编辑，1=待发布，2=已发布
