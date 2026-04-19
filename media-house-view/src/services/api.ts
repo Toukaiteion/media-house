@@ -862,6 +862,52 @@ class ApiClient {
   async getLibrariesForPublish(): Promise<MediaLibrary[]> {
     return this.request<MediaLibrary[]>('/libraries');
   }
+
+  /**
+   * ===== 日志管理 API =====
+   */
+
+  /**
+   * 获取日志列表
+   */
+  async getLogs(params: LogsQueryParams): Promise<LogsPageResponse> {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', params.page.toString());
+    if (params.pageSize) queryParams.append('pageSize', params.pageSize.toString());
+    if (params.level) queryParams.append('level', params.level);
+    if (params.startTime) queryParams.append('startTime', params.startTime);
+    if (params.endTime) queryParams.append('endTime', params.endTime);
+    if (params.category) queryParams.append('category', params.category);
+    if (params.message) queryParams.append('message', params.message);
+    if (params.hasException !== undefined) queryParams.append('hasException', params.hasException.toString());
+    if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
+
+    const queryString = queryParams.toString();
+    return this.request<LogsPageResponse>(`/logs${queryString ? `?${queryString}` : ''}`);
+  }
+
+  /**
+   * 获取日志统计
+   */
+  async getLogsStats(): Promise<LogsStats> {
+    return this.request<LogsStats>('/logs/stats');
+  }
+
+  /**
+   * 获取日志分类列表
+   */
+  async getLogsCategories(): Promise<string[]> {
+    return this.request<string[]>('/logs/categories');
+  }
+
+  /**
+   * 删除旧日志
+   */
+  async deleteOldLogs(beforeDate: string): Promise<DeleteLogsResponse> {
+    return this.request<DeleteLogsResponse>(`/logs?beforeDate=${beforeDate}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

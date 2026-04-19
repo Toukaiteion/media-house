@@ -345,4 +345,20 @@ CREATE INDEX IF NOT EXISTS idx_staging_medias_upload_task_id ON staging_medias(u
 -- ==============================
 -- 外键约束
 -- ==============================
-PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS system_logs (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TIMESTAMP NOT NULL,
+    message TEXT NOT NULL,
+    message_template TEXT NOT NULL,
+    level VARCHAR(32) NOT NULL,
+    properties TEXT,
+    exception TEXT,
+    source_context TEXT,
+    machine_name VARCHAR(128),
+    thread_id INTEGER,
+    application TEXT
+);
+
+CREATE INDEX IF NOT EXISTS IX_SystemLogs_Timestamp ON system_logs(timestamp);
+CREATE INDEX IF NOT EXISTS IX_SystemLogs_Level ON system_logs(level);
+CREATE INDEX IF NOT EXISTS IX_SystemLogs_SourceContext ON system_logs(source_context);

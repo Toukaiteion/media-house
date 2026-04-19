@@ -721,3 +721,73 @@ export interface PublishResponse {
   tv_show_id?: number;
   status: string;
 }
+
+/**
+ * ===== 日志管理类型定义 =====
+ */
+
+/**
+ * 日志级别
+ */
+export type LogLevel = 'Information' | 'Warning' | 'Error' | 'Debug' | 'Fatal';
+
+/**
+ * 日志条目
+ */
+export interface LogEntry {
+  id: number;
+  timestamp: string;
+  message: string;
+  messageTemplate?: string;
+  level: LogLevel;
+  properties?: string;
+  exception?: string;
+  sourceContext?: string;
+  machineName?: string;
+  threadId?: number;
+  application?: string;
+}
+
+/**
+ * 日志分页响应
+ */
+export interface LogsPageResponse {
+  items: LogEntry[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/**
+ * 日志统计
+ */
+export interface LogsStats {
+  Information: number;
+  Warning: number;
+  Error: number;
+  Debug: number;
+  Fatal: number;
+}
+
+/**
+ * 日志查询参数
+ */
+export interface LogsQueryParams {
+  page?: number;
+  pageSize?: number;
+  level?: LogLevel;
+  startTime?: string;
+  endTime?: string;
+  category?: string;
+  message?: string;
+  hasException?: boolean;
+  sortOrder?: 'asc' | 'desc';
+}
+
+/**
+ * 删除日志响应
+ */
+export interface DeleteLogsResponse {
+  message: string;
+}

@@ -6,6 +6,7 @@ using MediaHouse.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Quartz;
+using Serilog;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,9 +37,19 @@ builder.Services.AddScoped<IPublishService, PublishService>();
 
 // Register event bus (singleton for app-wide event handling)
 builder.Services.AddSingleton<IEventBus, EventBus>();
+builder.Services.AddScoped<ILogService, LogService>();
 
 // Register hosted services
 builder.Services.AddHostedService<StagingMetadataHandler>();
+
+// Configure Serilog
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Application", "MediaHouse")
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 // Configure JWT Settings
 builder.Services.Configure<JwtSettings>(
