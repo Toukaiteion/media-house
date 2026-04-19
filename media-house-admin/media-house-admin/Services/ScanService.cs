@@ -1,6 +1,7 @@
 using MediaHouse.Data.Entities;
 using MediaHouse.Interfaces;
 using MediaHouse.Data;
+using MediaHouse.DTOs;
 using Microsoft.EntityFrameworkCore;
 
 namespace MediaHouse.Services;
@@ -405,8 +406,9 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
     /// <param name="movieDirPath">电影目录完整路径</param>
     /// <param name="movieIdentifier">电影唯一标识符</param>
     /// <param name="parseResult">NFO解析结果</param>
-    // <param name="log">扫描日志</param>
-    private async Task ProcessMediaItemAsync(
+    /// <param name="log">扫描日志（可为null）</param>
+    /// <returns>MediaScanResult 包含所有处理的实体</returns>
+    private async Task<MediaScanResult> ProcessMediaItemAsync(
         MediaHouseDbContext context,
         int libraryId,
         string libraryPath,
@@ -414,7 +416,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         string movieDirPath,
         string movieIdentifier,
         NfoParseResult? parseResult,
-        SystemSyncLog log)
+        SystemSyncLog? log)
     {
         // 预先生成图片 url_name 映射（格式：uuid前7位 + "_" + 图片后缀）
         var imageUrlNames = GenerateImageUrlNames(movieDirPath, parseResult);
@@ -444,10 +446,10 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             var movie = await UpsertMovieAsync(context, libraryId, mediaItem.Id, movieIdentifier, parseResult, screenshotsPath, log);
 
             // 3. 创建或更新 MediaFile (media_files 表) - 关联到 MediaItem.Id
-            await UpsertMediaFileAsync(context, movieDirPath, mediaItem.Id, parseResult);
+            var mediaFile = await UpsertMediaFileAsync(context, movieDirPath, mediaItem.Id, parseResult);
 
             // 4. 创建或更新 MediaImgs (media_imgs 表) - 关联到 MediaItem.Id
-            await UpsertMediaImagesAsync(context, movieDirName, movieDirPath, mediaItem.Id, parseResult, imageUrlNames, screenshotPaths);
+            var mediaImages = await UpsertMediaImagesAsync(context, movieDirName, movieDirPath, mediaItem.Id, parseResult, imageUrlNames, screenshotPaths);
 
             // 5. 创建或更新 Tags (tags + media_tags 表) - 关联到 MediaItem.Id
             if (parseResult?.Tags != null)
@@ -463,6 +465,14 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
 
             // 提事务
             await transaction.CommitAsync();
+
+            return new MediaScanResult
+            {
+                Media = mediaItem,
+                Movie = movie,
+                MediaFile = mediaFile,
+                MediaImages = mediaImages
+            };
         }
         catch
         {
@@ -511,7 +521,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         string movieDirName,
         NfoParseResult? parseResult,
         Dictionary<string, string> imageUrlNames,
-        SystemSyncLog log)
+        SystemSyncLog? log)
     {
         var existingItem = await context.Medias
             .FirstOrDefaultAsync(m => m.LibraryId == libraryId && m.Name == movieIdentifier);
@@ -536,7 +546,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                 UpdateTime = DateTime.UtcNow
             };
             context.Medias.Add(mediaItem);
-            log.AddedCount++;
+            if (log != null) log.AddedCount++;
         }
         else
         {
@@ -544,7 +554,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             UpdateMediaItemFields(existingItem, parseResult, imageUrlNames);
             existingItem.UpdateTime = DateTime.UtcNow;
             mediaItem = existingItem;
-            log.UpdatedCount++;
+            if (log != null) log.UpdatedCount++;
         }
 
         await context.SaveChangesAsync();
@@ -598,7 +608,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         string movieIdentifier,
         NfoParseResult? parseResult,
         string? screenshotsPath,
-        SystemSyncLog log)
+        SystemSyncLog? log)
     {
         var existingMovie = await context.Movies
             .FirstOrDefaultAsync(m => m.Num == movieIdentifier);
@@ -621,7 +631,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                 UpdateTime = DateTime.UtcNow
             };
             context.Movies.Add(movie);
-            log.AddedCount++;
+            if (log != null) log.AddedCount++;
         }
         else
         {
@@ -634,7 +644,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             }
             existingMovie.UpdateTime = DateTime.UtcNow;
             movie = existingMovie;
-            log.UpdatedCount++;
+            if (log != null) log.UpdatedCount++;
         }
 
         await context.SaveChangesAsync();
@@ -672,7 +682,8 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
     /// <param name="movieDirPath">电影目录路径</param>
     /// <param name="mediaItemId">MediaItem.ID (media_files.media_id)</param>
     /// <param name="parseResult">NFO解析结果</param>
-    private async Task UpsertMediaFileAsync(
+    /// <returns>MediaFile 实体</returns>
+    private async Task<MediaFile?> UpsertMediaFileAsync(
         MediaHouseDbContext context,
         string movieDirPath,
         int mediaItemId,
@@ -682,7 +693,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         if (videoFile == null)
         {
             _logger.LogWarning("No video file found in {DirPath}", movieDirPath);
-            return;
+            return null;
         }
 
         var existingFile = await context.MediaFiles
@@ -709,6 +720,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             };
 
             context.MediaFiles.Add(mediaFile);
+            return mediaFile;
         }
         else
         {
@@ -734,6 +746,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                 existingFile.UpdateTime = DateTime.UtcNow;
                 context.MediaFiles.Update(existingFile);
             }
+            return existingFile;
         }
     }
 
@@ -749,7 +762,8 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
     /// <param name="parseResult">NFO解析结果</param>
     /// <param name="imageUrlNames">预先生成的 url_name 映射</param>
     /// <param name="screenshotPaths">截图文件路径列表</param>
-    private async Task UpsertMediaImagesAsync(
+    /// <returns>处理过的 MediaImgs 列表</returns>
+    private async Task<List<MediaImgs>> UpsertMediaImagesAsync(
         MediaHouseDbContext context,
         string movieDirName,
         string movieDirPath,
@@ -758,8 +772,10 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         Dictionary<string, string> imageUrlNames,
         List<string>? screenshotPaths)
     {
+        var result = new List<MediaImgs>();
+
         if (parseResult?.ImagePaths == null)
-            return;
+            return result;
 
         // 支要的图片类型：poster, thumb, fanart
         var imageTypes = new[] { "poster", "thumb", "fanart" };
@@ -802,6 +818,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                 };
 
                 context.MediaImgs.Add(mediaImg);
+                result.Add(mediaImg);
             }
             else
             {
@@ -835,6 +852,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                     existingImage.UpdateTime = DateTime.UtcNow;
                     context.MediaImgs.Update(existingImage);
                 }
+                result.Add(existingImage);
             }
         }
 
@@ -870,6 +888,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                     };
 
                     context.MediaImgs.Add(mediaImg);
+                    result.Add(mediaImg);
                 }
                 else
                 {
@@ -899,9 +918,11 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                         existingImage.UpdateTime = DateTime.UtcNow;
                         context.MediaImgs.Update(existingImage);
                     }
+                    result.Add(existingImage);
                 }
             }
         }
+        return result;
     }
 
     /// <summary>
@@ -1070,5 +1091,41 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         }
 
         return staff;
+    }
+
+    /// <summary>
+    /// 扫描单个电影目录并返回元数据
+    /// </summary>
+    /// <param name="libraryId">媒体库ID</param>
+    /// <param name="movieDirName">电影目录名</param>
+    /// <param name="movieDirPath">电影目录完整路径</param>
+    /// <returns>MediaScanResult 包含所有处理的实体</returns>
+    public async Task<MediaScanResult> ScanSingleMovieAsync(int libraryId, string movieDirName, string movieDirPath)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<MediaHouseDbContext>();
+
+        var library = await context.MediaLibraries.FindAsync(libraryId) ??
+            throw new InvalidOperationException($"Library {libraryId} not found");
+
+        _logger.LogInformation("Scanning single movie directory: {DirName}", movieDirName);
+
+        var videoFile = FindVideoFile(movieDirPath);
+        var nfoFile = FindNfoFile(movieDirPath);
+
+        if (videoFile == null)
+        {
+            _logger.LogWarning("No video file found in {DirPath}", movieDirPath);
+            throw new InvalidOperationException($"No video file found in {movieDirPath}");
+        }
+
+        // 解析 NFO 文件
+        var parseResult = nfoFile != null ? await _metadataService.ParseNfoFileFullAsync(nfoFile) : null;
+
+        // 使用解析结果中的 Num 作为唯一标识符，如果没有则使用目录名
+        var movieIdentifier = parseResult?.Num ?? movieDirName;
+
+        // 处理所有相关实体并返回结果
+        return await ProcessMediaItemAsync(context, libraryId, library.Path, movieDirName, movieDirPath, movieIdentifier, parseResult, null);
     }
 }

@@ -87,8 +87,8 @@ CREATE TABLE media_files (
 DROP TABLE IF EXISTS media_imgs;
 CREATE TABLE media_imgs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    media_id INTEGER NOT NULL,           -- 对应 media id
-    url_name VARCHAR(128) NOT NULL,     -- 例如 p300111.jpg
+    media_id INTEGER,           -- 对应 media id
+    url_name VARCHAR(128) NOT NULL UNIQUE,     -- 例如 p300111.jpg
     name VARCHAR(128) NOT NULL,           -- 对应 movies 或 episodes 的ID
     path VARCHAR(500) NOT NULL UNIQUE,          -- 文件路径
     file_name VARCHAR(255) NOT NULL,
