@@ -395,6 +395,7 @@ public class PluginExecutionService(
                         BusinessType = log.BusinessType,
                         Status = "success",
                         MetadataOutput = result.MetadataOutput,
+                        CreatedFile = result.CreatedFiles,
                         StartTime = dbLog.StartTime,
                         EndTime = dbLog.EndTime
                     };

@@ -37,6 +37,8 @@ public class PluginExecutionCompletedEvent
     /// </summary>
     public string? MetadataOutput { get; set; }
 
+    public string? CreatedFile { get; set; }
+
     /// <summary>
     /// 执行开始时间
     /// </summary>

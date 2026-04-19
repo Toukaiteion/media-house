@@ -84,7 +84,7 @@ public class StagingMetadataHandler(
 
         using var scope = _serviceScopeFactory.CreateScope();
         var _stagingService = scope.ServiceProvider.GetRequiredService<IStagingService>();
-        await _stagingService.TryUpdateMetadataFromPluginExecutionAsync(@event.BusinessId!.Value, @event.MetadataOutput!);
+        await _stagingService.TryUpdateMetadataFromPluginExecutionAsync(@event.BusinessId!.Value, @event.MetadataOutput!, @event.CreatedFile);
     }
 
     private async Task HandleMediaMetadataAsync(PluginExecutionCompletedEvent @event)

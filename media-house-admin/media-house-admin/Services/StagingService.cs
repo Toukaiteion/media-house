@@ -196,7 +196,7 @@ public class StagingService(
     /// </summary>
     /// <param name="businessBusinessId">业务 ID（StagingMediaId 的哈希值）</param>
     /// <param name="metadataOutput">插件输出的元数据 JSON</param>
-    public async Task TryUpdateMetadataFromPluginExecutionAsync(int businessBusinessId, string metadataOutput)
+    public async Task TryUpdateMetadataFromPluginExecutionAsync(int businessBusinessId, string metadataOutput, string? createdFile)
     {
         try
         {
@@ -257,45 +257,56 @@ public class StagingService(
 
             var sourceDir = Path.GetDirectoryName(matchedMedia.VideoPath) ?? _settings.StagingPath;
             // 寻找媒体文件，poster,thumb,fanart，extrafanart 字段，尝试下载到暂存目录（如果 URL 可访问）
-            if (metadataRoot.TryGetProperty("poster", out var posterElement) && posterElement.ValueKind == JsonValueKind.String)
+            if (!string.IsNullOrEmpty(createdFile))
             {
-                var posterName = posterElement.GetString();
-                var posterPath = Path.Combine(sourceDir, posterName ?? "poster.jpg");
-                if (!File.Exists(posterPath) && !string.IsNullOrEmpty(posterName))
+                var createdDoc = JsonDocument.Parse(createdFile);
+                var createdRoot = createdDoc.RootElement;
+                if (createdRoot.TryGetProperty("poster", out var posterElement) && posterElement.ValueKind == JsonValueKind.String)
                 {
-                    request.PosterPath = posterPath;
+                    var posterName = posterElement.GetString();
+                    var posterPath = Path.Combine(sourceDir, posterName ?? "poster.jpg");
+                    if (File.Exists(posterPath) && !string.IsNullOrEmpty(posterName))
+                    {
+                        request.PosterPath = posterPath;
+                    }
                 }
-            }
-            if (metadataRoot.TryGetProperty("fanart", out var fanartElement) && fanartElement.ValueKind == JsonValueKind.String)
-            {
-                var fanartName = fanartElement.GetString();
-                var fanartPath = Path.Combine(sourceDir, fanartName ?? "fanart.jpg");
-                if (!File.Exists(fanartPath) && !string.IsNullOrEmpty(fanartName))
+                if (createdRoot.TryGetProperty("fanart", out var fanartElement) && fanartElement.ValueKind == JsonValueKind.String)
                 {
-                    request.FanartPath = fanartPath;
+                    var fanartName = fanartElement.GetString();
+                    var fanartPath = Path.Combine(sourceDir, fanartName ?? "fanart.jpg");
+                    if (File.Exists(fanartPath) && !string.IsNullOrEmpty(fanartName))
+                    {
+                        request.FanartPath = fanartPath;
+                    }
                 }
-            }
-            if (metadataRoot.TryGetProperty("thumb", out var thumbElement) && thumbElement.ValueKind == JsonValueKind.String)
-            {
-                var thumbName = thumbElement.GetString();
-                var thumbPath = Path.Combine(sourceDir, thumbName ?? "thumb.jpg");
-                if (!File.Exists(thumbPath) && !string.IsNullOrEmpty(thumbName))
+                if (createdRoot.TryGetProperty("thumb", out var thumbElement) && thumbElement.ValueKind == JsonValueKind.String)
                 {
-                    request.ThumbPath = thumbPath;
+                    var thumbName = thumbElement.GetString();
+                    var thumbPath = Path.Combine(sourceDir, thumbName ?? "thumb.jpg");
+                    if (File.Exists(thumbPath) && !string.IsNullOrEmpty(thumbName))
+                    {
+                        request.ThumbPath = thumbPath;
+                    }
                 }
-            }
-            var extrafanartPath = Path.Combine(sourceDir, "extrafanart");
-            if (Directory.Exists(extrafanartPath))
-            {
-                var extrafanartFiles = Directory.GetFiles(extrafanartPath);
-                var extrafanartPaths = new List<string>();
-                foreach (var file in extrafanartFiles)                
+                if (createdRoot.TryGetProperty("screenshots", out var extrafanartElement) && extrafanartElement.ValueKind == JsonValueKind.Array)
                 {
-                    extrafanartPaths.Add(Path.Combine(extrafanartPath, Path.GetFileName(file))); 
-                }
-                if (extrafanartPaths.Count > 0)
-                {
-                    request.ExtraFanartPaths = extrafanartPaths;
+                    var extrafanartPaths = new List<string>();
+                    foreach (var item in extrafanartElement.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.String)
+                        {
+                            var extraName = item.GetString();
+                            var extraPath = Path.Combine(sourceDir, extraName ?? "extrafanart.jpg");
+                            if (File.Exists(extraPath) && !string.IsNullOrEmpty(extraName))
+                            {
+                                extrafanartPaths.Add(extraPath);
+                            }
+                        }
+                    }
+                    if (extrafanartPaths.Count > 0)
+                    {
+                        request.ExtraFanartPaths = extrafanartPaths;
+                    }
                 }
             }
             
