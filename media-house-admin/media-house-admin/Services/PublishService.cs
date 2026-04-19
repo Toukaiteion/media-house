@@ -51,7 +51,7 @@ public class PublishService(
         try
         {
             // 阶段1：移动文件到库目录
-            var pathMapping = await MoveFilesToLibraryAsync(stagingMedia, library, request);
+            var pathMapping = await MoveFilesToLibraryAsync(stagingMedia, library);
 
             // 阶段2：数据库事务
             using var transaction = await _context.Database.BeginTransactionAsync();
@@ -169,14 +169,12 @@ public class PublishService(
 
     private async Task<PublishPathMapping> MoveFilesToLibraryAsync(
         StagingMedia stagingMedia,
-        MediaLibrary library,
-        PublishRequest request)
+        MediaLibrary library)
     {
         var mapping = new PublishPathMapping();
 
         // 构建目标目录路径
-        var title = request.MediaName;
-        var sanitizedTitle = SanitizeDirectoryName(title);
+        var sanitizedTitle = SanitizeDirectoryName(stagingMedia.Code ?? stagingMedia.Title);
         var targetMediaDir = Path.Combine(library.Path, sanitizedTitle);
 
         // 创建目标目录

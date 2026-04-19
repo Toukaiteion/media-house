@@ -219,7 +219,7 @@ public class StagingService(
             {
                 Title = metadataRoot.TryGetProperty("title", out var title) ? title.GetString() ?? matchedMedia.Title : "UNKOWN", // 保持原标题，除非搜刮结果明确要求覆盖
                 OriginalTitle = metadataRoot.TryGetProperty("originaltitle", out var originalTitle) ? originalTitle.GetString() : null,
-                Code = metadataRoot.TryGetProperty("num", out var code) ? code.GetString() : null,
+                Code = metadataRoot.TryGetProperty("num", out var code) ? code.GetString() : title.GetString(), // 优先使用 num 字段作为 code，否则使用 title
                 Year = metadataRoot.TryGetProperty("year", out var year) ? year.GetInt32() : null,
                 ReleaseDate = metadataRoot.TryGetProperty("releasedate", out var releaseDate) ? releaseDate.GetString() : 
                     metadataRoot.TryGetProperty("premiere", out var premieredate) ? premieredate.GetString() : 
