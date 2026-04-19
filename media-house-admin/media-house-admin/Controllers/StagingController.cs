@@ -242,4 +242,47 @@ public class StagingController(
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    [HttpGet("{id}/image")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetStagingImage(string id, [FromQuery] string url_name)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(url_name))
+            {
+                return BadRequest(new { error = "Invalid id or url name" });
+            }
+
+            var imagePath = await _stagingService.GetActualImagePathAsync(id, url_name);
+
+            if (string.IsNullOrEmpty(imagePath) || !System.IO.File.Exists(imagePath))
+            {
+                return NotFound(new { error = "Image not found" });
+            }
+
+            var fileInfo = new System.IO.FileInfo(imagePath);
+            var contentType = GetContentType(fileInfo.Extension);
+            var fileStream = new System.IO.FileStream(imagePath, System.IO.FileMode.Open, System.IO.FileAccess.Read);
+
+            return File(fileStream, contentType, enableRangeProcessing: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error serving staging image for {StagingId}: {UrlName}", id, url_name);
+            return StatusCode(500, new { error = "Failed to serve image" });
+        }
+    }
+
+    private static string GetContentType(string extension)
+    {
+        return extension.ToLower() switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".gif" => "image/gif",
+            _ => "application/octet-stream"
+        };
+    }
 }

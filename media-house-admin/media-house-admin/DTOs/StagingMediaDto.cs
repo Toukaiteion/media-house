@@ -15,7 +15,8 @@ public class StagingMediaDto
     public long VideoSize { get; set; }
     public string? PosterPath { get; set; }
     public string? FanartPath { get; set; }
-    public string? ScreenshotsPath { get; set; }
+    public string? ThumbPath { get; set; }
+    public List<string>? Screenshots { get; set; }
     public List<string>? Tags { get; set; }
     public List<StaffItemDto>? Staff { get; set; }
     public int Status { get; set; }

@@ -12,5 +12,6 @@ public interface IStagingService
     Task<string?> UploadFanartAsync(string id, Stream imageData, string fileName);
     Task<string?> UploadScreenshotAsync(string id, Stream imageData, string fileName);
     Task<bool> DeleteStagingMediaAsync(string id);
+    Task<string?> GetActualImagePathAsync(string id, string urlName);
     Task TryUpdateMetadataFromPluginExecutionAsync(int businessBusinessId, string metadataOutput, string? createdFile);
 }

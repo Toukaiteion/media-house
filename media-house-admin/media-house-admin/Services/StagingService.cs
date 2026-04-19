@@ -159,10 +159,9 @@ public class StagingService(
         using var fileStream = new FileStream(destFile, FileMode.Create, FileAccess.Write);
         await imageData.CopyToAsync(fileStream);
 
-        var urlName = MediaUtils.GenerateUrlNameFromPath(destFile);
         media.ScreenshotsPath = string.IsNullOrEmpty(media.ScreenshotsPath)
-            ? urlName
-            : media.ScreenshotsPath + "," + urlName;
+            ? destFile
+            : media.ScreenshotsPath + "," + destFile;
 
         media.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
@@ -334,6 +333,32 @@ public class StagingService(
         return string.Join("_", name.Split(invalidChars));
     }
 
+    public async Task<string?> GetActualImagePathAsync(string id, string urlName)
+    {
+        var media = await _context.StagingMedias.FindAsync(id);
+        if (media == null) return null;
+
+        // 解密 url_name 得到实际路径
+        var decryptedPath = CryptoHelper.Decrypt(urlName);
+        if (string.IsNullOrEmpty(decryptedPath)) return null;
+
+        // 验证路径是否属于该暂存媒体
+        var stagingDir = Path.GetDirectoryName(media.VideoPath) ?? Path.Combine(_settings.StagingPath, id);
+        if (!decryptedPath.StartsWith(stagingDir, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Invalid path: {Path} {mediaVideoPathj}", decryptedPath, media.VideoPath);
+            return null;
+        }
+
+        if (!File.Exists(decryptedPath))
+        {
+            _logger.LogWarning("File not found: {Path}", decryptedPath);
+            return null;
+        }
+
+        return decryptedPath;
+    }
+
     private static StagingMediaDto MapToDto(StagingMedia media)
     {
         List<string>? tags = null;
@@ -362,6 +387,18 @@ public class StagingService(
             }
         }
 
+        // 生成图片 URL（加密真实路径作为 url_name）
+        var posterPath = string.IsNullOrEmpty(media.PosterPath) ? null : $"/api/staging/{media.Id}/image?url_name={CryptoHelper.Encrypt(media.PosterPath)}";
+        var fanartPath = string.IsNullOrEmpty(media.FanartPath) ? null : $"/api/staging/{media.Id}/image?url_name={CryptoHelper.Encrypt(media.FanartPath)}";
+        var thumbPath = string.IsNullOrEmpty(media.ThumbPath) ? null : $"/api/staging/{media.Id}/image?url_name={CryptoHelper.Encrypt(media.ThumbPath)}";
+        List<string>? screenshots = null;
+        if (!string.IsNullOrEmpty(media.ScreenshotsPath))
+        {
+            screenshots = media.ScreenshotsPath.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => $"/api/staging/{media.Id}/image?url_name={CryptoHelper.Encrypt(s)}")
+                .ToList();
+        }
+
         return new StagingMediaDto
         {
             Id = media.Id,
@@ -375,9 +412,10 @@ public class StagingService(
             Description = media.Description,
             VideoPath = media.VideoPath,
             VideoSize = media.VideoSize,
-            PosterPath = media.PosterPath,
-            FanartPath = media.FanartPath,
-            ScreenshotsPath = media.ScreenshotsPath,
+            PosterPath = posterPath,
+            FanartPath = fanartPath,
+            ThumbPath = thumbPath,
+            Screenshots = screenshots,
             Tags = tags,
             Staff = staff,
             Status = media.Status,
