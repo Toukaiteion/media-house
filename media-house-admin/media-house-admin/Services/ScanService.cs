@@ -471,7 +471,9 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                 Media = mediaItem,
                 Movie = movie,
                 MediaFile = mediaFile,
-                MediaImages = mediaImages
+                MediaImages = mediaImages,
+                Tags = parseResult?.Tags,
+                Actors = parseResult?.Actors
             };
         }
         catch
