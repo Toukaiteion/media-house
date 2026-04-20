@@ -20,4 +20,11 @@ public class PluginExecutionLog
     public string? CreatedFiles { get; set; }
     public string? Statistics { get; set; }
     public string? LogMessages { get; set; }
+
+    // Retry and config fields
+    public int? ConfigId { get; set; }
+    public int RetryCount { get; set; } = 0;
+    public int MaxRetries { get; set; } = 3;
+    public string? Input { get; set; }
+    public DateTime? LastRetryTime { get; set; }
 }

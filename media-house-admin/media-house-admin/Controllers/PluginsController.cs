@@ -417,6 +417,33 @@ public class PluginsController(
         }
     }
 
+    // POST /api/plugins/execution/{executionId}/retry
+    [HttpPost("execution/{executionId}/retry")]
+    public async Task<ActionResult<ExecutePluginResponseDto>> RetryExecution(int executionId)
+    {
+        try
+        {
+            var retryLog = await _pluginExecutionService.RetryPluginAsync(executionId);
+            if (retryLog == null)
+            {
+                return NotFound(new { error = "Execution not found or cannot be retried" });
+            }
+
+            var response = new ExecutePluginResponseDto
+            {
+                ExecutionId = retryLog.Id,
+                Status = retryLog.Status
+            };
+
+            return Accepted(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrying execution {ExecutionId}", executionId);
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     private static PluginDto MapToDto(Plugin plugin)
     {
         var mediaTypes = string.IsNullOrEmpty(plugin.SupportedMediaTypes)
@@ -481,7 +508,11 @@ public class PluginsController(
             DurationSeconds = log.DurationSeconds,
             MetadataOutput = !string.IsNullOrEmpty(log.MetadataOutput) ? JsonDocument.Parse(log.MetadataOutput).RootElement : null,
             CreatedFiles = !string.IsNullOrEmpty(log.CreatedFiles) ? JsonDocument.Parse(log.CreatedFiles).RootElement : null,
-            Statistics = !string.IsNullOrEmpty(log.Statistics) ? JsonDocument.Parse(log.Statistics).RootElement : null
+            Statistics = !string.IsNullOrEmpty(log.Statistics) ? JsonDocument.Parse(log.Statistics).RootElement : null,
+            ConfigId = log.ConfigId,
+            RetryCount = log.RetryCount,
+            MaxRetries = log.MaxRetries,
+            LastRetryTime = log.LastRetryTime
         };
     }
 

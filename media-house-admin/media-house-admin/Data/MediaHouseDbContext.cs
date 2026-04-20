@@ -185,6 +185,10 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
             .Property(pel => pel.BusinessType)
             .HasConversion<string>();
 
+        modelBuilder.Entity<PluginExecutionLog>()
+            .HasIndex(pel => pel.ConfigId);
+
+
         // Upload configurations
         modelBuilder.Entity<UploadTask>()
             .HasIndex(ut => ut.Status);

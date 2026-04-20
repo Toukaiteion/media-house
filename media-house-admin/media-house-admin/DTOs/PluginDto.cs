@@ -58,6 +58,12 @@ public class PluginExecutionLogDto
     public JsonElement? CreatedFiles { get; set; }
     public JsonElement? Statistics { get; set; }
     public string? LogMessages { get; set; }
+
+    // Retry and config fields
+    public int? ConfigId { get; set; }
+    public int RetryCount { get; set; }
+    public int MaxRetries { get; set; }
+    public DateTime? LastRetryTime { get; set; }
 }
 
 public class InstallPluginResponseDto

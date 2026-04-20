@@ -51,6 +51,10 @@ import type {
   PublishResponse,
   MergeUploadRequest,
   MergeUploadResponse,
+  LogsPageResponse,
+  LogsStats,
+  DeleteLogsResponse,
+  LogsQueryParams,
 } from '../types';
 
 const API_BASE_URL = '/api';
@@ -648,6 +652,15 @@ class ApiClient {
   async cancelPluginExecution(executionId: number): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/plugins/execution/${executionId}`, {
       method: 'DELETE',
+    });
+  }
+
+  /**
+   * 重试执行
+   */
+  async retryPluginExecution(executionId: number): Promise<{ executionId: number; status: string }> {
+    return this.request<{ executionId: number; status: string }>(`/plugins/execution/${executionId}/retry`, {
+      method: 'POST',
     });
   }
 

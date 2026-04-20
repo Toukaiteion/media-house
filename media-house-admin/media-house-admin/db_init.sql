@@ -258,7 +258,9 @@ CREATE TABLE plugin_execution_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     plugin_key VARCHAR(50) NOT NULL,
     plugin_version VARCHAR(20),
+	config_id INTEGER,
     business_id INTEGER,
+    input TEXT,
 	business_type VARCHAR(64),
     execution_type VARCHAR(50) NOT NULL,
     source_dir VARCHAR(500),
@@ -272,7 +274,10 @@ CREATE TABLE plugin_execution_logs (
     duration_seconds INTEGER,
     metadata_output TEXT,
     created_files TEXT,
-    statistics TEXT
+    statistics TEXT,
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 3,
+    last_retry_time TIMESTAMP
 );
 
 -- 索引
@@ -282,6 +287,7 @@ CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_plugin_key ON plugin_execut
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_business_id ON plugin_execution_logs(business_id);
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_status ON plugin_execution_logs(status);
 CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_start_time ON plugin_execution_logs(start_time);
+CREATE INDEX IF NOT EXISTS idx_plugin_execution_logs_config_id ON plugin_execution_logs(config_id);
 
 -- ==============================
 -- 16. 上传任务表
@@ -345,7 +351,7 @@ CREATE INDEX IF NOT EXISTS idx_staging_medias_upload_task_id ON staging_medias(u
 -- ==============================
 -- 外键约束
 -- ==============================
-DROP TABLE system_logs;
+DROP TABLE IF EXISTS system_logs;
 CREATE TABLE IF NOT EXISTS system_logs (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TIMESTAMP NOT NULL,

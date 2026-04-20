@@ -7,7 +7,8 @@
       "Bash(dotnet clean:*)",
       "Bash(dotnet publish:*)",
       "Bash(dotnet restore:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

@@ -40,6 +40,7 @@ import {
   Add as AddIcon,
   Cancel as CancelIcon,
   Visibility as VisibilityIcon,
+  Replay as RetryIcon,
 } from '@mui/icons-material';
 import { api } from '../../services/api';
 import { PluginCard } from '../../components/PluginCard';
@@ -424,6 +425,20 @@ export function PluginSettingsPage() {
     }
   };
 
+  const handleRetryExecution = async (log: PluginExecutionLog) => {
+    try {
+      setError(null);
+      await api.retryPluginExecution(log.id);
+      setUploadMessage({ type: 'success', message: '插件执行已重新启动' });
+      // 刷新日志
+      if (plugins[mainTabValue]) {
+        refreshLogs(plugins[mainTabValue].plugin_key);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '重试失败');
+    }
+  };
+
   const handleOpenLogDetail = (log: PluginExecutionLog) => {
     setSelectedLog(log);
     setLogDetailDialogOpen(true);
@@ -726,6 +741,11 @@ export function PluginSettingsPage() {
                             {log.status === 'running' && (
                               <IconButton size="small" onClick={() => handleCancelExecution(log)} aria-label="取消" color="error">
                                 <CancelIcon />
+                              </IconButton>
+                            )}
+                            {(log.status === 'failed' || log.status === 'timeout') && (
+                              <IconButton size="small" onClick={() => handleRetryExecution(log)} aria-label="重试" color="primary">
+                                <RetryIcon />
                               </IconButton>
                             )}
                             <IconButton size="small" onClick={() => handleOpenLogDetail(log)} aria-label="查看详情">

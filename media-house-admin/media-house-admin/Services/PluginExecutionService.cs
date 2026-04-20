@@ -79,7 +79,8 @@ public class PluginExecutionService(
             ExecutionType = "manual",
             SourceDir = sourceDir,
             Status = "pending",
-            StartTime = DateTime.UtcNow
+            StartTime = DateTime.UtcNow,
+            ConfigId = config.Id
         };
 
         context.PluginExecutionLogs.Add(log);
@@ -156,7 +157,8 @@ public class PluginExecutionService(
                 ExecutionType = "batch",
                 SourceDir = media.Name, // Use media name as source dir identifier
                 Status = "pending",
-                StartTime = DateTime.UtcNow
+                StartTime = DateTime.UtcNow,
+                ConfigId = config.Id
             };
 
             context.PluginExecutionLogs.Add(log);
@@ -313,6 +315,14 @@ public class PluginExecutionService(
             // Prepare input JSON
             var inputJson = PrepareInputJson(sourceDir, config.ConfigData, outputDir);
 
+            // Save input data to log for retry capability
+            var dbLog = await context.PluginExecutionLogs.FindAsync(log.Id);
+            if (dbLog != null && string.IsNullOrEmpty(dbLog.Input))
+            {
+                dbLog.Input = inputJson;
+                await context.SaveChangesAsync();
+            }
+
             // Get runtime requirements
             int maxExecutionTimeSeconds = 300; // Default 5 minutes
             if (!string.IsNullOrEmpty(plugin.RuntimeRequirements))
@@ -351,7 +361,6 @@ public class PluginExecutionService(
                 });
 
             // Update execution log with result
-            var dbLog = await context.PluginExecutionLogs.FindAsync(log.Id);
             if (dbLog != null)
             {
                 if (result.Success)
@@ -440,5 +449,228 @@ public class PluginExecutionService(
         };
 
         return System.Text.Json.JsonSerializer.Serialize(input);
+    }
+
+    public async Task<PluginExecutionLog?> RetryPluginAsync(int executionId)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<MediaHouseDbContext>();
+
+        // Get original execution log
+        var originalLog = await context.PluginExecutionLogs.FindAsync(executionId);
+        if (originalLog == null)
+        {
+            _logger.LogWarning("Original execution log not found: {ExecutionId}", executionId);
+            return null;
+        }
+
+        // Validate retry conditions
+        if (originalLog.Status != "failed" && originalLog.Status != "timeout")
+        {
+            _logger.LogWarning("Cannot retry execution with status: {Status}", originalLog.Status);
+            return null;
+        }
+
+        if (originalLog.RetryCount >= originalLog.MaxRetries)
+        {
+            _logger.LogWarning("Max retries exceeded for execution: {ExecutionId}", executionId);
+            return null;
+        }
+
+        // Check if input data exists
+        if (string.IsNullOrEmpty(originalLog.Input))
+        {
+            _logger.LogWarning("Input data not available for retry: {ExecutionId}", executionId);
+            return null;
+        }
+
+        // Create new execution log for retry
+        var retryLog = new PluginExecutionLog
+        {
+            PluginKey = originalLog.PluginKey,
+            PluginVersion = originalLog.PluginVersion,
+            BusinessId = originalLog.BusinessId,
+            BusinessType = originalLog.BusinessType,
+            ExecutionType = originalLog.ExecutionType,
+            SourceDir = originalLog.SourceDir,
+            Status = "pending",
+            StartTime = DateTime.UtcNow,
+            ConfigId = originalLog.ConfigId,
+            RetryCount = originalLog.RetryCount + 1,
+            MaxRetries = originalLog.MaxRetries,
+            Input = originalLog.Input,
+            LastRetryTime = DateTime.UtcNow
+        };
+
+        context.PluginExecutionLogs.Add(retryLog);
+        await context.SaveChangesAsync();
+
+        // Execute plugin in background using saved input data
+        _ = Task.Run(() => ExecutePluginWithSavedInputAsync(retryLog, originalLog.Input), CancellationToken.None);
+
+        _logger.LogInformation("Plugin execution retry started: {OriginalExecutionId} -> {RetryExecutionId} (Attempt {Count})",
+            executionId, retryLog.Id, retryLog.RetryCount);
+
+        return retryLog;
+    }
+
+    private async Task ExecutePluginWithSavedInputAsync(
+        PluginExecutionLog log,
+        string savedInputJson)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<MediaHouseDbContext>();
+        var cts = new CancellationTokenSource();
+
+        lock (_lock)
+        {
+            _executionCancellations[log.Id] = cts;
+        }
+
+        try
+        {
+            // Update status to running
+            await UpdateExecutionStatusAsync(log.Id, "running");
+
+            // Parse saved input to get plugin key
+            var inputDoc = System.Text.Json.JsonDocument.Parse(savedInputJson);
+            var pluginKey = log.PluginKey;
+
+            // Get plugin
+            var plugin = await _pluginService.GetPluginByDbKeyAsync(pluginKey, log.PluginVersion);
+            if (plugin == null)
+            {
+                _logger.LogWarning("Plugin not found for retry: {PluginKey} {Version}", pluginKey, log.PluginVersion);
+                await UpdateExecutionStatusAsync(log.Id, "failed", "Plugin not found");
+                return;
+            }
+
+            // Get plugin config
+            PluginConfig? config = null;
+            if (log.ConfigId.HasValue)
+            {
+                config = await context.PluginConfigs.FindAsync(log.ConfigId.Value);
+            }
+
+            // Create a default empty config if none was found
+            if (config == null)
+            {
+                config = new PluginConfig
+                {
+                    PluginKey = pluginKey,
+                    ConfigName = "empty",
+                    ConfigData = "{}"
+                };
+            }
+
+            // Get runtime requirements
+            int maxExecutionTimeSeconds = 300; // Default 5 minutes
+            if (!string.IsNullOrEmpty(plugin.RuntimeRequirements))
+            {
+                try
+                {
+                    var requirements = System.Text.Json.JsonDocument.Parse(plugin.RuntimeRequirements);
+                    if (requirements.RootElement.TryGetProperty("max_execution_time_seconds", out var timeProperty))
+                    {
+                        maxExecutionTimeSeconds = timeProperty.GetInt32();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse runtime requirements for plugin {PluginKey}", plugin.PluginKey);
+                }
+            }
+
+            // Set timeout
+            cts.CancelAfter(TimeSpan.FromSeconds(maxExecutionTimeSeconds));
+
+            // Execute plugin with saved input data
+            var runner = new PluginRunner(_logger);
+            var result = await runner.ExecuteAsync(
+                plugin.PluginDir,
+                plugin.EntryPoint,
+                savedInputJson,
+                cts.Token,
+                async (progress) =>
+                {
+                    await UpdateExecutionProgressAsync(log.Id, progress.Percent, progress.Step, progress.Message, progress.Type);
+                },
+                async (errorMsg) =>
+                {
+                    await UpdateExecutionProgressAsync(log.Id, 0, "", errorMsg, null);
+                });
+
+            // Update execution log with result
+            var dbLog = await context.PluginExecutionLogs.FindAsync(log.Id);
+            if (dbLog != null)
+            {
+                if (result.Success)
+                {
+                    dbLog.Status = "success";
+                    dbLog.MetadataOutput = result.MetadataOutput;
+                    dbLog.CreatedFiles = result.CreatedFiles;
+                    dbLog.Statistics = result.Statistics;
+                }
+                else if (cts.Token.IsCancellationRequested)
+                {
+                    dbLog.Status = "timeout";
+                }
+                else
+                {
+                    dbLog.Status = "failed";
+                    if (!string.IsNullOrEmpty(dbLog.ErrorMessage))
+                    {
+                        dbLog.ErrorMessage += "\n" + result.ErrorMessage;
+                    }
+                    else
+                    {
+                        dbLog.ErrorMessage = result.ErrorMessage;
+                    }
+                }
+
+                dbLog.EndTime = DateTime.UtcNow;
+                dbLog.DurationSeconds = (int)(dbLog.EndTime.Value - dbLog.StartTime).TotalSeconds;
+                dbLog.ProgressPercent = 100;
+
+                await context.SaveChangesAsync();
+
+                // 发布插件执行完成事件
+                if (result.Success && !string.IsNullOrEmpty(result.MetadataOutput))
+                {
+                    var completedEvent = new PluginExecutionCompletedEvent
+                    {
+                        ExecutionId = log.Id,
+                        PluginKey = plugin.PluginKey,
+                        BusinessId = log.BusinessId,
+                        BusinessType = log.BusinessType,
+                        Status = "success",
+                        MetadataOutput = result.MetadataOutput,
+                        CreatedFile = result.CreatedFiles,
+                        StartTime = dbLog.StartTime,
+                        EndTime = dbLog.EndTime
+                    };
+                    await _eventBus.PublishAsync(completedEvent);
+                }
+            }
+
+            _logger.LogInformation("Plugin retry execution completed: {ExecutionId} - {Status}", log.Id, dbLog?.Status);
+        }
+        catch (TaskCanceledException)
+        {
+            await UpdateExecutionStatusAsync(log.Id, "timeout", "Execution timed out");
+            _logger.LogWarning("Plugin retry execution timed out: {ExecutionId}", log.Id);
+        }
+        catch (Exception ex)
+        {
+            await UpdateExecutionStatusAsync(log.Id, "failed", ex.Message);
+            _logger.LogError(ex, "Plugin retry execution failed: {ExecutionId}", log.Id);
+        }
+        finally
+        {
+            lock (_lock)
+            {
+                _executionCancellations.Remove(log.Id);
+            }
+        }
     }
 }

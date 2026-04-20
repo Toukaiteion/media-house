@@ -26,4 +26,5 @@ public interface IPluginExecutionService
     Task<bool> CancelExecutionAsync(int executionId);
     Task<bool> UpdateExecutionProgressAsync(int executionId, int percent, string currentStep, string? message = null, DTOs.PluginMessageType? type = null);
     Task<bool> UpdateExecutionStatusAsync(int executionId, string status, string? errorMessage = null);
+    Task<PluginExecutionLog?> RetryPluginAsync(int executionId);
 }

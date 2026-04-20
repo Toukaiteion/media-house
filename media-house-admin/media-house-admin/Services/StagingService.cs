@@ -63,7 +63,7 @@ public class StagingService(
     public async Task<List<StagingMediaDto>> GetAllStagingMediasAsync()
     {
         var medias = await _context.StagingMedias.ToListAsync();
-        return medias.Select(MapToDto).ToList();
+        return [.. medias.Select(MapToDto)];
     }
 
     public async Task<StagingMediaDto?> GetStagingMediaAsync(string id)
@@ -403,13 +403,13 @@ public class StagingService(
         }
 
         // 使用 url_name 生成图片 URL
-        var posterPath = string.IsNullOrEmpty(media.PosterPath) ? null : $"/api/media/image/{media.PosterPath}";
-        var fanartPath = string.IsNullOrEmpty(media.FanartPath) ? null : $"/api/media/image/{media.FanartPath}";
-        var thumbPath = string.IsNullOrEmpty(media.ThumbPath) ? null : $"/api/media/image/{media.ThumbPath}";
+        var posterPath = media.PosterPath;
+        var fanartPath = media.FanartPath;
+        var thumbPath = media.ThumbPath;
         List<string>? screenshots = null;
         if (!string.IsNullOrEmpty(media.ScreenshotsPath))
         {
-            screenshots = [.. media.ScreenshotsPath.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => $"/api/media/image/{s}")];
+            screenshots = [.. media.ScreenshotsPath.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s)];
         }
 
         return new StagingMediaDto
