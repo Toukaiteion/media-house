@@ -532,7 +532,7 @@ export interface PluginExecutionResponse {
 /**
  * 上传任务状态
  */
-export type UploadStatus = 'pending' | 'uploading' | 'paused' | 'completed' | 'cancelled' | 'failed';
+export type UploadStatus = 'calculating' | 'preparing' | 'pending' | 'uploading' | 'paused' | 'completed' | 'cancelled' | 'failed';
 
 /**
  * 待发布媒体状态

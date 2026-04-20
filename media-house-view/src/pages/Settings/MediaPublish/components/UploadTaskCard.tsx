@@ -15,6 +15,8 @@ interface UploadTaskCardProps {
 }
 
 const STATUS_LABELS: Record<string, string> = {
+  calculating: '计算中',
+  preparing: '准备中',
   pending: '等待中',
   uploading: '上传中',
   paused: '已暂停',
@@ -23,7 +25,9 @@ const STATUS_LABELS: Record<string, string> = {
   failed: '失败',
 };
 
-const STATUS_COLORS: Record<string, 'default' | 'primary' | 'success' | 'error' | 'warning'> = {
+const STATUS_COLORS: Record<string, 'default' | 'primary' | 'success' | 'error' | 'warning' | 'info'> = {
+  calculating: 'info',
+  preparing: 'info',
   pending: 'default',
   uploading: 'primary',
   paused: 'warning',

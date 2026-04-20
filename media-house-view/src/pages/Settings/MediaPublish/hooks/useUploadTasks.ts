@@ -348,13 +348,42 @@ export function useUploadTasks() {
     onMessage?: (type: 'success' | 'error', text: string) => void,
     onRefreshStagingMedias?: () => void
   ) => {
+    const ext = file.name.substring(file.name.lastIndexOf('.'));
+    const fileName = title ? `${title}${ext}` : file.name;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    // 先创建一个 calculating 状态的任务卡片，让用户可以看到进度
+    const tempTask: UploadTask = {
+      upload_id: tempId,
+      file_name: fileName,
+      file_size: file.size,
+      file_md5: '',
+      chunk_size: CHUNK_SIZE,
+      total_chunks: 0,
+      uploaded_chunks_num: 0,
+      uploaded_size: 0,
+      max_uploaded_chunk_index: -1,
+      status: 'calculating',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setUploadTasks(prev => [...prev, tempTask]);
+
     try {
       const { calculateFileMd5 } = await import('../constants');
       const fileMd5 = await calculateFileMd5(file);
 
-      const ext = file.name.substring(file.name.lastIndexOf('.'));
+      // 更新为 preparing 状态
+      setUploadTasks(prev =>
+        prev.map(t =>
+          t.upload_id === tempId
+            ? { ...t, status: 'preparing' }
+            : t
+        )
+      );
+
       const task = await api.createUploadTask({
-        file_name: title ? `${title}${ext}` : file.name,
+        file_name: fileName,
         file_size: file.size,
         file_md5: fileMd5,
         chunk_size: CHUNK_SIZE,
@@ -362,11 +391,21 @@ export function useUploadTasks() {
 
       setUploadTaskFiles(prev => new Map(prev).set(task.upload_id, { file, type, title }));
 
+      // 替换临时任务为真实任务
+      setUploadTasks(prev => prev.filter(t => t.upload_id !== tempId).concat(task));
+
       onMessage?.('success', '上传任务已创建');
-      setUploadTasks(prev => [...prev, task]);
 
       performUpload(task, file, type, title, onMessage, onRefreshStagingMedias);
     } catch (err) {
+      // 失败时更新任务状态
+      setUploadTasks(prev =>
+        prev.map(t =>
+          t.upload_id === tempId
+            ? { ...t, status: 'failed' }
+            : t
+        )
+      );
       onMessage?.('error', err instanceof Error ? err.message : '创建上传任务失败');
     }
   }, [performUpload]);

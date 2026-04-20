@@ -27,7 +27,6 @@ export function UploadDialog({ open, onClose, onStartUpload }: UploadDialogProps
   const [mediaType, setMediaType] = useState<'movie' | 'tvshow'>('movie');
   const [mediaTitle, setMediaTitle] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [calculatingMd5, setCalculatingMd5] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -46,13 +45,8 @@ export function UploadDialog({ open, onClose, onStartUpload }: UploadDialogProps
   const handleStartUpload = async () => {
     if (!selectedFile) return;
 
-    try {
-      setCalculatingMd5(true);
-      await onStartUpload(selectedFile, mediaType, mediaTitle);
-      handleClose();
-    } finally {
-      setCalculatingMd5(false);
-    }
+    await onStartUpload(selectedFile, mediaType, mediaTitle);
+    handleClose();
   };
 
   const handleClose = () => {
@@ -156,8 +150,8 @@ export function UploadDialog({ open, onClose, onStartUpload }: UploadDialogProps
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>取消</Button>
-        <Button onClick={handleStartUpload} variant="contained" disabled={!selectedFile || calculatingMd5}>
-          {calculatingMd5 ? '计算中...' : '开始上传'}
+        <Button onClick={handleStartUpload} variant="contained" disabled={!selectedFile}>
+          开始上传
         </Button>
       </DialogActions>
     </Dialog>
