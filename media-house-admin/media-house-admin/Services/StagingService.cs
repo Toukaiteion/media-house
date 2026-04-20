@@ -113,14 +113,16 @@ public class StagingService(
         using var fileStream = new FileStream(destFile, FileMode.Create, FileAccess.Write);
         await imageData.CopyToAsync(fileStream);
 
-        media.PosterPath = destFile;
+        // 创建 media_imgs 记录并使用 url_name
+        var urlName = await CreateMediaImgRecordAsync(destFile, "poster");
+        media.PosterPath = urlName;
         media.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Uploaded poster for staging media {StagingId}", id);
 
-        return destFile;
+        return urlName;
     }
 
     public async Task<string?> UploadFanartAsync(string id, Stream imageData, string fileName)
@@ -135,14 +137,16 @@ public class StagingService(
         using var fileStream = new FileStream(destFile, FileMode.Create, FileAccess.Write);
         await imageData.CopyToAsync(fileStream);
 
-        media.FanartPath = destFile;
+        // 创建 media_imgs 记录并使用 url_name
+        var urlName = await CreateMediaImgRecordAsync(destFile, "fanart");
+        media.FanartPath = urlName;
         media.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Uploaded fanart for staging {StagingId}", id);
 
-        return destFile;
+        return urlName;
     }
 
     public async Task<string?> UploadScreenshotAsync(string id, Stream imageData, string fileName)
@@ -159,16 +163,19 @@ public class StagingService(
         using var fileStream = new FileStream(destFile, FileMode.Create, FileAccess.Write);
         await imageData.CopyToAsync(fileStream);
 
+        // 创建 media_imgs 记录并使用 url_name
+        var urlName = await CreateMediaImgRecordAsync(destFile, "screenshot");
+
         media.ScreenshotsPath = string.IsNullOrEmpty(media.ScreenshotsPath)
-            ? destFile
-            : media.ScreenshotsPath + "," + destFile;
+            ? urlName
+            : media.ScreenshotsPath + "," + urlName;
 
         media.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Uploaded screenshot for staging {StagingId}", id);
 
-        return destFile;
+        return urlName;
     }
 
     public async Task<bool> DeleteStagingMediaAsync(string id)
@@ -266,7 +273,9 @@ public class StagingService(
                     var posterPath = Path.Combine(sourceDir, posterName ?? "poster.jpg");
                     if (File.Exists(posterPath) && !string.IsNullOrEmpty(posterName))
                     {
-                        request.PosterPath = posterPath;
+                        // 先存入 media_imgs 表，然后返回 url_name
+                        var urlName = await CreateMediaImgRecordAsync(posterPath, "poster");
+                        request.PosterPath = urlName;
                     }
                 }
                 if (createdRoot.TryGetProperty("fanart", out var fanartElement) && fanartElement.ValueKind == JsonValueKind.String)
@@ -275,7 +284,9 @@ public class StagingService(
                     var fanartPath = Path.Combine(sourceDir, fanartName ?? "fanart.jpg");
                     if (File.Exists(fanartPath) && !string.IsNullOrEmpty(fanartName))
                     {
-                        request.FanartPath = fanartPath;
+                        // 先存入 media_imgs 表，然后返回 url_name
+                        var urlName = await CreateMediaImgRecordAsync(fanartPath, "fanart");
+                        request.FanartPath = urlName;
                     }
                 }
                 if (createdRoot.TryGetProperty("thumb", out var thumbElement) && thumbElement.ValueKind == JsonValueKind.String)
@@ -284,7 +295,9 @@ public class StagingService(
                     var thumbPath = Path.Combine(sourceDir, thumbName ?? "thumb.jpg");
                     if (File.Exists(thumbPath) && !string.IsNullOrEmpty(thumbName))
                     {
-                        request.ThumbPath = thumbPath;
+                        // 先存入 media_imgs 表，然后返回 url_name
+                        var urlName = await CreateMediaImgRecordAsync(thumbPath, "thumb");
+                        request.ThumbPath = urlName;
                     }
                 }
                 if (createdRoot.TryGetProperty("screenshots", out var extrafanartElement) && extrafanartElement.ValueKind == JsonValueKind.Array)
@@ -298,7 +311,9 @@ public class StagingService(
                             var extraPath = Path.Combine(sourceDir, extraName ?? "extrafanart.jpg");
                             if (File.Exists(extraPath) && !string.IsNullOrEmpty(extraName))
                             {
-                                extrafanartPaths.Add(extraPath);
+                                // 先存入 media_imgs 表，然后返回 url_name
+                                var urlName = await CreateMediaImgRecordAsync(extraPath, "screenshot");
+                                extrafanartPaths.Add(urlName);
                             }
                         }
                     }
@@ -387,16 +402,14 @@ public class StagingService(
             }
         }
 
-        // 生成图片 URL（加密真实路径作为 url_name）
-        var posterPath = string.IsNullOrEmpty(media.PosterPath) ? null : $"/api/staging/{media.Id}/image?url_name={CryptoHelper.Encrypt(media.PosterPath)}";
-        var fanartPath = string.IsNullOrEmpty(media.FanartPath) ? null : $"/api/staging/{media.Id}/image?url_name={CryptoHelper.Encrypt(media.FanartPath)}";
-        var thumbPath = string.IsNullOrEmpty(media.ThumbPath) ? null : $"/api/staging/{media.Id}/image?url_name={CryptoHelper.Encrypt(media.ThumbPath)}";
+        // 使用 url_name 生成图片 URL
+        var posterPath = string.IsNullOrEmpty(media.PosterPath) ? null : $"/api/media/image/{media.PosterPath}";
+        var fanartPath = string.IsNullOrEmpty(media.FanartPath) ? null : $"/api/media/image/{media.FanartPath}";
+        var thumbPath = string.IsNullOrEmpty(media.ThumbPath) ? null : $"/api/media/image/{media.ThumbPath}";
         List<string>? screenshots = null;
         if (!string.IsNullOrEmpty(media.ScreenshotsPath))
         {
-            screenshots = media.ScreenshotsPath.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(s => $"/api/staging/{media.Id}/image?url_name={CryptoHelper.Encrypt(s)}")
-                .ToList();
+            screenshots = [.. media.ScreenshotsPath.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => $"/api/media/image/{s}")];
         }
 
         return new StagingMediaDto
@@ -425,5 +438,45 @@ public class StagingService(
         };
     }
 
+
+    /// <summary>
+    /// 创建 media_imgs 记录并返回 url_name
+    /// </summary>
+    /// <param name="filePath">图片文件路径</param>
+    /// <param name="type">图片类型（poster, thumb, fanart, screenshot）</param>
+    /// <returns>url_name</returns>
+    private async Task<string> CreateMediaImgRecordAsync(string filePath, string type)
+    {
+        var urlName = MediaUtils.GenerateUrlNameFromPath(filePath);
+        var fileInfo = new FileInfo(filePath);
+
+        var mediaImg = new MediaImgs
+        {
+            MediaId = 0, // 暂存媒体，media_id 设为 0 或 null（根据数据库设计）
+            UrlName = urlName,
+            Name = Path.GetFileNameWithoutExtension(filePath),
+            Path = filePath,
+            FileName = Path.GetFileName(filePath),
+            Extension = Path.GetExtension(filePath).TrimStart('.'),
+            Type = type,
+            SizeBytes = fileInfo.Length,
+            CreateTime = DateTime.UtcNow,
+            UpdateTime = DateTime.UtcNow
+        };
+
+        // 检查是否已存在相同路径的记录
+        var existing = await _context.MediaImgs.FirstOrDefaultAsync(m => m.Path == filePath);
+        if (existing == null)
+        {
+            _context.MediaImgs.Add(mediaImg);
+            await _context.SaveChangesAsync();
+        }
+        else
+        {
+            urlName = existing.UrlName;
+        }
+
+        return urlName;
+    }
 
 }

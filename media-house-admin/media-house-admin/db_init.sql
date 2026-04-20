@@ -345,10 +345,12 @@ CREATE INDEX IF NOT EXISTS idx_staging_medias_upload_task_id ON staging_medias(u
 -- ==============================
 -- 外键约束
 -- ==============================
+DROP TABLE system_logs;
 CREATE TABLE IF NOT EXISTS system_logs (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TIMESTAMP NOT NULL,
     message TEXT NOT NULL,
+	rendered_message TEXT,
     message_template TEXT NOT NULL,
     level VARCHAR(32) NOT NULL,
     properties TEXT,
