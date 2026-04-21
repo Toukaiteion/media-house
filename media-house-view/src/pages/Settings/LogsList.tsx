@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import { LogEntryItem } from './LogEntryItem';
 import { api } from '../../services/api';
 import { type LogEntry, type LogsPageResponse, type LogsQueryParams } from '../../types';
+
+export interface LogsListRef {
+  refresh: () => Promise<void>;
+}
 
 interface LogsListProps {
   filters: LogsQueryParams;
@@ -13,19 +17,12 @@ interface LogsListProps {
 
 const DEFAULT_PAGE_SIZE = 50;
 
-export function LogsList({
-  filters,
-  autoRefresh = true,
-  refreshInterval = 5000,
-  newLogsCallback
-}: LogsListProps) {
+export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
+  const { filters, autoRefresh = false, refreshInterval = 5000, newLogsCallback } = props;
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
-  const [totalCount, setTotalCount] = useState(0);
-  const [lastLogId, setLastLogId] = useState<number | null>(null);
-  const [firstLogId, setFirstLogId] = useState<number | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   let refreshTimerRef: number = 0;
@@ -36,45 +33,60 @@ export function LogsList({
     }
   };
 
-  const fetchLogs = async (page = 1, append = false, initial = false) => {
+  const getMaxLogId = () => {
+    if (logs.length === 0) return null;
+    return Math.max(...logs.map(log => log.id));
+  };
+
+  const getMinLogId = () => {
+    if (logs.length === 0) return null;
+    return Math.min(...logs.map(log => log.id));
+  };
+
+  const fetchLogs = async (toId?: number, fromId?: number, limit?: number) => {
     try {
       setLoading(true);
       setError(null);
 
       const response: LogsPageResponse = await api.getLogs({
         ...filters,
-        page,
-        pageSize: DEFAULT_PAGE_SIZE,
+        toId,
+        fromId,
+        limit,
+        sortBy: 'id',
         sortOrder: 'desc'
       });
 
-      if (append) {
-        // append 模式：旧日志（页数更大的）追加到前面
-        setLogs(prev => [...response.items, ...prev]);
-      } {
-        setLogs(response.items);
-      }
-
-      setTotalCount(response.total_count);
-      setHasMore(page < response.total_pages);
-
       if (response.items.length > 0) {
-        // 记录最新的日志 ID（items[0] 是最新的）
-        const latestId = response.items[0]?.id;
-        if (latestId && (!lastLogId || latestId > lastLogId)) {
-          setLastLogId(latestId);
+        if (fromId) {
+          // 使用 fromId 时，返回的是比 fromId 大的日志（新日志），追加到末尾
+          setLogs(prev => [...prev, ...response.items]);
+          // 新日志到达时滚动到底部
+          setTimeout(scrollToBottom, 100);
+        } else if (toId) {
+          // 使用 toId 时，返回的是比 toId 小的日志（旧日志），追加到前面
+          setLogs(prev => [...response.items, ...prev]);
+        } else {
+          // 初次加载
+          setLogs(response.items);
+          setTimeout(scrollToBottom, 100);
         }
 
-        // 记录最旧的日志 ID（items[items.length - 1] 是最旧的）
-        const oldestId = response.items[response.items.length - 1]?.id;
-        if (oldestId && (!firstLogId || oldestId < firstLogId)) {
-          setFirstLogId(oldestId);
+        // 判断是否还有更多日志
+        setHasMore(response.items.length === (limit || DEFAULT_PAGE_SIZE));
+      } else {
+        // 没有新日志时，保持原状态
+        if (fromId) {
+          setHasMore(false);
         }
       }
 
-      if (initial) {
-        // 初次加载完成后，稍后滚动到底部
-        setTimeout(scrollToBottom, 100);
+      if (newLogsCallback && fromId && response.items.length > 0) {
+        const maxId = getMaxLogId();
+        const newMaxId = Math.max(...response.items.map(log => log.id));
+        if (maxId && newMaxId > maxId) {
+          newLogsCallback(newMaxId - maxId);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取日志失败');
@@ -83,45 +95,31 @@ export function LogsList({
     }
   };
 
-  const loadMore = () => {
-    const currentPage = Math.floor(logs.length / DEFAULT_PAGE_SIZE) + 1;
-    fetchLogs(currentPage, true);
+  // 加载更早的日志（向上滚动时）
+  const loadOlderLogs = () => {
+    const minId = getMinLogId();
+    if (minId === null || !hasMore || loading) return;
+    fetchLogs(minId, undefined, 100);
   };
 
+  // 刷新：加载最新的日志
   const refresh = async () => {
-    await fetchLogs(1, false, true);
+    const maxId = getMaxLogId();
+    // 使用 fromId 参数获取比当前最大 ID 更大的日志（新日志）
+    await fetchLogs(undefined, maxId || undefined, 100);
   };
 
+  // 检查新日志（自动刷新）
   const checkForNewLogs = async () => {
-    try {
-      const response: LogsPageResponse = await api.getLogs({
-        ...filters,
-        page: 1,
-        pageSize: 10,
-        sortOrder: 'desc'
-      });
-
-      if (response.items.length > 0 && lastLogId && response.items[0].id > lastLogId) {
-        const newCount = response.items[0].id - lastLogId;
-        if (newLogsCallback) {
-          newLogsCallback(newCount);
-        }
-
-        const newLogs = response.items.filter(log => log.id > (lastLogId || 0));
-        // 新日志追加到数组末尾（因为后面会 reverse 渲染）
-        setLogs(prev => [...prev, ...newLogs]);
-        setLastLogId(response.items[0].id);
-
-        // 新日志到达时滚动到底部
-        setTimeout(scrollToBottom, 100);
-      }
-    } catch (err) {
-      console.error('检查新日志失败:', err);
-    }
+    const maxId = getMaxLogId();
+    if (maxId === null) return;
+    // 使用 fromId 参数获取新日志
+    await fetchLogs(undefined, maxId, 100);
   };
 
   useEffect(() => {
-    refresh();
+    // 初次加载
+    fetchLogs(undefined, undefined, DEFAULT_PAGE_SIZE);
 
     if (autoRefresh) {
       refreshTimerRef = setInterval(checkForNewLogs, refreshInterval);
@@ -134,13 +132,17 @@ export function LogsList({
     };
   }, [filters, autoRefresh, refreshInterval]);
 
+  useImperativeHandle(ref, () => ({
+    refresh
+  }));
+
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.target as HTMLDivElement;
     const { scrollTop } = target;
 
     // 滚动到顶部时加载更多历史日志
-    if (scrollTop === 0 && hasMore && !loading) {
-      loadMore();
+    if (scrollTop === 0) {
+      loadOlderLogs();
     }
   };
 
@@ -195,18 +197,10 @@ export function LogsList({
           {[...logs].reverse().map((log, index) => (
             <LogEntryItem key={log.id} log={log} index={index} />
           ))}
-
-          {!hasMore && logs.length > 0 && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                已显示全部 {totalCount} 条日志
-              </Typography>
-            </Box>
-          )}
         </>
       )}
     </Box>
   );
-}
+});
 
-export { type LogsListProps };
+LogsList.displayName = 'LogsList';

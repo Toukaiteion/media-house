@@ -897,7 +897,11 @@ class ApiClient {
     if (params.message) queryParams.append('message', params.message);
     if (params.machineName) queryParams.append('machineName', params.machineName);
     if (params.hasException !== undefined) queryParams.append('hasException', params.hasException.toString());
+    if (params.sortBy) queryParams.append('sortBy', params.sortBy);
     if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
+    if (params.fromId !== undefined) queryParams.append('fromId', params.fromId.toString());
+    if (params.toId !== undefined) queryParams.append('toId', params.toId.toString());
+    if (params.limit !== undefined) queryParams.append('limit', params.limit.toString());
 
     const queryString = queryParams.toString();
     return this.request<LogsPageResponse>(`/logs${queryString ? `?${queryString}` : ''}`);

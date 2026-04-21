@@ -786,7 +786,11 @@ export interface LogsQueryParams {
   message?: string;
   machineName?: string;
   hasException?: boolean;
+  sortBy?: 'id' | 'timestamp';
   sortOrder?: 'asc' | 'desc';
+  fromId?: number;
+  toId?: number;
+  limit?: number;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Container,
@@ -9,7 +9,6 @@ import {
   Alert as MuiAlert,
   Switch,
   FormControlLabel,
-  Chip,
   Button,
   Dialog,
   DialogTitle,
@@ -21,9 +20,9 @@ import {
   MenuItem
 } from '@mui/material';
 import { LogsFilterBar } from './LogsFilterBar';
-import { LogsList } from './LogsList';
+import { LogsList, type LogsListRef } from './LogsList';
 import { api } from '../../services/api';
-import { type LogsQueryParams, type LogsStats, type LogLevel, type LogLevelConfig } from '../../types';
+import { type LogsQueryParams, type LogLevel, type LogLevelConfig } from '../../types';
 
 const LOG_LEVELS: LogLevel[] = ['Debug', 'Information', 'Warning', 'Error', 'Fatal'];
 
@@ -31,10 +30,8 @@ export function LogsManagerPage() {
   const [filters, setFilters] = useState<LogsQueryParams>({
     sortOrder: 'desc'
   });
-  const [stats, setStats] = useState<LogsStats | null>(null);
   const [logLevelConfig, setLogLevelConfig] = useState<LogLevelConfig | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [notification, setNotification] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
@@ -42,20 +39,11 @@ export function LogsManagerPage() {
   });
   const [levelDialogOpen, setLevelDialogOpen] = useState(false);
   const [selectedLevel, setSelectedLevel] = useState<LogLevel | ''>('');
+  const logsListRef = useRef<LogsListRef | null>(null);
 
   useEffect(() => {
-    loadStats();
     loadLogLevelConfig();
   }, []);
-
-  const loadStats = async () => {
-    try {
-      const data = await api.getLogsStats();
-      setStats(data);
-    } catch (err) {
-      console.error('加载统计失败:', err);
-    }
-  };
 
   const loadLogLevelConfig = async () => {
     try {
@@ -91,12 +79,6 @@ export function LogsManagerPage() {
     }
   };
 
-  const handleRefresh = async () => {
-    setLoading(true);
-    await loadStats();
-    setLoading(false);
-  };
-
   const handleClearFilters = () => {
     setFilters({
       sortOrder: 'desc'
@@ -114,7 +96,6 @@ export function LogsManagerPage() {
         message: `收到 ${count} 条新日志`,
         severity: 'success'
       });
-      loadStats();
     }
   };
 
@@ -122,9 +103,10 @@ export function LogsManagerPage() {
     setNotification({ ...notification, open: false });
   };
 
-  const getTotalLogs = () => {
-    if (!stats) return 0;
-    return Object.values(stats).reduce((sum, count) => sum + count, 0);
+  const handleRefresh = async () => {
+    if (logsListRef.current) {
+      await logsListRef.current.refresh();
+    }
   };
 
   return (
@@ -143,12 +125,19 @@ export function LogsManagerPage() {
             <Typography variant="body2" color="text.secondary">
               当前日志级别:
             </Typography>
-            <Chip
-              label={logLevelConfig.Default}
-              size="small"
-              color="primary"
-              variant="outlined"
-            />
+            <Box
+              component="span"
+              sx={{
+                px: 2,
+                py: 0.5,
+                border: '1px solid',
+                borderColor: 'primary.main',
+                borderRadius: 1,
+                fontSize: '0.75rem'
+              }}
+            >
+              {logLevelConfig.Default}
+            </Box>
             <Button
               variant="outlined"
               size="small"
@@ -165,15 +154,13 @@ export function LogsManagerPage() {
         onFiltersChange={handleFiltersChange}
         onRefresh={handleRefresh}
         onClearFilters={handleClearFilters}
-        stats={stats || undefined}
-        loading={loading}
       />
 
       <Paper
         sx={{
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(100vh - 400px)',
+          height: 'calc(100vh - 300px)',
           minHeight: 400,
           overflow: 'hidden'
         }}
@@ -184,40 +171,6 @@ export function LogsManagerPage() {
               <Typography variant="subtitle2">
                 日志列表
               </Typography>
-
-              {stats && (
-                <Stack direction="row" spacing={1}>
-                  <Chip
-                    label={`总计: ${getTotalLogs()}`}
-                    size="small"
-                    variant="outlined"
-                  />
-                  <Chip
-                    label={`Error: ${stats.Error}`}
-                    size="small"
-                    color="error"
-                    variant="outlined"
-                  />
-                  <Chip
-                    label={`Warning: ${stats.Warning}`}
-                    size="small"
-                    color="warning"
-                    variant="outlined"
-                  />
-                  <Chip
-                    label={`Info: ${stats.Information}`}
-                    size="small"
-                    color="info"
-                    variant="outlined"
-                  />
-                  <Chip
-                    label={`Debug: ${stats.Debug}`}
-                    size="small"
-                    color="default"
-                    variant="outlined"
-                  />
-                </Stack>
-              )}
             </Stack>
 
             <FormControlLabel
@@ -234,6 +187,7 @@ export function LogsManagerPage() {
         </Box>
 
         <LogsList
+          ref={logsListRef}
           filters={filters}
           autoRefresh={autoRefresh}
           refreshInterval={5000}

@@ -7,7 +7,6 @@ import {
   InputLabel,
   Button,
   IconButton,
-  Chip,
   Stack,
   Typography,
   Tooltip
@@ -20,7 +19,6 @@ interface LogsFilterBarProps {
   onFiltersChange: (filters: LogsQueryParams) => void;
   onRefresh: () => void;
   onClearFilters: () => void;
-  stats?: Record<string, number>;
   loading?: boolean;
 }
 
@@ -31,7 +29,6 @@ export function LogsFilterBar({
   onFiltersChange,
   onRefresh,
   onClearFilters,
-  stats,
   loading
 }: LogsFilterBarProps) {
   const hasActiveFilters = !!(
@@ -104,7 +101,7 @@ export function LogsFilterBar({
               <MenuItem value="">全部</MenuItem>
               {LOG_LEVELS.map((level) => (
                 <MenuItem key={level} value={level}>
-                  {stats?.[level] ? `${level} (${stats[level]})` : level}
+                  {level}
                 </MenuItem>
               ))}
             </Select>
@@ -167,7 +164,6 @@ export function LogsFilterBar({
             color="error"
             size="small"
             onClick={handleHasExceptionToggle}
-            startIcon={<Chip label={stats?.Error || 0} size="small" />}
           >
             仅显示异常
           </Button>

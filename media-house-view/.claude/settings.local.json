@@ -5,7 +5,14 @@
       "Bash(检查 src:*)",
       "Bash(npx tsc:*)",
       "Bash(npm install:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(/tmp/fix_logs_list.sed:*)",
+      "Bash(sed -i -f /tmp/fix_logs_list.sed src/pages/Settings/LogsList.tsx)",
+      "Bash(src/pages/Settings/LogsList.tsx.tmp)",
+      "Bash(python3:*)",
+      "Bash(perl -i -pe 's/useImperativeHandle/useImperativeHandle/g' src/pages/Settings/LogsList.tsx)",
+      "Bash(src/pages/Settings/LogsList.tsx src/pages/Settings/LogsManagerPage.tsx)",
+      "Bash(src/pages/Settings/LogsList.tsx.bak src/pages/Settings/LogsList.tsx)"
     ]
   }
 }
