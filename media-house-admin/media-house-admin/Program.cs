@@ -7,9 +7,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Quartz;
 using Serilog;
+using Serilog.Core;
+using Serilog.Events;
 using System.Text;
 
-Serilog.Debugging.SelfLog.Enable(msg => Console.WriteLine(msg));
 var builder = WebApplication.CreateBuilder(args);
 
 // Add SQLite database
@@ -40,17 +41,21 @@ builder.Services.AddScoped<IPublishService, PublishService>();
 
 // Register event bus (singleton for app-wide event handling)
 builder.Services.AddSingleton<IEventBus, EventBus>();
-builder.Services.AddScoped<ILogService, LogService>();
 
-// Register hosted services
-builder.Services.AddHostedService<StagingMetadataHandler>();
+// Register logging level switch for dynamic log level control
+var levelSwitchConfig = new LoggingLevelSwitchConfig();
+builder.Services.AddSingleton(levelSwitchConfig);
+builder.Services.AddScoped<ILogService, LogService>();
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
+    .MinimumLevel.ControlledBy(levelSwitchConfig.LevelSwitch)
     .Enrich.FromLogContext()
     .Enrich.WithProperty("Application", "MediaHouse")
     .CreateLogger();
+
+builder.Services.AddHostedService<StagingMetadataHandler>();
 
 builder.Host.UseSerilog();
 

@@ -8,4 +8,6 @@ public interface ILogService
     Task<int> GetLogCountAsync(LogQueryDto query);
     Task<bool> DeleteLogsAsync(DateTime beforeDate);
     Task<Dictionary<string, int>> GetLogLevelStatsAsync();
+    Task<Dictionary<string, string>> GetMinimumLevelsAsync();
+    Task<bool> SetMinimumLevelAsync(string level);
 }

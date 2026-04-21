@@ -65,4 +65,47 @@ public class LogsController(ILogService logService, ILogger<LogsController> logg
             return StatusCode(500, new { error = "Failed to delete logs" });
         }
     }
+
+    /// <summary>
+    /// 获取当前日志级别配置
+    /// </summary>
+    [HttpGet("levels")]
+    public async Task<ActionResult<Dictionary<string, string>>> GetLevels()
+    {
+        try
+        {
+            var levels = await logService.GetMinimumLevelsAsync();
+            return Ok(levels);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error fetching log levels");
+            return StatusCode(500, new { error = "Failed to fetch log levels" });
+        }
+    }
+
+    /// <summary>
+    /// 设置默认日志级别
+    /// </summary>
+    [HttpPut("level")]
+    public async Task<ActionResult> SetLevel([FromBody] SetLogLevelDto dto)
+    {
+        try
+        {
+            var success = await logService.SetMinimumLevelAsync(dto.Level);
+            if (!success)
+                return BadRequest(new { error = $"Invalid log level: {dto.Level}. Valid levels: Verbose, Debug, Information, Warning, Error, Fatal" });
+            return Ok(new { message = $"Log level set to {dto.Level}" });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error setting log level");
+            return StatusCode(500, new { error = "Failed to set log level" });
+        }
+    }
+}
+
+public class SetLogLevelDto
+{
+    public string Level { get; set; } = string.Empty;
 }
