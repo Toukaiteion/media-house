@@ -11,5 +11,9 @@ public class LogQueryDto
     public DateTime? StartTime { get; set; }  // 开始时间
     public DateTime? EndTime { get; set; }    // 结束时间
     public bool? HasException { get; set; }  // 是否只查询有异常的日志
-    public string? SortOrder { get; set; }   // asc 或 desc，默认 desc
+    public string? SortBy { get; set; }      // 排序字段：id、timestamp（默认 timestamp）
+    public string? SortOrder { get; set; }   // 排序方向：asc 或 desc（默认 desc）
+    public int? FromId { get; set; }        // 从指定 ID 开始查询（大于此 ID）
+    public int? ToId { get; set; }          // 查询到指定 ID 结束（小于此 ID）
+    public int? Limit { get; set; }          // 查询条数限制（与 Page/PageSize 互斥）
 }

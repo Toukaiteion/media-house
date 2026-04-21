@@ -25,11 +25,18 @@ export function LogsList({
   const [hasMore, setHasMore] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const [lastLogId, setLastLogId] = useState<number | null>(null);
+  const [firstLogId, setFirstLogId] = useState<number | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   let refreshTimerRef: number = 0;
 
-  const fetchLogs = async (page = 1, append = false) => {
+  const scrollToBottom = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  };
+
+  const fetchLogs = async (page = 1, append = false, initial = false) => {
     try {
       setLoading(true);
       setError(null);
@@ -42,17 +49,32 @@ export function LogsList({
       });
 
       if (append) {
+        // append 模式：旧日志（页数更大的）追加到前面
         setLogs(prev => [...response.items, ...prev]);
-      } else {
+      } {
         setLogs(response.items);
       }
 
       setTotalCount(response.total_count);
       setHasMore(page < response.total_pages);
-      setLastLogId(response.items[0]?.id || null);
 
-      if (newLogsCallback && lastLogId && response.items[0]?.id > lastLogId) {
-        newLogsCallback(response.items[0].id - lastLogId);
+      if (response.items.length > 0) {
+        // 记录最新的日志 ID（items[0] 是最新的）
+        const latestId = response.items[0]?.id;
+        if (latestId && (!lastLogId || latestId > lastLogId)) {
+          setLastLogId(latestId);
+        }
+
+        // 记录最旧的日志 ID（items[items.length - 1] 是最旧的）
+        const oldestId = response.items[response.items.length - 1]?.id;
+        if (oldestId && (!firstLogId || oldestId < firstLogId)) {
+          setFirstLogId(oldestId);
+        }
+      }
+
+      if (initial) {
+        // 初次加载完成后，稍后滚动到底部
+        setTimeout(scrollToBottom, 100);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取日志失败');
@@ -67,7 +89,7 @@ export function LogsList({
   };
 
   const refresh = async () => {
-    await fetchLogs(1, false);
+    await fetchLogs(1, false, true);
   };
 
   const checkForNewLogs = async () => {
@@ -86,8 +108,12 @@ export function LogsList({
         }
 
         const newLogs = response.items.filter(log => log.id > (lastLogId || 0));
-        setLogs(prev => [...newLogs, ...prev]);
+        // 新日志追加到数组末尾（因为后面会 reverse 渲染）
+        setLogs(prev => [...prev, ...newLogs]);
         setLastLogId(response.items[0].id);
+
+        // 新日志到达时滚动到底部
+        setTimeout(scrollToBottom, 100);
       }
     } catch (err) {
       console.error('检查新日志失败:', err);
@@ -110,13 +136,11 @@ export function LogsList({
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.target as HTMLDivElement;
-    const { scrollTop, scrollHeight, clientHeight } = target;
+    const { scrollTop } = target;
 
-    if (scrollTop > 0 && hasMore && !loading) {
-      const threshold = 100;
-      if (scrollHeight - scrollTop - clientHeight < threshold) {
-        loadMore();
-      }
+    // 滚动到顶部时加载更多历史日志
+    if (scrollTop === 0 && hasMore && !loading) {
+      loadMore();
     }
   };
 
@@ -156,20 +180,21 @@ export function LogsList({
           {hasMore && !loading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                向上滚动加载更多
+                向下滚动加载更多
               </Typography>
             </Box>
           )}
 
-          {logs.map((log, index) => (
-            <LogEntryItem key={log.id} log={log} index={index} />
-          ))}
-
-          {loading && (
+          {loading && logs.length > 0 && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <CircularProgress size={24} />
             </Box>
           )}
+
+          {/* 倒序渲染：新日志在底部 */}
+          {[...logs].reverse().map((log, index) => (
+            <LogEntryItem key={log.id} log={log} index={index} />
+          ))}
 
           {!hasMore && logs.length > 0 && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>

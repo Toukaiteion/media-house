@@ -55,6 +55,9 @@ import type {
   LogsStats,
   DeleteLogsResponse,
   LogsQueryParams,
+  LogLevelConfig,
+  SetLogLevelResponse,
+  LogLevel,
 } from '../types';
 
 const API_BASE_URL = '/api';
@@ -917,7 +920,7 @@ class ApiClient {
   /**
    * 设置日志级别
    */
-  async setLogLevel(level: LogLevel): Promise<SetLogLevelResponse> {
+  async setLogLevel(level: LogLevel | string): Promise<SetLogLevelResponse> {
     return this.request<SetLogLevelResponse>('/logs/level', {
       method: 'PUT',
       body: JSON.stringify({ level }),

@@ -46,20 +46,37 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
             dbQuery = dbQuery.Where(l => !string.IsNullOrEmpty(l.Exception));
         }
 
+        // 按 ID 范围筛选
+        if (query.FromId.HasValue)
+        {
+            dbQuery = dbQuery.Where(l => l.Id > query.FromId.Value);
+        }
+        if (query.ToId.HasValue)
+        {
+            dbQuery = dbQuery.Where(l => l.Id < query.ToId.Value);
+        }
+
         // 总数
         var totalCount = await dbQuery.CountAsync();
 
         // 排序
+        var sortBy = (query.SortBy?.ToLower() ?? "timestamp");
         var isSortAsc = (query.SortOrder?.ToLower() ?? "desc") == "asc";
-        var sortedQuery = isSortAsc
-            ? dbQuery.OrderBy(l => l.Timestamp)
-            : dbQuery.OrderByDescending(l => l.Timestamp);
 
-        // 分页
-        var items = await sortedQuery
-            .Skip((query.Page - 1) * query.PageSize)
-            .Take(query.PageSize)
-            .ToListAsync();
+        IQueryable<SystemLog> sortedQuery = sortBy switch
+        {
+            "id" => isSortAsc
+                ? dbQuery.OrderBy(l => l.Id)
+                : dbQuery.OrderByDescending(l => l.Id),
+            "timestamp" or _ => isSortAsc
+                ? dbQuery.OrderBy(l => l.Timestamp)
+                : dbQuery.OrderByDescending(l => l.Timestamp)
+        };
+
+        // 分页或 Limit 查询
+        var items = query.Limit.HasValue
+            ? await sortedQuery.Take(query.Limit.Value).ToListAsync()
+            : await sortedQuery.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).ToListAsync();
 
         // 映射到 DTO
         var dtos = items.Select(MapToDto).ToList();
@@ -96,7 +113,7 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
     {
         var dbQuery = context.SystemLogs.AsQueryable();
 
-        // 应用与 GetLogsAsync 相同的筛选条件
+        // 应用与 GetLogsAsync 相相的筛选条件
         if (!string.IsNullOrEmpty(query.Level))
         {
             var levels = query.Level.Split(',', StringSplitOptions.RemoveEmptyEntries)
@@ -122,6 +139,16 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
         if (query.HasException == true)
         {
             dbQuery = dbQuery.Where(l => !string.IsNullOrEmpty(l.Exception));
+        }
+
+        // 按 ID 范围筛选
+        if (query.FromId.HasValue)
+        {
+            dbQuery = dbQuery.Where(l => l.Id > query.FromId.Value);
+        }
+        if (query.ToId.HasValue)
+        {
+            dbQuery = dbQuery.Where(l => l.Id < query.ToId.Value);
         }
 
         var items = await dbQuery.ToListAsync();

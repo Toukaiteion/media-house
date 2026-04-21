@@ -770,6 +770,7 @@ export interface LogsStats {
   Warning: number;
   Error: number;
   Debug: number;
+  [key: string]: number;
 }
 
 /**

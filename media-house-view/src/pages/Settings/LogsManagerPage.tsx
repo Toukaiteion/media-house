@@ -9,18 +9,30 @@ import {
   Alert as MuiAlert,
   Switch,
   FormControlLabel,
-  Chip
+  Chip,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import { LogsFilterBar } from './LogsFilterBar';
 import { LogsList } from './LogsList';
 import { api } from '../../services/api';
-import { type LogsQueryParams, type LogsStats } from '../../types';
+import { type LogsQueryParams, type LogsStats, type LogLevel, type LogLevelConfig } from '../../types';
+
+const LOG_LEVELS: LogLevel[] = ['Debug', 'Information', 'Warning', 'Error', 'Fatal'];
 
 export function LogsManagerPage() {
   const [filters, setFilters] = useState<LogsQueryParams>({
     sortOrder: 'desc'
   });
   const [stats, setStats] = useState<LogsStats | null>(null);
+  const [logLevelConfig, setLogLevelConfig] = useState<LogLevelConfig | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
@@ -28,9 +40,12 @@ export function LogsManagerPage() {
     message: '',
     severity: 'success'
   });
+  const [levelDialogOpen, setLevelDialogOpen] = useState(false);
+  const [selectedLevel, setSelectedLevel] = useState<LogLevel | ''>('');
 
   useEffect(() => {
     loadStats();
+    loadLogLevelConfig();
   }, []);
 
   const loadStats = async () => {
@@ -39,6 +54,40 @@ export function LogsManagerPage() {
       setStats(data);
     } catch (err) {
       console.error('加载统计失败:', err);
+    }
+  };
+
+  const loadLogLevelConfig = async () => {
+    try {
+      const data = await api.getLogLevelConfig();
+      setLogLevelConfig(data);
+    } catch (err) {
+      console.error('加载日志级别配置失败:', err);
+    }
+  };
+
+  const handleOpenLevelDialog = () => {
+    setSelectedLevel(logLevelConfig?.Default as LogLevel || '');
+    setLevelDialogOpen(true);
+  };
+
+  const handleSetLogLevel = async () => {
+    if (!selectedLevel) return;
+    try {
+      await api.setLogLevel(selectedLevel);
+      setNotification({
+        open: true,
+        message: `日志级别已设置为 ${selectedLevel}`,
+        severity: 'success'
+      });
+      await loadLogLevelConfig();
+      setLevelDialogOpen(false);
+    } catch (err) {
+      setNotification({
+        open: true,
+        message: err instanceof Error ? err.message : '设置日志级别失败',
+        severity: 'error'
+      });
     }
   };
 
@@ -80,13 +129,35 @@ export function LogsManagerPage() {
 
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" gutterBottom>
-          系统日志
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          查看和管理系统运行日志，支持筛选、搜索和自动刷新
-        </Typography>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            系统日志
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            查看和管理系统运行日志，支持筛选、搜索和自动刷新
+          </Typography>
+        </Box>
+        {logLevelConfig && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              当前日志级别:
+            </Typography>
+            <Chip
+              label={logLevelConfig.Default}
+              size="small"
+              color="primary"
+              variant="outlined"
+            />
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleOpenLevelDialog}
+            >
+              设置
+            </Button>
+          </Box>
+        )}
       </Box>
 
       <LogsFilterBar
@@ -184,6 +255,43 @@ export function LogsManagerPage() {
           {notification.message}
         </MuiAlert>
       </Snackbar>
+
+      <Dialog
+        open={levelDialogOpen}
+        onClose={() => setLevelDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>设置日志级别</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth>
+            <InputLabel>日志级别</InputLabel>
+            <Select
+              value={selectedLevel}
+              label="日志级别"
+              onChange={(e) => setSelectedLevel(e.target.value as LogLevel)}
+            >
+              {LOG_LEVELS.map((level) => (
+                <MenuItem key={level} value={level}>
+                  {level}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLevelDialogOpen(false)}>
+            取消
+          </Button>
+          <Button
+            onClick={handleSetLogLevel}
+            variant="contained"
+            disabled={!selectedLevel}
+          >
+            确定
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }
