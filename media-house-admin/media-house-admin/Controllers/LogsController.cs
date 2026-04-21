@@ -47,24 +47,6 @@ public class LogsController(ILogService logService, ILogger<LogsController> logg
     }
 
     /// <summary>
-    /// 获取所有日志分类（SourceContext）
-    /// </summary>
-    [HttpGet("categories")]
-    public async Task<ActionResult<List<string>>> GetCategories()
-    {
-        try
-        {
-            var categories = await logService.GetCategoriesAsync();
-            return Ok(categories);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error fetching log categories");
-            return StatusCode(500, new { error = "Failed to fetch log categories" });
-        }
-    }
-
-    /// <summary>
     /// 删除指定日期之前的日志
     /// </summary>
     [HttpDelete]

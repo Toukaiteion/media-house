@@ -347,26 +347,3 @@ CREATE INDEX IF NOT EXISTS idx_upload_tasks_file_md5 ON upload_tasks(file_md5);
 CREATE INDEX IF NOT EXISTS idx_upload_tasks_created_at ON upload_tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_staging_medias_status ON staging_medias(status);
 CREATE INDEX IF NOT EXISTS idx_staging_medias_upload_task_id ON staging_medias(upload_task_id);
-
--- ==============================
--- 外键约束
--- ==============================
-DROP TABLE IF EXISTS system_logs;
-CREATE TABLE IF NOT EXISTS system_logs (
-    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp TIMESTAMP NOT NULL,
-    message TEXT NOT NULL,
-	rendered_message TEXT,
-    message_template TEXT NOT NULL,
-    level VARCHAR(32) NOT NULL,
-    properties TEXT,
-    exception TEXT,
-    source_context TEXT,
-    machine_name VARCHAR(128),
-    thread_id INTEGER,
-    application TEXT
-);
-
-CREATE INDEX IF NOT EXISTS IX_SystemLogs_Timestamp ON system_logs(timestamp);
-CREATE INDEX IF NOT EXISTS IX_SystemLogs_Level ON system_logs(level);
-CREATE INDEX IF NOT EXISTS IX_SystemLogs_SourceContext ON system_logs(source_context);

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MediaHouse.Services;
 
-public class LogService(MediaHouseDbContext context, ILogger<LogService> logger) : ILogService
+public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logger) : ILogService
 {
     public async Task<PagedResponseDto<SystemLogDto>> GetLogsAsync(LogQueryDto query)
     {
@@ -19,26 +19,6 @@ public class LogService(MediaHouseDbContext context, ILogger<LogService> logger)
                 .Select(l => l.Trim().ToLower())
                 .ToList();
             dbQuery = dbQuery.Where(l => levels.Contains(l.Level.ToLower()));
-        }
-
-        // 按分类（SourceContext）筛选
-        if (!string.IsNullOrEmpty(query.Category))
-        {
-            dbQuery = dbQuery.Where(l =>
-                (l.SourceContext != null && l.SourceContext.Contains(query.Category)) ||
-                (l.Properties != null && l.Properties.Contains(query.Category)));
-        }
-
-        // 按消息搜索
-        if (!string.IsNullOrEmpty(query.Message))
-        {
-            dbQuery = dbQuery.Where(l => l.Message.Contains(query.Message));
-        }
-
-        // 按机器名筛选
-        if (!string.IsNullOrEmpty(query.MachineName))
-        {
-            dbQuery = dbQuery.Where(l => l.MachineName == query.MachineName);
         }
 
         // 按时间范围筛选
@@ -96,23 +76,6 @@ public class LogService(MediaHouseDbContext context, ILogger<LogService> logger)
             dbQuery = dbQuery.Where(l => levels.Contains(l.Level.ToLower()));
         }
 
-        if (!string.IsNullOrEmpty(query.Category))
-        {
-            dbQuery = dbQuery.Where(l =>
-                (l.SourceContext != null && l.SourceContext.Contains(query.Category)) ||
-                (l.Properties != null && l.Properties.Contains(query.Category)));
-        }
-
-        if (!string.IsNullOrEmpty(query.Message))
-        {
-            dbQuery = dbQuery.Where(l => l.Message.Contains(query.Message));
-        }
-
-        if (!string.IsNullOrEmpty(query.MachineName))
-        {
-            dbQuery = dbQuery.Where(l => l.MachineName == query.MachineName);
-        }
-
         if (query.StartTime.HasValue)
         {
             dbQuery = dbQuery.Where(l => l.Timestamp >= query.StartTime.Value);
@@ -128,16 +91,6 @@ public class LogService(MediaHouseDbContext context, ILogger<LogService> logger)
         }
 
         return await dbQuery.CountAsync();
-    }
-
-    public async Task<List<string>> GetCategoriesAsync()
-    {
-        return await context.SystemLogs
-            .Where(l => !string.IsNullOrEmpty(l.SourceContext))
-            .Select(l => l.SourceContext!)
-            .Distinct()
-            .OrderBy(c => c)
-            .ToListAsync();
     }
 
     public async Task<bool> DeleteLogsAsync(DateTime beforeDate)
@@ -171,15 +124,9 @@ public class LogService(MediaHouseDbContext context, ILogger<LogService> logger)
         {
             Id = log.Id,
             Timestamp = log.Timestamp,
-            Message = log.Message,
-            MessageTemplate = log.MessageTemplate,
             Level = log.Level,
             Properties = log.Properties,
             Exception = log.Exception,
-            SourceContext = log.SourceContext,
-            MachineName = log.MachineName,
-            ThreadId = log.ThreadId,
-            Application = log.Application
         };
     }
 }

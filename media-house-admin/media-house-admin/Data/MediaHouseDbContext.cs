@@ -22,7 +22,6 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
     public DbSet<PluginConfig> PluginConfigs { get; set; }
     public DbSet<PluginExecutionLog> PluginExecutionLogs { get; set; }
     public DbSet<UploadTask> UploadTasks { get; set; }
-    public DbSet<SystemLog> SystemLogs { get; set; }
     public DbSet<StagingMedia> StagingMedias { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -209,18 +208,5 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
             .HasForeignKey(sm => sm.UploadTaskId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // SystemLogs configuration
-        modelBuilder.Entity<SystemLog>()
-            .ToTable("system_logs")
-            .HasKey(l => l.Id);
-
-        modelBuilder.Entity<SystemLog>()
-            .HasIndex(l => l.Timestamp);
-
-        modelBuilder.Entity<SystemLog>()
-            .HasIndex(l => l.Level);
-
-        modelBuilder.Entity<SystemLog>()
-            .HasIndex(l => l.SourceContext);
     }
 }
