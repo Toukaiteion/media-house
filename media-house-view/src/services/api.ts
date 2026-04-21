@@ -892,6 +892,7 @@ class ApiClient {
     if (params.endTime) queryParams.append('endTime', params.endTime);
     if (params.category) queryParams.append('category', params.category);
     if (params.message) queryParams.append('message', params.message);
+    if (params.machineName) queryParams.append('machineName', params.machineName);
     if (params.hasException !== undefined) queryParams.append('hasException', params.hasException.toString());
     if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
 
@@ -907,10 +908,20 @@ class ApiClient {
   }
 
   /**
-   * 获取日志分类列表
+   * 获取日志级别配置
    */
-  async getLogsCategories(): Promise<string[]> {
-    return this.request<string[]>('/logs/categories');
+  async getLogLevelConfig(): Promise<LogLevelConfig> {
+    return this.request<LogLevelConfig>('/logs/levels');
+  }
+
+  /**
+   * 设置日志级别
+   */
+  async setLogLevel(level: LogLevel): Promise<SetLogLevelResponse> {
+    return this.request<SetLogLevelResponse>('/logs/level', {
+      method: 'PUT',
+      body: JSON.stringify({ level }),
+    });
   }
 
   /**

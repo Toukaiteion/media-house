@@ -102,7 +102,7 @@ interface LogEntryItemProps {
 export function LogEntryItem({ log }: LogEntryItemProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const hasDetails = log.exception || log.properties || log.sourceContext || log.messageTemplate;
+  const hasDetails = log.exception || log.properties || log.sourceContext || log.messageTemplate || log.key_id || log.event_id;
   const timestamp = new Date(log.timestamp).toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -266,6 +266,22 @@ export function LogEntryItem({ log }: LogEntryItemProps) {
                   App: {log.application}
                 </Typography>
               )}
+            </Box>
+          )}
+
+          {log.key_id && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="caption" color="text.secondary">
+                Key ID: {log.key_id}
+              </Typography>
+            </Box>
+          )}
+
+          {log.event_id && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="caption" color="text.secondary">
+                Event ID: {log.event_id.id} ({log.event_id.name})
+              </Typography>
             </Box>
           )}
         </Box>

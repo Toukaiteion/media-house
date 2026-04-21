@@ -14,8 +14,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Add SQLite database
 builder.Services.AddDbContext<MediaHouseDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")).UseSnakeCaseNamingConvention());
-builder.Services.AddDbContext<MediaHouseLogDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("LoggerConnection")));
+builder.Services.AddDbContext<MediaHouseLogDbContext>(options =>{
+    options.UseSqlite(builder.Configuration.GetConnectionString("LoggerConnection"));
+    options.ConfigureWarnings(warning => warning.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuted)
+            .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandError));
+    });
 
 // Register services
 builder.Services.AddScoped<ILibraryService, LibraryService>();
@@ -173,6 +176,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseStaticFiles();
+
+
 
 app.MapControllers();
 

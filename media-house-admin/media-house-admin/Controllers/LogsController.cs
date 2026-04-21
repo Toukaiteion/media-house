@@ -8,7 +8,7 @@ namespace MediaHouse.Controllers;
 [ApiController]
 [Route("api/logs")]
 [Authorize]
-public class LogsController(ILogService logService, ILogger<LogsController> logger) : ControllerBase
+public class LogsController(ILogService logService) : ControllerBase
 {
     /// <summary>
     /// 获取日志列表（分页）
@@ -21,9 +21,8 @@ public class LogsController(ILogService logService, ILogger<LogsController> logg
             var result = await logService.GetLogsAsync(query);
             return Ok(result);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogError(ex, "Error fetching logs");
             return StatusCode(500, new { error = "Failed to fetch logs" });
         }
     }
@@ -39,9 +38,8 @@ public class LogsController(ILogService logService, ILogger<LogsController> logg
             var stats = await logService.GetLogLevelStatsAsync();
             return Ok(stats);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogError(ex, "Error fetching log stats");
             return StatusCode(500, new { error = "Failed to fetch log stats" });
         }
     }
@@ -59,9 +57,8 @@ public class LogsController(ILogService logService, ILogger<LogsController> logg
                 return BadRequest(new { error = "Failed to delete logs" });
             return Ok(new { message = $"Logs before {beforeDate} deleted" });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogError(ex, "Error deleting logs");
             return StatusCode(500, new { error = "Failed to delete logs" });
         }
     }
@@ -77,9 +74,8 @@ public class LogsController(ILogService logService, ILogger<LogsController> logg
             var levels = await logService.GetMinimumLevelsAsync();
             return Ok(levels);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogError(ex, "Error fetching log levels");
             return StatusCode(500, new { error = "Failed to fetch log levels" });
         }
     }
@@ -97,9 +93,8 @@ public class LogsController(ILogService logService, ILogger<LogsController> logg
                 return BadRequest(new { error = $"Invalid log level: {dto.Level}. Valid levels: Verbose, Debug, Information, Warning, Error, Fatal" });
             return Ok(new { message = $"Log level set to {dto.Level}" });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogError(ex, "Error setting log level");
             return StatusCode(500, new { error = "Failed to set log level" });
         }
     }

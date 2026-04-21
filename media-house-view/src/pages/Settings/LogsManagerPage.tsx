@@ -20,7 +20,6 @@ export function LogsManagerPage() {
   const [filters, setFilters] = useState<LogsQueryParams>({
     sortOrder: 'desc'
   });
-  const [categories, setCategories] = useState<string[]>([]);
   const [stats, setStats] = useState<LogsStats | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -31,18 +30,8 @@ export function LogsManagerPage() {
   });
 
   useEffect(() => {
-    loadCategories();
     loadStats();
   }, []);
-
-  const loadCategories = async () => {
-    try {
-      const data = await api.getLogsCategories();
-      setCategories(data);
-    } catch (err) {
-      console.error('加载分类失败:', err);
-    }
-  };
 
   const loadStats = async () => {
     try {
@@ -102,7 +91,6 @@ export function LogsManagerPage() {
 
       <LogsFilterBar
         filters={filters}
-        categories={categories}
         onFiltersChange={handleFiltersChange}
         onRefresh={handleRefresh}
         onClearFilters={handleClearFilters}

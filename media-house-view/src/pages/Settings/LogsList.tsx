@@ -47,8 +47,8 @@ export function LogsList({
         setLogs(response.items);
       }
 
-      setTotalCount(response.totalCount);
-      setHasMore(page < response.totalPages);
+      setTotalCount(response.total_count);
+      setHasMore(page < response.total_pages);
       setLastLogId(response.items[0]?.id || null);
 
       if (newLogsCallback && lastLogId && response.items[0]?.id > lastLogId) {

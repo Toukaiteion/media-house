@@ -742,10 +742,13 @@ export interface LogEntry {
   level: LogLevel;
   properties?: string;
   exception?: string;
+  source: string;
   sourceContext?: string;
   machineName?: string;
   threadId?: number;
   application?: string;
+  key_id?: string;
+  event_id?: { id: number; name: string };
 }
 
 /**
@@ -753,10 +756,10 @@ export interface LogEntry {
  */
 export interface LogsPageResponse {
   items: LogEntry[];
-  totalCount: number;
+  total_count: number;
   page: number;
-  pageSize: number;
-  totalPages: number;
+  page_size: number;
+  total_pages: number;
 }
 
 /**
@@ -767,7 +770,6 @@ export interface LogsStats {
   Warning: number;
   Error: number;
   Debug: number;
-  Fatal: number;
 }
 
 /**
@@ -776,11 +778,12 @@ export interface LogsStats {
 export interface LogsQueryParams {
   page?: number;
   pageSize?: number;
-  level?: LogLevel;
+  level?: string; // 支持逗号分隔的多个级别
   startTime?: string;
   endTime?: string;
   category?: string;
   message?: string;
+  machineName?: string;
   hasException?: boolean;
   sortOrder?: 'asc' | 'desc';
 }
@@ -789,5 +792,26 @@ export interface LogsQueryParams {
  * 删除日志响应
  */
 export interface DeleteLogsResponse {
+  message: string;
+}
+
+/**
+ * 日志级别配置
+ */
+export interface LogLevelConfig {
+  Default: string;
+}
+
+/**
+ * 设置日志级别请求
+ */
+export interface SetLogLevelRequest {
+  level: LogLevel;
+}
+
+/**
+ * 设置日志级别响应
+ */
+export interface SetLogLevelResponse {
   message: string;
 }

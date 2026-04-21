@@ -8,7 +8,6 @@ import {
   Button,
   IconButton,
   Chip,
-  Autocomplete,
   Stack,
   Typography,
   Tooltip
@@ -18,7 +17,6 @@ import { type LogLevel, type LogsQueryParams } from '../../types';
 
 interface LogsFilterBarProps {
   filters: LogsQueryParams;
-  categories: string[];
   onFiltersChange: (filters: LogsQueryParams) => void;
   onRefresh: () => void;
   onClearFilters: () => void;
@@ -30,7 +28,6 @@ const LOG_LEVELS: LogLevel[] = ['Information', 'Warning', 'Error', 'Debug', 'Fat
 
 export function LogsFilterBar({
   filters,
-  categories,
   onFiltersChange,
   onRefresh,
   onClearFilters,
@@ -50,13 +47,6 @@ export function LogsFilterBar({
     onFiltersChange({
       ...filters,
       level: level || undefined
-    });
-  };
-
-  const handleCategoryChange = (category: string | null) => {
-    onFiltersChange({
-      ...filters,
-      category: category || undefined
     });
   };
 
@@ -119,21 +109,6 @@ export function LogsFilterBar({
               ))}
             </Select>
           </FormControl>
-
-          <Autocomplete
-            size="small"
-            options={categories}
-            value={filters.category || null}
-            onChange={(_e, value) => handleCategoryChange(value)}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="分类"
-                size="small"
-                sx={{ minWidth: 200 }}
-              />
-            )}
-          />
 
           <TextField
             size="small"
