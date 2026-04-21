@@ -7,8 +7,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Quartz;
 using Serilog;
-using Serilog.Core;
-using Serilog.Events;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
