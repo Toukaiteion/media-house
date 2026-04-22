@@ -60,7 +60,7 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
         var totalCount = await dbQuery.CountAsync();
 
         // 排序
-        var sortBy = (query.SortBy?.ToLower() ?? "timestamp");
+        var sortBy = query.SortBy?.ToLower() ?? "timestamp";
         var isSortAsc = (query.SortOrder?.ToLower() ?? "desc") == "asc";
 
         IQueryable<SystemLog> sortedQuery = sortBy switch
@@ -74,9 +74,7 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
         };
 
         // 分页或 Limit 查询
-        var items = query.Limit.HasValue
-            ? await sortedQuery.Take(query.Limit.Value).ToListAsync()
-            : await sortedQuery.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).ToListAsync();
+        var items = await sortedQuery.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).ToListAsync();
 
         // 映射到 DTO
         var dtos = items.Select(MapToDto).ToList();
@@ -85,16 +83,16 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
         // 因为这些字段存储在 Properties JSON 中，SQLite 不支持原生 JSON 查询
         if (!string.IsNullOrEmpty(query.Category))
         {
-            dtos = dtos.Where(l =>
+            dtos = [.. dtos.Where(l =>
                 l.SourceContext != null && l.SourceContext.Contains(query.Category, StringComparison.OrdinalIgnoreCase)
-            ).ToList();
+            )];
         }
 
         if (!string.IsNullOrEmpty(query.MachineName))
         {
-            dtos = dtos.Where(l =>
+            dtos = [.. dtos.Where(l =>
                 l.MachineName != null && l.MachineName.Equals(query.MachineName, StringComparison.OrdinalIgnoreCase)
-            ).ToList();
+            )];
         }
 
         // 重新计算总数（考虑内存级筛选）
