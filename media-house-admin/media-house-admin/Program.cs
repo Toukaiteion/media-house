@@ -5,20 +5,57 @@ using MediaHouse.Interfaces;
 using MediaHouse.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using Quartz;
 using Serilog;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add SQLite database
-builder.Services.AddDbContext<MediaHouseDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")).UseSnakeCaseNamingConvention());
-builder.Services.AddDbContext<MediaHouseLogDbContext>(options =>{
-    options.UseSqlite(builder.Configuration.GetConnectionString("LoggerConnection"));
-    options.ConfigureWarnings(warning => warning.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuted)
-            .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandError));
+// Register database options
+builder.Services.Configure<DatabaseOptions>(
+    builder.Configuration.GetSection("Database"));
+
+var databaseOptions = builder.Configuration.GetSection("Database").Get<DatabaseOptions>()
+    ?? throw new InvalidOperationException("Database options not configured");
+
+// Add database based on configuration
+if (databaseOptions.Provider.Equals("MySql", StringComparison.OrdinalIgnoreCase) ||
+    databaseOptions.Provider.Equals("MariaDB", StringComparison.OrdinalIgnoreCase))
+{
+    // MySQL/MariaDB configuration
+    var defaultConnection = databaseOptions.MySql?.DefaultConnection
+        ?? throw new InvalidOperationException("MySQL/MariaDB connection string not configured");
+    var loggerConnection = databaseOptions.MySql?.Logger
+        ?? throw new InvalidOperationException("MySQL/MariaDB logger connection string not configured");
+
+    builder.Services.AddDbContext<MediaHouseDbContext>(options =>
+        options.UseMySql(defaultConnection, ServerVersion.AutoDetect(defaultConnection))
+               .UseSnakeCaseNamingConvention());
+
+    builder.Services.AddDbContext<MediaHouseLogDbContext>(options =>
+    {
+        options.UseMySql(loggerConnection, ServerVersion.AutoDetect(loggerConnection));
+        options.ConfigureWarnings(warning => warning.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuted)
+                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandError));
     });
+}
+else
+{
+    // SQLite configuration (default)
+    var defaultConnection = databaseOptions.DefaultConnection;
+    var loggerConnection = databaseOptions.Logger;
+
+    builder.Services.AddDbContext<MediaHouseDbContext>(options =>
+        options.UseSqlite(defaultConnection).UseSnakeCaseNamingConvention());
+
+    builder.Services.AddDbContext<MediaHouseLogDbContext>(options =>
+    {
+        options.UseSqlite(loggerConnection);
+        options.ConfigureWarnings(warning => warning.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuted)
+                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandError));
+    });
+}
 
 // Register services
 builder.Services.AddScoped<ILibraryService, LibraryService>();
@@ -49,12 +86,39 @@ builder.Services.AddSingleton(levelSwitchConfig);
 builder.Services.AddScoped<ILogService, LogService>();
 
 // Configure Serilog
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(builder.Configuration)
+var loggerConfig = new LoggerConfiguration()
     .MinimumLevel.ControlledBy(levelSwitchConfig.LevelSwitch)
     .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithThreadId()
     .Enrich.WithProperty("Application", "MediaHouse")
-    .CreateLogger();
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}");
+
+// Add database sink based on provider
+if (databaseOptions.Provider.Equals("MySql", StringComparison.OrdinalIgnoreCase) ||
+    databaseOptions.Provider.Equals("MariaDB", StringComparison.OrdinalIgnoreCase))
+{
+    // MySQL/MariaDB sink
+    var loggerConnection = databaseOptions.MySql?.Logger
+        ?? throw new InvalidOperationException("MySQL/MariaDB logger connection string not configured");
+    loggerConfig.WriteTo.MySQL(
+        connectionString: loggerConnection,
+        tableName: "system_logs",
+        restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Debug
+    );
+}
+else
+{
+    // SQLite sink (default)
+    var loggerConnection = databaseOptions.Logger;
+    loggerConfig.WriteTo.SQLite(
+        sqliteDbPath: loggerConnection,
+        tableName: "system_logs",
+        restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Debug
+    );
+}
+
+Log.Logger = loggerConfig.CreateLogger();
 
 builder.Services.AddHostedService<StagingMetadataHandler>();
 
