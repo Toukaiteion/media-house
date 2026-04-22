@@ -19,12 +19,11 @@ import {
   Select,
   MenuItem
 } from '@mui/material';
-import { LogsFilterBar } from './LogsFilterBar';
-import { LogsList, type LogsListRef } from './LogsList';
-import { api } from '../../services/api';
-import { type LogsQueryParams, type LogLevel, type LogLevelConfig } from '../../types';
-
-const LOG_LEVELS: LogLevel[] = ['Debug', 'Information', 'Warning', 'Error', 'Fatal'];
+import { LogsFilterBar } from './components/LogsFilterBar';
+import { LogsList, type LogsListRef } from './components/LogsList';
+import { LOG_LEVELS } from './constants';
+import { api } from '../../../services/api';
+import { type LogsQueryParams, type LogLevel, type LogLevelConfig } from '../../../types';
 
 export function LogsManagerPage() {
   const [filters, setFilters] = useState<LogsQueryParams>({

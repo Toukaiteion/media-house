@@ -12,7 +12,7 @@ import { Settings } from './pages/Settings';
 import { MediaLibrarySettingsPage } from './pages/Settings/MediaLibrarySettingsPage';
 import { MetadataSettingsPage } from './pages/Settings/MetadataSettingsPage';
 import { AccountSettingsPage } from './pages/Settings/AccountSettingsPage';
-import { LogsManagerPage } from './pages/Settings/LogsManagerPage';
+import { LogsManagerPage } from './pages/Settings/LogsManager';
 import { PluginSettingsPage } from './pages/Settings/PluginSettingsPage';
 import { MediaPublishPage } from './pages/Settings/MediaPublish';
 import { PlayerLayout } from './layouts/PlayerLayout';

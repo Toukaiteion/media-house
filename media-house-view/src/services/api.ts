@@ -889,18 +889,18 @@ class ApiClient {
   async getLogs(params: LogsQueryParams): Promise<LogsPageResponse> {
     const queryParams = new URLSearchParams();
     if (params.page) queryParams.append('page', params.page.toString());
-    if (params.pageSize) queryParams.append('pageSize', params.pageSize.toString());
+    if (params.pageSize) queryParams.append('page_size', params.pageSize.toString());
     if (params.level) queryParams.append('level', params.level);
-    if (params.startTime) queryParams.append('startTime', params.startTime);
-    if (params.endTime) queryParams.append('endTime', params.endTime);
+    if (params.startTime) queryParams.append('start_time', params.startTime);
+    if (params.endTime) queryParams.append('end_time', params.endTime);
     if (params.category) queryParams.append('category', params.category);
     if (params.message) queryParams.append('message', params.message);
-    if (params.machineName) queryParams.append('machineName', params.machineName);
-    if (params.hasException !== undefined) queryParams.append('hasException', params.hasException.toString());
-    if (params.sortBy) queryParams.append('sortBy', params.sortBy);
-    if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
-    if (params.fromId !== undefined) queryParams.append('fromId', params.fromId.toString());
-    if (params.toId !== undefined) queryParams.append('toId', params.toId.toString());
+    if (params.machineName) queryParams.append('machine_name', params.machineName);
+    if (params.hasException !== undefined) queryParams.append('has_exception', params.hasException.toString());
+    if (params.sortBy) queryParams.append('sort_by', params.sortBy);
+    if (params.sortOrder) queryParams.append('sort_order', params.sortOrder);
+    if (params.fromId !== undefined) queryParams.append('from_id', params.fromId.toString());
+    if (params.toId !== undefined) queryParams.append('to_id', params.toId.toString());
     if (params.limit !== undefined) queryParams.append('limit', params.limit.toString());
 
     const queryString = queryParams.toString();

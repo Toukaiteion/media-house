@@ -12,7 +12,8 @@ import {
   Tooltip
 } from '@mui/material';
 import { Search as SearchIcon, Clear as ClearIcon, Refresh as RefreshIcon } from '@mui/icons-material';
-import { type LogLevel, type LogsQueryParams } from '../../types';
+import { type LogLevel, type LogsQueryParams } from '../../../../types';
+import { LOG_LEVELS } from '../constants';
 
 interface LogsFilterBarProps {
   filters: LogsQueryParams;
@@ -21,8 +22,6 @@ interface LogsFilterBarProps {
   onClearFilters: () => void;
   loading?: boolean;
 }
-
-const LOG_LEVELS: LogLevel[] = ['Information', 'Warning', 'Error', 'Debug', 'Fatal'];
 
 export function LogsFilterBar({
   filters,

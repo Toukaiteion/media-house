@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import { LogEntryItem } from './LogEntryItem';
-import { api } from '../../services/api';
-import { type LogEntry, type LogsPageResponse, type LogsQueryParams } from '../../types';
+import { api } from '../../../../services/api';
+import { type LogEntry, type LogsPageResponse, type LogsQueryParams } from '../../../../types';
 
 export interface LogsListRef {
   refresh: () => Promise<void>;

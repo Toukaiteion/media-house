@@ -12,7 +12,8 @@
       "Bash(python3:*)",
       "Bash(perl -i -pe 's/useImperativeHandle/useImperativeHandle/g' src/pages/Settings/LogsList.tsx)",
       "Bash(src/pages/Settings/LogsList.tsx src/pages/Settings/LogsManagerPage.tsx)",
-      "Bash(src/pages/Settings/LogsList.tsx.bak src/pages/Settings/LogsList.tsx)"
+      "Bash(src/pages/Settings/LogsList.tsx.bak src/pages/Settings/LogsList.tsx)",
+      "Bash(node -e \"console.log\\(require.resolve\\(''../../services/api''\\)\\)\")"
     ]
   }
 }

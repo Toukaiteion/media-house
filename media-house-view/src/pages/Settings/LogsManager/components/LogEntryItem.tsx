@@ -19,7 +19,7 @@ import {
   BugReport
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { type LogEntry, type LogLevel } from '../../types';
+import { type LogEntry, type LogLevel } from '../../../../types';
 
 const LogPaper = styled(Paper, {
   shouldForwardProp: (prop) => prop !== 'level'
