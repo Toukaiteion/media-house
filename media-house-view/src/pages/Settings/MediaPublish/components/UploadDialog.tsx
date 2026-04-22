@@ -44,8 +44,8 @@ export function UploadDialog({ open, onClose, onStartUpload }: UploadDialogProps
 
   const handleStartUpload = async () => {
     if (!selectedFile) return;
-
-    await onStartUpload(selectedFile, mediaType, mediaTitle);
+    onClose();
+    onStartUpload(selectedFile, mediaType, mediaTitle);
     handleClose();
   };
 

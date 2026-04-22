@@ -91,9 +91,14 @@ export const uploadChunkWithRetry = async (
     } catch (err) {
       // 如果是取消错误，直接抛出
       if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
+        console.log('Upload cancelled', err);
         throw err;
       }
-      if (attempt === retries - 1) throw err;
+      console.log(`Chunk ${chunkIndex} upload failed (attempt ${attempt + 1}/${retries})`, err);
+      if (attempt === retries - 1) {
+        console.log(`Chunk ${chunkIndex} upload failed after ${retries} attempts`, err);
+        throw err;
+      }
       // 指数退避
       await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
     }

@@ -90,8 +90,8 @@ export function MediaPublishPage() {
 
   // 开始上传
   const handleUploadStart = async (file: File, type: 'movie' | 'tvshow', title: string) => {
-    await handleStartUpload(file, type, title, handleMessage, refreshStagingMedias);
     setTabValue(1);
+    await handleStartUpload(file, type, title, handleMessage, refreshStagingMedias);
   };
 
   // 编辑媒体
