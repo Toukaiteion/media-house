@@ -27,7 +27,7 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
         // 按消息内容筛选（模糊匹配）
         if (!string.IsNullOrEmpty(query.Message))
         {
-            dbQuery = dbQuery.Where(l => l.RenderedMessage != null && l.RenderedMessage.Contains(query.Message));
+            dbQuery = dbQuery.Where(l => l.Message != null && l.Message.Contains(query.Message));
         }
 
         // 按时间范围筛选
@@ -122,7 +122,7 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
 
         if (!string.IsNullOrEmpty(query.Message))
         {
-            dbQuery = dbQuery.Where(l => l.RenderedMessage != null && l.RenderedMessage.Contains(query.Message));
+            dbQuery = dbQuery.Where(l => l.Message != null && l.Message.Contains(query.Message));
         }
 
         if (query.StartTime.HasValue)
@@ -219,8 +219,8 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
         var dto = new SystemLogDto
         {
             Id = log.Id,
-            Timestamp = log.Timestamp,
-            Message = log.RenderedMessage,
+            Timestamp = log.Timestamp.LocalDateTime,
+            Message = log.Message,
             Level = log.Level,
             Exception = log.Exception,
         };

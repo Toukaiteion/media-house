@@ -20,5 +20,14 @@ public class MediaHouseLogDbContext(DbContextOptions<MediaHouseLogDbContext> opt
 
         modelBuilder.Entity<SystemLog>()
             .HasIndex(l => l.Level);
+
+        modelBuilder.Entity<SystemLog>()
+            .Property(l => l.Timestamp)
+            .HasConversion(
+                v => v.ToString("yyyy-MM-dd HH:mm:ss.ffffffzzz"), 
+                
+                // 2. 从数据库读取时：string -> DateTimeOffset
+                v => DateTimeOffset.Parse(v)
+            );
     }
 }
