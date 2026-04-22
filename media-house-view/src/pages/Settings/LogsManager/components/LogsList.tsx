@@ -55,12 +55,13 @@ export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
         page: 1,
         pageSize,
         sortBy: 'id',
-        sortOrder: 'desc'
+        sortOrder: fromId ? 'asc' : 'desc'
       });
 
       if (response.items.length > 0) {
         if (fromId) {
           // 使用 fromId 时，返回的是比 fromId 大的日志（新日志），追加到末尾
+          response.items = response.items.reverse();
           setLogs(prev => [...response.items, ...prev]);
           // 新日志到达时滚动到底部
           setTimeout(scrollToBottom, 100);
