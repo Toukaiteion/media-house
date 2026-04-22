@@ -60,7 +60,7 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
         var totalCount = await dbQuery.CountAsync();
 
         // 排序
-        var sortBy = query.SortBy?.ToLower() ?? "timestamp";
+        var sortBy = query.SortBy?.ToLower() ?? "id";
         var isSortAsc = (query.SortOrder?.ToLower() ?? "desc") == "asc";
 
         IQueryable<SystemLog> sortedQuery = sortBy switch

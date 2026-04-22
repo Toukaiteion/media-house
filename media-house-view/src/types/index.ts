@@ -790,7 +790,6 @@ export interface LogsQueryParams {
   sortOrder?: 'asc' | 'desc';
   fromId?: number;
   toId?: number;
-  limit?: number;
 }
 
 /**

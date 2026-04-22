@@ -136,6 +136,11 @@ export function LogEntryItem({ log }: LogEntryItemProps) {
         onClick={() => hasDetails && setExpanded(!expanded)}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+            {log.id}
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
           <TimestampText>{timestamp}</TimestampText>
         </Box>
 

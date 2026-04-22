@@ -43,7 +43,7 @@ export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
     return Math.min(...logs.map(log => log.id));
   };
 
-  const fetchLogs = async (toId?: number, fromId?: number, limit?: number) => {
+  const fetchLogs = async (toId?: number, fromId?: number, pageSize?: number) => {
     try {
       setLoading(true);
       setError(null);
@@ -52,7 +52,8 @@ export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
         ...filters,
         toId,
         fromId,
-        limit,
+        page: 1,
+        pageSize,
         sortBy: 'id',
         sortOrder: 'desc'
       });
@@ -60,12 +61,12 @@ export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
       if (response.items.length > 0) {
         if (fromId) {
           // 使用 fromId 时，返回的是比 fromId 大的日志（新日志），追加到末尾
-          setLogs(prev => [...prev, ...response.items]);
+          setLogs(prev => [...response.items, ...prev]);
           // 新日志到达时滚动到底部
           setTimeout(scrollToBottom, 100);
         } else if (toId) {
           // 使用 toId 时，返回的是比 toId 小的日志（旧日志），追加到前面
-          setLogs(prev => [...response.items, ...prev]);
+          setLogs(prev => [...prev, ...response.items]);
         } else {
           // 初次加载
           setLogs(response.items);
@@ -73,7 +74,7 @@ export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
         }
 
         // 判断是否还有更多日志
-        setHasMore(response.items.length === (limit || DEFAULT_PAGE_SIZE));
+        setHasMore(response.items.length === (pageSize || DEFAULT_PAGE_SIZE));
       } else {
         // 没有新日志时，保持原状态
         if (fromId) {
