@@ -43,7 +43,7 @@ export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
     return Math.min(...logs.map(log => log.id));
   };
 
-  const fetchLogs = async (toId?: number, fromId?: number, pageSize?: number) => {
+  const fetchLogs = async (toId?: number, fromId?: number, pageSize?: number, preserveScrollHeight?: number) => {
     try {
       setLoading(true);
       setError(null);
@@ -66,7 +66,15 @@ export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
           setTimeout(scrollToBottom, 100);
         } else if (toId) {
           // 使用 toId 时，返回的是比 toId 小的日志（旧日志），追加到前面
+          // 保存旧的 scrollHeight
+          const oldScrollHeight = preserveScrollHeight || scrollContainerRef.current?.scrollHeight || 0;
           setLogs(prev => [...prev, ...response.items]);
+          // 更新后调整 scrollTop，保持用户看到的内容在原位
+          setTimeout(() => {
+            if (scrollContainerRef.current) {
+              scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight - oldScrollHeight;
+            }
+          }, 0);
         } else {
           // 初次加载
           setLogs(response.items);
@@ -100,7 +108,8 @@ export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
   const loadOlderLogs = () => {
     const minId = getMinLogId();
     if (minId === null || !hasMore || loading) return;
-    fetchLogs(minId, undefined, 100);
+    const scrollHeight = scrollContainerRef.current?.scrollHeight || 0;
+    fetchLogs(minId, undefined, 100, scrollHeight);
   };
 
   // 刷新：加载最新的日志
@@ -183,7 +192,7 @@ export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
           {hasMore && !loading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                向下滚动加载更多
+                向上滚动加载更多
               </Typography>
             </Box>
           )}
