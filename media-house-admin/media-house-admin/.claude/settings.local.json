@@ -8,7 +8,10 @@
       "Bash(dotnet publish:*)",
       "Bash(dotnet restore:*)",
       "Bash(sqlite3:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(dotnet list:*)",
+      "Bash(dotnet why:*)",
+      "Bash(dotnet nuget:*)"
     ]
   }
 }
