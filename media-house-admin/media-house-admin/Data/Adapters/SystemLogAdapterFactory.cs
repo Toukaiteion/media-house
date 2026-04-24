@@ -37,8 +37,8 @@ public static class SystemLogAdapterFactory
     {
         return providerType?.ToLowerInvariant() switch
         {
-            var p when p.Contains("mysql") || p.Contains("mariadb") => new MySqlSystemLogAdapter(),
-            var p when p.Contains("sqlite") => new SqliteSystemLogAdapter(),
+            var p when p != null && (p.Contains("mysql") || p.Contains("mariadb")) => new MySqlSystemLogAdapter(),
+            var p when p != null && p.Contains("sqlite") => new SqliteSystemLogAdapter(),
             _ => throw new NotSupportedException($"Database provider '{providerType}' is not supported for SystemLog.")
         };
     }
