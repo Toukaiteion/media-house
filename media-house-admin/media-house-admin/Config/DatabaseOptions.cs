@@ -7,14 +7,28 @@ public class DatabaseOptions
     /// MariaDB 使用与 MySQL 相同的驱动程序
     /// </summary>
     public string Provider { get; set; } = "Sqlite";
-    public string DefaultConnection { get; set; } = string.Empty;
-    public string Logger { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Sqlite 配置选项
+    /// </summary>
+    public SqliteOptions? Sqlite { get; set; }
 
     /// <summary>
     /// MySQL/MariaDB 连接配置
     /// MariaDB 使用相同的连接字符串格式
     /// </summary>
     public MySqlOptions? MySql { get; set; }
+}
+
+/// <summary>
+/// Sqlite 配置选项
+/// </summary>
+public class SqliteOptions
+{
+    public string DefaultConnection { get; set; } = string.Empty;
+    public string Logger { get; set; } = string.Empty;
+
+    public string LoggerPath { get; set; } = string.Empty;
 }
 
 /// <summary>

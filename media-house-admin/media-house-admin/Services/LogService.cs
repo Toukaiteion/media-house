@@ -1,5 +1,6 @@
 using MediaHouse.Config;
 using MediaHouse.Data;
+using MediaHouse.Data.Adapters;
 using MediaHouse.Data.Entities;
 using MediaHouse.DTOs;
 using MediaHouse.Interfaces;
@@ -220,7 +221,7 @@ public class LogService(MediaHouseLogDbContext context, ILogger<LogService> logg
         {
             Id = log.Id,
             Timestamp = log.Timestamp.LocalDateTime,
-            Message = log.Message,
+            Message = log.RenderedMessage ?? log.Message,
             Level = log.Level,
             Exception = log.Exception,
         };

@@ -8,4 +8,5 @@ public class SystemLog
     public string Level { get; set; } = string.Empty;
     public string? Properties { get; set; }      // JSON 格式的属性
     public string? Exception { get; set; }
+    public string? RenderedMessage { get; set; }  // SQLite 使用此字段
 }

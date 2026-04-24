@@ -43,8 +43,10 @@ if (databaseOptions.Provider.Equals("MySql", StringComparison.OrdinalIgnoreCase)
 else
 {
     // SQLite configuration (default)
-    var defaultConnection = databaseOptions.DefaultConnection;
-    var loggerConnection = databaseOptions.Logger;
+    var defaultConnection = databaseOptions.Sqlite?.DefaultConnection
+        ?? throw new InvalidOperationException("SQLite default connection string not configured");
+    var loggerConnection = databaseOptions.Sqlite?.Logger
+        ?? throw new InvalidOperationException("SQLite logger connection string not configured");
 
     builder.Services.AddDbContext<MediaHouseDbContext>(options =>
         options.UseSqlite(defaultConnection).UseSnakeCaseNamingConvention());
@@ -110,7 +112,8 @@ if (databaseOptions.Provider.Equals("MySql", StringComparison.OrdinalIgnoreCase)
 else
 {
     // SQLite sink (default)
-    var loggerConnection = databaseOptions.Logger;
+    var loggerConnection = databaseOptions.Sqlite?.LoggerPath
+        ?? throw new InvalidOperationException("SQLite logger path not configured");
     loggerConfig.WriteTo.SQLite(
         sqliteDbPath: loggerConnection,
         tableName: "system_logs",
