@@ -18,6 +18,35 @@ public class DatabaseOptions
     /// MariaDB 使用相同的连接字符串格式
     /// </summary>
     public MySqlOptions? MySql { get; set; }
+
+    /// <summary>
+    /// 获取主数据库连接字符串
+    /// </summary>
+    public string GetDefaultConnection()
+    {
+        return IsMySqlOrMariaDb()
+            ? MySql?.DefaultConnection ?? string.Empty
+            : Sqlite?.DefaultConnection ?? string.Empty;
+    }
+
+    /// <summary>
+    /// 获取日志数据库连接字符串或路径
+    /// </summary>
+    public string GetLoggerConnection()
+    {
+        return IsMySqlOrMariaDb()
+            ? MySql?.Logger ?? string.Empty
+            : Sqlite?.Logger ?? string.Empty;
+    }
+
+    /// <summary>
+    /// 判断是否使用 MySQL 或 MariaDB
+    /// </summary>
+    public bool IsMySqlOrMariaDb()
+    {
+        return Provider.Equals("MySql", StringComparison.OrdinalIgnoreCase) ||
+               Provider.Equals("MariaDB", StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 /// <summary>
