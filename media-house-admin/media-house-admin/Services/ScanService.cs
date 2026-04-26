@@ -951,7 +951,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
     {
         var tagNames = tagsString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        foreach (var tagName in tagNames)
+        foreach (var tagName in tagNames.Distinct())
         {
             if (string.IsNullOrWhiteSpace(tagName))
                 continue;
