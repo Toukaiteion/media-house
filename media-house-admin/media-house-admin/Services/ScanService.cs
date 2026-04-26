@@ -262,7 +262,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
     }
 
     /// <summary>
-    /// 获取所有电影目录
+    /// 获取所有电影目录（递归扫描）
     /// </summary>
     private List<string[]> GetMovieDirectories(string libraryPath)
     {
@@ -278,8 +278,15 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         {
             if (IsMovieDirectory(dir))
             {
+                // 找到电影目录，添加到结果，不再递归扫描其子目录
                 var dirName = Path.GetFileName(dir);
                 movieDirs.Add([dirName, dir]);
+            }
+            else
+            {
+                // 不是电影目录，递归扫描子目录
+                var subDirs = GetMovieDirectories(dir);
+                movieDirs.AddRange(subDirs);
             }
         }
 
