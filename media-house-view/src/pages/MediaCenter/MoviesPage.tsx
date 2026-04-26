@@ -1,10 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
   Grid,
-  CircularProgress,
   Alert,
+  Pagination,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  type SelectChangeEvent,
 } from '@mui/material';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
@@ -13,7 +18,8 @@ import { MovieFilterBar, type SortByKey } from '../../components/MovieFilterBar'
 import { FilterStatusBar } from '../../components/FilterStatusBar';
 import type { MovieDetail, MovieListParams, Tag, Actor, MediaLibrary } from '../../types';
 
-const PAGE_SIZE = 18;
+const PAGE_SIZE_OPTIONS = [30, 50, 100];
+const DEFAULT_PAGE_SIZE = 30;
 
 export function MoviesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -21,11 +27,10 @@ export function MoviesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [total, setTotal] = useState(0);
 
   // 筛选栏状态
-  const [filterBarVisible, setFilterBarVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
   const [searchValue, setSearchValue] = useState('');
   const [sortBy, setSortBy] = useState<SortByKey>('default');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -41,11 +46,11 @@ export function MoviesPage() {
   // 库数据
   const [libraries, setLibraries] = useState<MediaLibrary[]>([]);
 
-  // 滚动相关引用
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 滚动相关
+  const [filterBarVisible, setFilterBarVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 加载标签和演员数据
   const loadTagsAndActors = useCallback(async () => {
@@ -81,6 +86,8 @@ export function MoviesPage() {
     setSearchValue(searchParams.get('search') || '');
     setSortBy((searchParams.get('sortBy') || 'default') as typeof sortBy);
     setSortOrder((searchParams.get('sortOrder') || 'desc') as typeof sortOrder);
+    setPage(parseInt(searchParams.get('page') || '1'));
+    setPageSize(parseInt(searchParams.get('pageSize') || String(DEFAULT_PAGE_SIZE)));
 
     const tagIds = searchParams.get('tag_ids');
     if (tagIds) {
@@ -95,12 +102,11 @@ export function MoviesPage() {
     } else {
       setSelectedActor(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // 加载标签和演员
   useEffect(() => {
-loadTagsAndActors();
-loadLibraries();
+    loadTagsAndActors();
+    loadLibraries();
   }, [loadTagsAndActors, loadLibraries]);
 
   // 更新 URL 参数
@@ -159,6 +165,20 @@ loadLibraries();
   const handleRemoveActor = useCallback(() => {
     setSelectedActor(null);
     updateSearchParams({ actor_id: null });
+  }, [updateSearchParams]);
+
+  // 处理页码变化
+  const handlePageChange = useCallback((_: React.ChangeEvent<unknown>, value: number) => {
+    setPage(value);
+    updateSearchParams({ page: value.toString() });
+  }, [updateSearchParams]);
+
+  // 处理每页大小变化
+  const handlePageSizeChange = useCallback((event: SelectChangeEvent<number>) => {
+    const newSize = event.target.value;
+    setPageSize(newSize);
+    setPage(1); // 重置到第一页
+    updateSearchParams({ pageSize: newSize.toString(), page: '1' });
   }, [updateSearchParams]);
 
   // 处理移除搜索
@@ -256,7 +276,7 @@ loadLibraries();
   const buildQueryParams = (): MovieListParams => {
     const params: MovieListParams = {
       page,
-      pageSize: PAGE_SIZE,
+      pageSize,
     };
 
     const libraryId = searchParams.get('library_id');
@@ -308,17 +328,13 @@ loadLibraries();
   };
 
   // 加载电影列表
-  const loadMovies = async (reset = false) => {
+  const loadMovies = async () => {
     try {
       setError(null);
       const params = buildQueryParams();
       const data = await api.getMoviesWithParams(params);
 
-      if (reset) {
-        setMovies(data.items);
-      } else {
-        setMovies((prev) => [...prev, ...data.items]);
-      }
+      setMovies(data.items);
       setTotal(data.total_count);
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
@@ -327,42 +343,12 @@ loadLibraries();
     }
   };
 
-  // 初始化加载
+  // 初始化加载和页码变化时加载
   useEffect(() => {
-    setPage(1);
     setLoading(true);
-    loadMovies(true);
-  }, [searchParams.toString()]);
-
-  // 无限滚动 - Intersection Observer
-  useEffect(() => {
-    const element = loadMoreRef.current;
-    if (!element) return;
-
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !loading && movies.length < total) {
-          setPage((prev) => prev + 1);
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    observerRef.current.observe(element);
-
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
-  }, [loading, searchParams.toString()]);
-
-  useEffect(() => {
-    if (page > 1) {
-      setLoading(true);
-      loadMovies(false);
-    }
-  }, [page]);
+    loadMovies();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.toString(), page, pageSize]);
 
   if (error && movies.length === 0) {
     return (
@@ -436,27 +422,42 @@ loadLibraries();
             ))}
           </Grid>
 
-          {/* 加载更多指示器 */}
-          {movies.length < total && (
+          {/* 分页控制 */}
+          {!loading && movies.length > 0 && total > 0 && (
             <Box
-              ref={loadMoreRef}
               sx={{
+                mt: 4,
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
-                py: 4,
+                gap: 2,
+                flexWrap: 'wrap',
               }}
             >
-              <CircularProgress />
-            </Box>
-          )}
-
-          {/* 无更多数据 */}
-          {movies.length >= total && movies.length > 0 && (
-            <Box sx={{ py: 4, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                没有更多电影了
-              </Typography>
+              <Pagination
+                count={Math.ceil(total / pageSize)}
+                page={page}
+                onChange={handlePageChange}
+                color="primary"
+                showFirstButton
+                showLastButton
+                disabled={loading}
+              />
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <InputLabel>每页显示</InputLabel>
+                <Select
+                  value={pageSize}
+                  onChange={handlePageSizeChange}
+                  label="每页显示"
+                  disabled={loading}
+                >
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <MenuItem key={size} value={size}>
+                      {size} 条/页
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Box>
           )}
 
