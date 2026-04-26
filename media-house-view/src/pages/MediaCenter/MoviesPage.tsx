@@ -20,6 +20,7 @@ import type { MovieDetail, MovieListParams, Tag, Actor, MediaLibrary } from '../
 
 const PAGE_SIZE_OPTIONS = [30, 50, 100];
 const DEFAULT_PAGE_SIZE = 30;
+const MOVIES_STATE_KEY = 'movies-page-state';
 
 export function MoviesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -29,6 +30,9 @@ export function MoviesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [total, setTotal] = useState(0);
+
+  // 滚动位置恢复
+  const [restoreScrollY, setRestoreScrollY] = useState<number | null>(null);
 
   // 筛选栏状态
   const [searchValue, setSearchValue] = useState('');
@@ -101,6 +105,33 @@ export function MoviesPage() {
       setSelectedActor(actorId);
     } else {
       setSelectedActor(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 从 sessionStorage 恢复状态（只在没有 URL 参数时）
+  useEffect(() => {
+    const urlHasParams = searchParams.toString().length > 0;
+    const libraryId = searchParams.get('library_id');
+    const hasNavigationParams = libraryId !== null;
+
+    if (!urlHasParams && !hasNavigationParams) {
+      const savedState = sessionStorage.getItem(MOVIES_STATE_KEY);
+      if (savedState) {
+        try {
+          const { page: savedPage, pageSize: savedPageSize, scrollY } = JSON.parse(savedState);
+          setPage(savedPage);
+          setPageSize(savedPageSize);
+          updateSearchParams({
+            page: savedPage.toString(),
+            pageSize: savedPageSize.toString(),
+          });
+          // 保存滚动位置以便数据加载后恢复
+          setRestoreScrollY(scrollY);
+        } catch (err) {
+          console.error('恢复状态失败:', err);
+        }
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -253,6 +284,32 @@ export function MoviesPage() {
       }
     };
   }, []);
+
+  // 保存状态到 sessionStorage（组件卸载时）
+  useEffect(() => {
+    const content = contentRef.current;
+    return () => {
+      sessionStorage.setItem(MOVIES_STATE_KEY, JSON.stringify({
+        page,
+        pageSize,
+        scrollY: content?.scrollTop || 0,
+      }));
+    };
+  }, [page, pageSize]);
+
+  // 恢复滚动位置
+  useEffect(() => {
+    if (!loading && movies.length > 0 && restoreScrollY !== null) {
+      setTimeout(() => {
+        contentRef.current?.scrollTo({
+          top: restoreScrollY,
+          behavior: 'instant',
+        });
+        setRestoreScrollY(null);
+        sessionStorage.removeItem(MOVIES_STATE_KEY);
+      }, 100);
+    }
+  }, [loading, movies.length, restoreScrollY]);
 
   // 处理收藏切换
   const handleFavoriteToggle = async (movieId: number, currentIndex: number) => {
