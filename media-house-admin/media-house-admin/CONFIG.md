@@ -47,47 +47,62 @@
 
 ### 方式二：使用环境变量
 
-环境变量以 `DB_` 为前缀，映射到 `Database` 配置节。
+环境变量以 `MH_` 为前缀，可以覆盖所有配置项。嵌套配置使用 `__` (双下划线) 分隔。
 
 #### SQLite 环境变量
 
 ```bash
 # 选择数据库提供程序
-export DB_PROVIDER=Sqlite
+export MH_Database__Provider=Sqlite
 
 # 主数据库路径
-export DB_SQLITE_DEFAULT_CONNECTION="Data Source=/data/mediahouse.db"
+export MH_Database__Sqlite__DefaultConnection="Data Source=/data/mediahouse.db"
 
 # 日志数据库连接字符串
-export DB_SQLITE_LOGGER="Data Source=/data/mediahouse-logs.db"
+export MH_Database__Sqlite__Logger="Data Source=/data/mediahouse-logs.db"
 
 # 日志数据库路径（用于 Serilog）
-export DB_SQLITE_LOGGER_PATH="/data/mediahouse-logs.db"
+export MH_Database__Sqlite__LoggerPath="/data/mediahouse-logs.db"
 ```
 
 #### MySQL/MariaDB 环境变量
 
 ```bash
 # 选择数据库提供程序
-export DB_PROVIDER=MySql
+export MH_Database__Provider=MySql
 
 # 主数据库连接字符串
-export DB_MYSQL_DEFAULT_CONNECTION="Server=localhost;Port=3306;Database=mediahouse;User=root;Password=secret;"
+export MH_Database__MySql__DefaultConnection="Server=localhost;Port=3306;Database=mediahouse;User=root;Password=secret;"
 
 # 日志数据库连接字符串
-export DB_MYSQL_LOGGER="Server=localhost;Port=3306;Database=mediahouse_logs;User=root;Password=secret;"
+export MH_Database__MySql__Logger="Server=localhost;Port=3306;Database=mediahouse_logs;User=root;Password=secret;"
+```
+
+#### 其他配置示例
+
+```bash
+# JWT 配置
+export MH_Jwt__Secret="your-secret-key"
+export MH_Jwt__ExpirationMinutes=1440
+
+# 上传配置
+export MH_UploadSettings__UploadPath="/app/uploads"
+export MH_UploadSettings__ChunkSize=5242880
+
+# 插件配置
+export MH_PluginSettings__PluginPath="/app/plugins"
 ```
 
 #### 环境变量映射表
 
 | 环境变量 | appsettings.json 路径 | 说明 |
 |---------|---------------------|------|
-| `DB_PROVIDER` | `Database:Provider` | 数据库提供程序：`Sqlite`、`MySql`、`MariaDB` |
-| `DB_SQLITE_DEFAULT_CONNECTION` | `Database:Sqlite:DefaultConnection` | SQLite 主数据库连接字符串 |
-| `DB_SQLITE_LOGGER` | `Database:Sqlite:Logger` | SQLite 日志数据库连接字符串 |
-| `DB_SQLITE_LOGGER_PATH` | `Database:Sqlite:LoggerPath` | SQLite 日志数据库路径（Serilog 用） |
-| `DB_MYSQL_DEFAULT_CONNECTION` | `Database:MySql:DefaultConnection` | MySQL/MariaDB 主数据库连接字符串 |
-| `DB_MYSQL_LOGGER` | `Database:MySql:Logger` | MySQL/MariaDB 日志数据库连接字符串 |
+| `MH_Database__Provider` | `Database:Provider` | 数据库提供程序：`Sqlite`、`MySql`、`MariaDB` |
+| `MH_Database__Sqlite__DefaultConnection` | `Database:Sqlite:DefaultConnection` | SQLite 主数据库连接字符串 |
+| `MH_Database__Sqlite__Logger` | `Database:Sqlite:Logger` | SQLite 日志数据库连接字符串 |
+| `MH_Database__Sqlite__LoggerPath` | `Database:Sqlite:LoggerPath` | SQLite 日志数据库路径（Serilog 用） |
+| `MH_Database__MySql__DefaultConnection` | `Database:MySql:DefaultConnection` | MySQL/MariaDB 主数据库连接字符串 |
+| `MH_Database__MySql__Logger` | `Database:MySql:Logger` | MySQL/MariaDB 日志数据库连接字符串 |
 
 ## Docker 部署示例
 
@@ -103,10 +118,10 @@ services:
     volumes:
       - ./data:/data
     environment:
-      - DB_PROVIDER=Sqlite
-      - DB_SQLITE_DEFAULT_CONNECTION=Data Source=/data/mediahouse.db
-      - DB_SQLITE_LOGGER=Data Source=/data/mediahouse-logs.db
-      - DB_SQLITE_LOGGER_PATH=/data/mediahouse-logs.db
+      - MH_Database__Provider=Sqlite
+      - MH_Database__Sqlite__DefaultConnection=Data Source=/data/mediahouse.db
+      - MH_Database__Sqlite__Logger=Data Source=/data/mediahouse-logs.db
+      - MH_Database__Sqlite__LoggerPath=/data/mediahouse-logs.db
 ```
 
 ### MySQL
@@ -119,9 +134,9 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - DB_PROVIDER=MySql
-      - DB_MYSQL_DEFAULT_CONNECTION=Server=db;Port=3306;Database=mediahouse;User=root;Password=secret;
-      - DB_MYSQL_LOGGER=Server=db;Port=3306;Database=mediahouse_logs;User=root;Password=secret;
+      - MH_Database__Provider=MySql
+      - MH_Database__MySql__DefaultConnection=Server=db;Port=3306;Database=mediahouse;User=root;Password=secret;
+      - MH_Database__MySql__Logger=Server=db;Port=3306;Database=mediahouse_logs;User=root;Password=secret;
     depends_on:
       - db
 
@@ -147,9 +162,9 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - DB_PROVIDER=MariaDB
-      - DB_MYSQL_DEFAULT_CONNECTION=Server=db;Port=3306;Database=mediahouse;User=root;Password=secret;
-      - DB_MYSQL_LOGGER=Server=db;Port=3306;Database=mediahouse_logs;User=root;Password=secret;
+      - MH_Database__Provider=MariaDB
+      - MH_Database__MySql__DefaultConnection=Server=db;Port=3306;Database=mediahouse;User=root;Password=secret;
+      - MH_Database__MySql__Logger=Server=db;Port=3306;Database=mediahouse_logs;User=root;Password=secret;
     depends_on:
       - db
 
@@ -175,9 +190,9 @@ kind: ConfigMap
 metadata:
   name: mediahouse-config
 data:
-  DB_PROVIDER: "MySql"
-  DB_MYSQL_DEFAULT_CONNECTION: "Server=mysql-service;Port=3306;Database=mediahouse;User=root;Password=secret;"
-  DB_MYSQL_LOGGER: "Server=mysql-service;Port=3306;Database=mediahouse_logs;User=root;Password=secret;"
+  MH_Database__Provider: "MySql"
+  MH_Database__MySql__DefaultConnection: "Server=mysql-service;Port=3306;Database=mediahouse;User=root;Password=secret;"
+  MH_Database__MySql__Logger: "Server=mysql-service;Port=3306;Database=mediahouse_logs;User=root;Password=secret;"
 ```
 
 ### Deployment
@@ -206,11 +221,11 @@ spec:
         - configMapRef:
             name: mediahouse-config
         env:
-        - name: DB_PROVIDER
+        - name: MH_Database__Provider
           value: "MySql"
-        - name: DB_MYSQL_DEFAULT_CONNECTION
+        - name: MH_Database__MySql__DefaultConnection
           value: "Server=mysql-service;Port=3306;Database=mediahouse;User=root;Password=secret;"
-        - name: DB_MYSQL_LOGGER
+        - name: MH_Database__MySql__Logger
           value: "Server=mysql-service;Port=3306;Database=mediahouse_logs;User=root;Password=secret;"
 ```
 
@@ -259,10 +274,10 @@ dotnet run --project media-house-admin
 ### 2. 测试 SQLite 环境变量
 
 ```bash
-export DB_PROVIDER=Sqlite
-export DB_SQLITE_DEFAULT_CONNECTION="Data Source=/tmp/test.db"
-export DB_SQLITE_LOGGER="Data Source=/tmp/test-logs.db"
-export DB_SQLITE_LOGGER_PATH="/tmp/test-logs.db"
+export MH_Database__Provider=Sqlite
+export MH_Database__Sqlite__DefaultConnection="Data Source=/tmp/test.db"
+export MH_Database__Sqlite__Logger="Data Source=/tmp/test-logs.db"
+export MH_Database__Sqlite__LoggerPath="/tmp/test-logs.db"
 dotnet run --project media-house-admin
 ```
 
@@ -271,9 +286,9 @@ dotnet run --project media-house-admin
 ### 3. 测试 MySQL 环境变量
 
 ```bash
-export DB_PROVIDER=MySql
-export DB_MYSQL_DEFAULT_CONNECTION="Server=localhost;Port=3306;Database=mediahouse;User=root;Password=yourpassword;"
-export DB_MYSQL_LOGGER="Server=localhost;Port=3306;Database=mediahouse_logs;User=root;Password=yourpassword;"
+export MH_Database__Provider=MySql
+export MH_Database__MySql__DefaultConnection="Server=localhost;Port=3306;Database=mediahouse;User=root;Password=yourpassword;"
+export MH_Database__MySql__Logger="Server=localhost;Port=3306;Database=mediahouse_logs;User=root;Password=yourpassword;"
 dotnet run --project media-house-admin
 ```
 
@@ -298,7 +313,7 @@ mysql -u root -p mediahouse_logs -e "SELECT * FROM system_logs LIMIT 10;"
 ### 问题：数据库连接失败
 
 **检查点：**
-1. 确认环境变量名称正确（区分大小写）
+1. 确认环境变量使用 `MH_` 前缀，嵌套使用 `__` 分隔
 2. 确认连接字符串格式正确
 3. MySQL/MariaDB：确认服务器地址、端口、用户名、密码正确
 4. SQLite：确认有写入权限
@@ -306,7 +321,7 @@ mysql -u root -p mediahouse_logs -e "SELECT * FROM system_logs LIMIT 10;"
 ### 问题：日志未写入数据库
 
 **检查点：**
-1. 确认 `DB_SQLITE_LOGGER_PATH` 或 `DB_MYSQL_LOGGER` 已设置
+1. 确认 `MH_Database__Sqlite__LoggerPath` 或 `MH_Database__MySql__Logger` 已设置
 2. 检查日志数据库是否有写入权限
 3. 检查 Serilog 配置是否正确加载
 
@@ -343,6 +358,6 @@ CREATE DATABASE IF NOT EXISTS mediahouse_logs CHARACTER SET utf8mb4 COLLATE utf8
 ### MySQL → MariaDB
 
 由于两者使用相同的协议和连接字符串格式，只需：
-1. 修改 `DB_PROVIDER` 为 `MariaDB`
+1. 修改 `MH_Database__Provider` 为 `MariaDB`
 2. 确保连接字符串指向 MariaDB 服务器
 3. 重启应用

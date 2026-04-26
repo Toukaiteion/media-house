@@ -12,10 +12,10 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 // Load configuration: Environment variables take precedence over appsettings.json
-// Environment variables with DB_ prefix map to Database section (e.g., DB_PROVIDER -> Database:Provider)
+// Environment variables with MH_ prefix map to all configuration sections (e.g., MH__Database__Provider -> Database:Provider)
 builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
       .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
-      .AddEnvironmentVariables(prefix: "DB_");
+      .AddEnvironmentVariables(prefix: "MH_");
 
 // Register database options
 builder.Services.Configure<DatabaseOptions>(
