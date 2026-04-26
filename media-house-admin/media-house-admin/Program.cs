@@ -24,7 +24,7 @@ builder.Services.Configure<DatabaseOptions>(
 // Configure database services (with environment variable support)
 var databaseConfigurator = new DatabaseConfigurator(builder);
 databaseConfigurator.ConfigureServices();
-databaseConfigurator.PrintDatabaseInfo();
+
 
 // Register services
 builder.Services.AddScoped<ILibraryService, LibraryService>();
@@ -65,6 +65,7 @@ var loggerConfig = new LoggerConfiguration()
 
 // Add database sink based on provider (using DatabaseConfigurator)
 databaseConfigurator.ConfigureSerilog(loggerConfig);
+databaseConfigurator.PrintDatabaseInfo();
 
 Log.Logger = loggerConfig.CreateLogger();
 
