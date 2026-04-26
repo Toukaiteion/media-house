@@ -67,6 +67,16 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
             .WithMany()
             .OnDelete(DeleteBehavior.Cascade);
 
+                // 告诉 EF Core，SyncType 枚举在数据库里存的是字符串
+        modelBuilder.Entity<SystemSyncLog>()
+            .Property(e => e.SyncType)
+            .HasConversion<string>(); 
+        
+        // 告诉 EF Core，Status 枚举在数据库里存的是字符串
+        modelBuilder.Entity<SystemSyncLog>()
+            .Property(e => e.Status)
+            .HasConversion<string>(); 
+
         modelBuilder.Entity<AppUser>()
             .HasMany(u => u.PlayRecords)
             .WithOne(p => p.User)
