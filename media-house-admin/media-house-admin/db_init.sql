@@ -27,7 +27,7 @@ CREATE TABLE medias (
     name VARCHAR(100) NOT NULL,         -- 媒体名
     title VARCHAR(255) NOT NULL,          -- 标题
     original_title VARCHAR(255),          -- 原始标题
-    release_date DATE,                    -- 上映日期
+    release_date VARCHAR(20),                    -- 上映日期
     summary   VARCHAR(4096),             -- 简介
     poster_path VARCHAR(255),            -- 海报
     thumb_path VARCHAR(255),             -- 缩略图

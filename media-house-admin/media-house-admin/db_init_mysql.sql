@@ -28,7 +28,7 @@ CREATE TABLE medias (
     name VARCHAR(100) NOT NULL COMMENT '媒体名',
     title VARCHAR(255) NOT NULL COMMENT '标题',
     original_title VARCHAR(255) DEFAULT NULL COMMENT '原始标题',
-    release_date DATE DEFAULT NULL COMMENT '上映日期',
+    release_date VARCHAR(20) DEFAULT NULL COMMENT '上映日期',
     summary VARCHAR(4096) DEFAULT NULL COMMENT '简介',
     poster_path VARCHAR(255) DEFAULT NULL,
     thumb_path VARCHAR(255) DEFAULT NULL,
