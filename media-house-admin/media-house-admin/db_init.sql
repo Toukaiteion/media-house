@@ -25,8 +25,8 @@ CREATE TABLE medias (
     type  VARCHAR(20) NOT NULL,         -- movie,tvshow,season, episode
     parent_id INTEGER NOT NULL DEFAULT 0,
     name VARCHAR(100) NOT NULL,         -- 媒体名
-    title VARCHAR(255) NOT NULL,          -- 标题
-    original_title VARCHAR(255),          -- 原始标题
+    title VARCHAR(1024) NOT NULL,          -- 标题
+    original_title VARCHAR(1024),          -- 原始标题
     release_date VARCHAR(20),                    -- 上映日期
     summary   VARCHAR(4096),             -- 简介
     poster_path VARCHAR(255),            -- 海报

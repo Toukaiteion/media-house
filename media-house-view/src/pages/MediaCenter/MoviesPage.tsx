@@ -56,6 +56,9 @@ export function MoviesPage() {
   const contentRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 追踪初始加载是否已执行（防止重复请求）
+  const hasInitializedRef = useRef(false);
+
   // 加载标签和演员数据
   const loadTagsAndActors = useCallback(async () => {
     try {
@@ -85,37 +88,35 @@ export function MoviesPage() {
     }
   }, []);
 
-  // 从 URL 初始化筛选状态
-  useEffect(() => {
-    setSearchValue(searchParams.get('search') || '');
-    setSortBy((searchParams.get('sortBy') || 'default') as typeof sortBy);
-    setSortOrder((searchParams.get('sortOrder') || 'desc') as typeof sortOrder);
-    setPage(parseInt(searchParams.get('page') || '1'));
-    setPageSize(parseInt(searchParams.get('pageSize') || String(DEFAULT_PAGE_SIZE)));
-
-    const tagIds = searchParams.get('tag_ids');
-    if (tagIds) {
-      setSelectedTags(tagIds.split(','));
-    } else {
-      setSelectedTags([]);
-    }
-
-    const actorId = searchParams.get('actor_id');
-    if (actorId) {
-      setSelectedActor(actorId);
-    } else {
-      setSelectedActor(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 从 sessionStorage 恢复状态（只在没有 URL 参数时）
+  // 从 URL 初始化筛选状态，或从 sessionStorage 恢复状态
   useEffect(() => {
     const urlHasParams = searchParams.toString().length > 0;
     const libraryId = searchParams.get('library_id');
     const hasNavigationParams = libraryId !== null;
 
-    if (!urlHasParams && !hasNavigationParams) {
+    if (urlHasParams || hasNavigationParams) {
+      // 从 URL 参数初始化状态
+      setSearchValue(searchParams.get('search') || '');
+      setSortBy((searchParams.get('sortBy') || 'default') as typeof sortBy);
+      setSortOrder((searchParams.get('sortOrder') || 'desc') as typeof sortOrder);
+      setPage(parseInt(searchParams.get('page') || '1'));
+      setPageSize(parseInt(searchParams.get('pageSize') || String(DEFAULT_PAGE_SIZE)));
+
+      const tagIds = searchParams.get('tag_ids');
+      if (tagIds) {
+        setSelectedTags(tagIds.split(','));
+      } else {
+        setSelectedTags([]);
+      }
+
+      const actorId = searchParams.get('actor_id');
+      if (actorId) {
+        setSelectedActor(actorId);
+      } else {
+        setSelectedActor(null);
+      }
+    } else {
+      // 没有 URL 参数，从 sessionStorage 恢复状态
       const savedState = sessionStorage.getItem(MOVIES_STATE_KEY);
       if (savedState) {
         try {
@@ -332,8 +333,9 @@ export function MoviesPage() {
   // 构建查询参数
   const buildQueryParams = (): MovieListParams => {
     const params: MovieListParams = {
-      page,
-      pageSize,
+      // 优先使用 URL 参数，URL 没有时才使用 state 值（避免重复请求）
+      page: parseInt(searchParams.get('page') || String(page)),
+      pageSize: parseInt(searchParams.get('pageSize') || String(pageSize)),
     };
 
     const libraryId = searchParams.get('library_id');
@@ -389,6 +391,8 @@ export function MoviesPage() {
     try {
       setError(null);
       const params = buildQueryParams();
+      console.log('params:', params);
+      console.trace()
       const data = await api.getMoviesWithParams(params);
 
       setMovies(data.items);
@@ -402,8 +406,23 @@ export function MoviesPage() {
 
   // 初始化加载和页码变化时加载
   useEffect(() => {
-    setLoading(true);
-    loadMovies();
+    if (hasInitializedRef.current) {
+      // 已经初始化过，按正常逻辑加载
+      setLoading(true);
+      loadMovies();
+      return;
+    }
+
+    // 首次加载：检查 URL 参数或 sessionStorage 状态是否已设置
+    const urlHasParams = searchParams.toString().length > 0;
+    const libraryId = searchParams.get('library_id');
+    const hasNavigationParams = libraryId !== null;
+
+    if (urlHasParams || hasNavigationParams || searchParams.get('page')) {
+      hasInitializedRef.current = true;
+      setLoading(true);
+      loadMovies();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.toString(), page, pageSize]);
 
