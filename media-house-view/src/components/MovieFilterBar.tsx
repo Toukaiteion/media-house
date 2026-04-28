@@ -11,6 +11,7 @@ import {
   alpha,
   IconButton,
   Tooltip,
+  Button,
 } from '@mui/material';
 import { Search, ArrowUpward, ArrowDownward } from '@mui/icons-material';
 import type { Tag, Actor } from '../types';
@@ -94,6 +95,12 @@ export function MovieFilterBar({
   const [actorDropdownOpen, setActorDropdownOpen] = useState(false);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 分页状态
+  const TAGS_PAGE_SIZE = 50;
+  const ACTORS_PAGE_SIZE = 50;
+  const [tagPage, setTagPage] = useState(1);
+  const [actorPage, setActorPage] = useState(1);
+
   // 生成标题文本
   const getTitleText = () => {
     if (libraryId && myFavor) {
@@ -115,6 +122,14 @@ export function MovieFilterBar({
   const filteredActors = actors.filter(actor =>
     actor.name.toLowerCase().includes(actorSearch.toLowerCase())
   );
+
+  // 分页后的标签
+  const paginatedTags = filteredTags.slice(0, tagPage * TAGS_PAGE_SIZE);
+  const hasMoreTags = paginatedTags.length < filteredTags.length;
+
+  // 分页后的演员
+  const paginatedActors = filteredActors.slice(0, actorPage * ACTORS_PAGE_SIZE);
+  const hasMoreActors = paginatedActors.length < filteredActors.length;
 
   // 处理搜索输入（防抖）
   const handleSearchChange = (value: string) => {
@@ -186,6 +201,7 @@ export function MovieFilterBar({
         onClose={() => {
           setTagDropdownOpen(false);
           setTagSearch('');
+          setTagPage(1);
         }}
         displayEmpty
         renderValue={(selected) => (
@@ -209,6 +225,7 @@ export function MovieFilterBar({
           PaperProps: {
             sx: {
               '& .MuiList-root': { p: 0 },
+              maxHeight: 400,
             },
           },
         }}
@@ -219,7 +236,10 @@ export function MovieFilterBar({
             size="small"
             placeholder="搜索标签..."
             value={tagSearch}
-            onChange={(e) => setTagSearch(e.target.value)}
+            onChange={(e) => {
+              setTagSearch(e.target.value);
+              setTagPage(1);
+            }}
             autoFocus={tagDropdownOpen}
             fullWidth
             onClick={(e) => e.stopPropagation()}
@@ -232,20 +252,35 @@ export function MovieFilterBar({
         ) : filteredTags.length === 0 ? (
           <MenuItem disabled>无匹配标签</MenuItem>
         ) : (
-          filteredTags.map((tag) => (
-            <MenuItem
-              key={tag.id}
-              value={tag.id}
-              onClick={() => handleTagClick(tag.id)}
-            >
-              <Checkbox
-                checked={selectedTags.includes(tag.id)}
-                size="small"
-                sx={{ mr: 1 }}
-              />
-              {tag.tag_name}
-            </MenuItem>
-          ))
+          <>
+            {paginatedTags.map((tag) => (
+              <MenuItem
+                key={tag.id}
+                value={tag.id}
+                onClick={() => handleTagClick(tag.id)}
+              >
+                <Checkbox
+                  checked={selectedTags.includes(tag.id)}
+                  size="small"
+                  sx={{ mr: 1 }}
+                />
+                {tag.tag_name}
+              </MenuItem>
+            ))}
+            {hasMoreTags && (
+              <MenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTagPage(p => p + 1);
+                }}
+                sx={{ justifyContent: 'center' }}
+              >
+                <Button size="small" sx={{ textTransform: 'none' }}>
+                  加载更多 ({filteredTags.length - paginatedTags.length} 条)
+                </Button>
+              </MenuItem>
+            )}
+          </>
         )}
       </Select>
 
@@ -257,6 +292,7 @@ export function MovieFilterBar({
         onClose={() => {
           setActorDropdownOpen(false);
           setActorSearch('');
+          setActorPage(1);
         }}
         displayEmpty
         renderValue={(selected) => {
@@ -278,6 +314,7 @@ export function MovieFilterBar({
           PaperProps: {
             sx: {
               '& .MuiList-root': { p: 0 },
+              maxHeight: 400,
             },
           },
         }}
@@ -288,7 +325,10 @@ export function MovieFilterBar({
             size="small"
             placeholder="搜索演员..."
             value={actorSearch}
-            onChange={(e) => setActorSearch(e.target.value)}
+            onChange={(e) => {
+              setActorSearch(e.target.value);
+              setActorPage(1);
+            }}
             autoFocus={actorDropdownOpen}
             fullWidth
             onClick={(e) => e.stopPropagation()}
@@ -301,15 +341,30 @@ export function MovieFilterBar({
         ) : filteredActors.length === 0 ? (
           <MenuItem disabled>无匹配演员</MenuItem>
         ) : (
-          filteredActors.map((actor) => (
-            <MenuItem
-              key={actor.id}
-              value={actor.id}
-              onClick={() => onActorChange(actor.id)}
-            >
-              {actor.name}
-            </MenuItem>
-          ))
+          <>
+            {paginatedActors.map((actor) => (
+              <MenuItem
+                key={actor.id}
+                value={actor.id}
+                onClick={() => onActorChange(actor.id)}
+              >
+                {actor.name}
+              </MenuItem>
+            ))}
+            {hasMoreActors && (
+              <MenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActorPage(p => p + 1);
+                }}
+                sx={{ justifyContent: 'center' }}
+              >
+                <Button size="small" sx={{ textTransform: 'none' }}>
+                  加载更多 ({filteredActors.length - paginatedActors.length} 条)
+                </Button>
+              </MenuItem>
+            )}
+          </>
         )}
       </Select>
 

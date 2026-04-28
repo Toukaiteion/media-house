@@ -59,11 +59,11 @@ export function MovieCard({ media_id, poster_url, title, year, is_favorited, onF
       >
         {/* 海报图片 */}
         {posterUrl ? (
-          <Box
-            component="img"
+          <img
             src={posterUrl}
             alt={title}
-            sx={{
+            loading="lazy"
+            style={{
               width: '100%',
               height: '100%',
               objectFit: 'cover',

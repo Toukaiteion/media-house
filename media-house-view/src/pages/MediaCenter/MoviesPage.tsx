@@ -250,6 +250,13 @@ export function MoviesPage() {
     const target = e.target as HTMLElement;
     const currentScrollY = target.scrollTop;
 
+    // 实时保存滚动位置到 sessionStorage
+    sessionStorage.setItem(MOVIES_STATE_KEY, JSON.stringify({
+      page,
+      pageSize,
+      scrollY: currentScrollY,
+    }));
+
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
     }
@@ -264,7 +271,7 @@ export function MoviesPage() {
       }
       setLastScrollY(currentScrollY);
     }, 50);
-  }, [lastScrollY]);
+  }, [lastScrollY, page, pageSize]);
 
   // 注册滚动监听
   useEffect(() => {
@@ -286,29 +293,18 @@ export function MoviesPage() {
     };
   }, []);
 
-  // 保存状态到 sessionStorage（组件卸载时）
-  useEffect(() => {
-    const content = contentRef.current;
-    return () => {
-      sessionStorage.setItem(MOVIES_STATE_KEY, JSON.stringify({
-        page,
-        pageSize,
-        scrollY: content?.scrollTop || 0,
-      }));
-    };
-  }, [page, pageSize]);
-
   // 恢复滚动位置
   useEffect(() => {
     if (!loading && movies.length > 0 && restoreScrollY !== null) {
       setTimeout(() => {
+        console.log('恢复滚动位置到:', restoreScrollY);
         contentRef.current?.scrollTo({
           top: restoreScrollY,
-          behavior: 'instant',
+          behavior: 'auto',
         });
         setRestoreScrollY(null);
         sessionStorage.removeItem(MOVIES_STATE_KEY);
-      }, 100);
+      }, 1000);
     }
   }, [loading, movies.length, restoreScrollY]);
 
@@ -391,8 +387,6 @@ export function MoviesPage() {
     try {
       setError(null);
       const params = buildQueryParams();
-      console.log('params:', params);
-      console.trace()
       const data = await api.getMoviesWithParams(params);
 
       setMovies(data.items);
