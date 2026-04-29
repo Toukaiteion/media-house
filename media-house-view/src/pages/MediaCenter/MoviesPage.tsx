@@ -23,12 +23,13 @@ const DEFAULT_PAGE_SIZE = 30;
 const MOVIES_STATE_KEY = 'movies-page-state';
 // 根据卡片大小获取网格列数
 const getGridSize = (cardSize: CardSize) => {
+  console.log('getGridSize', cardSize);
   if (cardSize === 'small') {
-    return { xs: 6, sm: 4, md: 3, lg: 2, xl: 1 };
+    return { xs: 8, sm: 6, md: 4, lg: 3, xl: 2 };
   } else if (cardSize === 'large') {
-    return { xs: 12, sm: 6, md: 4, lg: 3, xl: 2 };
+    return { xs: 24, sm: 12, md: 8, lg: 6, xl: 4 };
   }
-  return { xs: 12, sm: 6, md: 4, lg: 3, xl: 2 };
+  return { xs: 24, sm: 12, md: 6, lg: 4, xl: 3 };
 };
 
 export function MoviesPage() {
@@ -495,7 +496,7 @@ export function MoviesPage() {
         {/* 电影内容 */}
         <Box sx={{ p: 3, pt: 2 }}>
           {/* 电影网格 */}
-          <Grid container spacing={3}>
+          <Grid container spacing={3} columns={24}>
             {movies.map((movie, index) => (
               <Grid size={getGridSize(cardSize)} key={movie.id}>
                 <MovieCard
