@@ -14,13 +14,22 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
 import { MovieCard } from '../../components/MovieCard';
-import { MovieFilterBar, type SortByKey } from '../../components/MovieFilterBar';
+import { MovieFilterBar, type SortByKey, type CardSize } from '../../components/MovieFilterBar';
 import { FilterStatusBar } from '../../components/FilterStatusBar';
 import type { MovieDetail, MovieListParams, Tag, Actor, MediaLibrary } from '../../types';
 
 const PAGE_SIZE_OPTIONS = [30, 50, 100];
 const DEFAULT_PAGE_SIZE = 30;
 const MOVIES_STATE_KEY = 'movies-page-state';
+// 根据卡片大小获取网格列数
+const getGridSize = (cardSize: CardSize) => {
+  if (cardSize === 'small') {
+    return { xs: 6, sm: 4, md: 3, lg: 2, xl: 1 };
+  } else if (cardSize === 'large') {
+    return { xs: 12, sm: 6, md: 4, lg: 3, xl: 2 };
+  }
+  return { xs: 12, sm: 6, md: 4, lg: 3, xl: 2 };
+};
 
 export function MoviesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -29,6 +38,7 @@ export function MoviesPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [cardSize, setCardSize] = useState<CardSize>('medium');
   const [total, setTotal] = useState(0);
 
   // 滚动位置恢复
@@ -215,9 +225,15 @@ export function MoviesPage() {
 
   // 处理移除搜索
   const handleRemoveSearch = useCallback(() => {
+
     setSearchValue('');
     updateSearchParams({ search: null });
   }, [updateSearchParams]);
+  // 处理卡片大小变化
+  const handleCardSizeChange = useCallback((size: CardSize) => {
+    setCardSize(size);
+  }, []);
+
 
   // 处理清除全部
   const handleClearAll = useCallback(() => {
@@ -459,6 +475,8 @@ export function MoviesPage() {
           actors={actors}
           loadingTags={loadingTags}
           loadingActors={loadingActors}
+          cardSize={cardSize}
+          onCardSizeChange={handleCardSizeChange}
         />
 
         {/* 筛选状态栏 */}
@@ -479,13 +497,14 @@ export function MoviesPage() {
           {/* 电影网格 */}
           <Grid container spacing={3}>
             {movies.map((movie, index) => (
-              <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 2 }} key={movie.id}>
+              <Grid size={getGridSize(cardSize)} key={movie.id}>
                 <MovieCard
                   media_id={parseInt(movie.id)}
                   poster_url={movie.poster_path}
                   title={movie.title}
                   year={movie.year}
                   is_favorited={movie.is_favorited}
+                  size={cardSize}
                   onFavoriteToggle={() => handleFavoriteToggle(parseInt(movie.id), index)}
                 />
               </Grid>

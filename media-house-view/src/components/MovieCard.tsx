@@ -4,6 +4,7 @@ import { useTheme } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import { PlayArrow as PlayIcon, Favorite, FavoriteBorder } from '@mui/icons-material';
 import { api } from '../services/api';
+import type { CardSize } from './MovieFilterBar';
 
 interface MovieCardProps {
   media_id: number;
@@ -12,12 +13,37 @@ interface MovieCardProps {
   year?: number;
   is_favorited?: boolean;
   onFavoriteToggle?: () => void;
+  size?: CardSize;
 }
 
-export function MovieCard({ media_id, poster_url, title, year, is_favorited, onFavoriteToggle }: MovieCardProps) {
+// 卡片大小配置
+const cardSizeConfig: Record<CardSize, {
+  padding: number;
+  fontSize: { title: string; year: string };
+  playIconSize: number;
+}> = {
+  small: {
+    padding: 0.75,
+    fontSize: { title: '0.875rem', year: '0.75rem' },
+    playIconSize: 24,
+  },
+  medium: {
+    padding: 1.5,
+    fontSize: { title: '1rem', year: '0.875rem' },
+    playIconSize: 32,
+  },
+  large: {
+    padding: 2,
+    fontSize: { title: '1.125rem', year: '1rem' },
+    playIconSize: 40,
+  },
+};
+
+export function MovieCard({ media_id, poster_url, title, year, is_favorited, onFavoriteToggle, size = 'medium' }: MovieCardProps) {
   const navigate = useNavigate();
   const theme = useTheme();
   const [hovered, setHovered] = useState(false);
+  const config = cardSizeConfig[size];
 
   const posterUrl = poster_url ? api.imageUrl(poster_url) : undefined;
 
@@ -109,8 +135,8 @@ export function MovieCard({ media_id, poster_url, title, year, is_favorited, onF
               }}
               sx={{
                 bgcolor: theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.9)',
-                width: 64,
-                height: 64,
+                width: config.playIconSize * 1.6,
+                height: config.playIconSize * 1.6,
                 '&:hover': {
                   bgcolor: theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 1)',
                   transform: 'scale(1.1)',
@@ -119,7 +145,7 @@ export function MovieCard({ media_id, poster_url, title, year, is_favorited, onF
               }}
               aria-label="播放"
             >
-              <PlayIcon sx={{ fontSize: 36, color: theme.palette.mode === 'dark' ? 'white' : 'text.primary' }} />
+              <PlayIcon sx={{ fontSize: config.playIconSize, color: theme.palette.mode === 'dark' ? 'white' : 'text.primary' }} />
             </IconButton>
           </Box>
         </Fade>
@@ -164,16 +190,17 @@ export function MovieCard({ media_id, poster_url, title, year, is_favorited, onF
       {/* 标题区域 */}
       <Box
         sx={{
-          p: 1.5,
+          p: config.padding,
           cursor: 'pointer',
         }}
         onClick={handleTitleClick}
       >
         <Typography
-          variant="subtitle1"
+          variant="body1"
           noWrap
           title={title}
           sx={{
+            fontSize: config.fontSize.title,
             fontWeight: 500,
             '&:hover': {
               color: 'primary.main',
@@ -187,7 +214,7 @@ export function MovieCard({ media_id, poster_url, title, year, is_favorited, onF
           <Typography
             variant="body2"
             color="text.secondary"
-            sx={{ fontSize: '0.875rem', mt: 0.25 }}
+            sx={{ fontSize: config.fontSize.year, mt: 0.25 }}
           >
             {year}
           </Typography>

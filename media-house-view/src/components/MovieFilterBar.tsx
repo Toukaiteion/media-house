@@ -12,9 +12,21 @@ import {
   IconButton,
   Tooltip,
   Button,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
-import { Search, ArrowUpward, ArrowDownward } from '@mui/icons-material';
+import {
+  Search,
+  ArrowUpward,
+  ArrowDownward,
+  GridView as GridIcon,
+  TableRows as ListIcon,
+  ViewModule as MediumIcon,
+} from '@mui/icons-material';
 import type { Tag, Actor } from '../types';
+
+export type SortByKey = 'default' | 'recent' | 'mostly_play' | 'name' | 'release_date' | 'create_time';
+export type CardSize = 'small' | 'medium' | 'large';
 
 interface MovieFilterBarProps {
   visible: boolean;
@@ -35,9 +47,9 @@ interface MovieFilterBarProps {
   actors: Actor[];
   loadingTags?: boolean;
   loadingActors?: boolean;
+  cardSize: CardSize;
+  onCardSizeChange: (size: CardSize) => void;
 }
-
-export type SortByKey = 'default' | 'recent' | 'mostly_play' | 'name' | 'release_date' | 'create_time';
 
 // 排序选项
 const sortOptions = [
@@ -48,6 +60,13 @@ const sortOptions = [
   { value: 'release_date', label: '上映日期' },
   { value: 'create_time', label: '创建时间' },
 ] as const;
+
+// 卡片大小选项
+const cardSizeOptions = [
+  { value: 'small' as const, label: '小', icon: <GridIcon fontSize="small" /> },
+  { value: 'medium' as const, label: '中', icon: <MediumIcon fontSize="small" /> },
+  { value: 'large' as const, label: '大', icon: <ListIcon fontSize="small" /> },
+];
 
 // 滚动隐藏的筛选栏组件
 const FilterBar = styled(Box, {
@@ -88,6 +107,8 @@ export function MovieFilterBar({
   actors,
   loadingTags = false,
   loadingActors = false,
+  cardSize,
+  onCardSizeChange,
 }: MovieFilterBarProps) {
   const [tagSearch, setTagSearch] = useState('');
   const [actorSearch, setActorSearch] = useState('');
@@ -413,6 +434,31 @@ export function MovieFilterBar({
           </IconButton>
         </Tooltip>
       </Box>
+
+      {/* 卡片大小切换 */}
+      <Tooltip title="卡片大小">
+        <ToggleButtonGroup
+          value={cardSize}
+          exclusive
+          onChange={(_, newValue) => {
+            if (newValue) onCardSizeChange(newValue);
+          }}
+          size="small"
+          sx={{
+            height: 36,
+            '& .MuiToggleButton-root': {
+              padding: '6px 10px',
+              height: 36,
+            },
+          }}
+        >
+          {cardSizeOptions.map((option) => (
+            <ToggleButton key={option.value} value={option.value} aria-label={option.label}>
+              {option.icon}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Tooltip>
     </FilterBar>
   );
 }
