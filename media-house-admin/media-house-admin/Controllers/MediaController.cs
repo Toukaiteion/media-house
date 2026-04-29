@@ -101,6 +101,11 @@ public class MediaController(
 
             var contentType = GetContentType(mediaImg.Extension ?? "");
             var fileStream = new System.IO.FileStream(mediaImg.Path, System.IO.FileMode.Open, System.IO.FileAccess.Read);
+
+            // Add cache control headers
+            Response.Headers.CacheControl = "public, max-age=2592000"; // 30 days
+            Response.Headers.ETag = $"{mediaImg.UrlName}"; // Simple ETag using url_name
+
             return File(fileStream, contentType, enableRangeProcessing: true);
         }
         catch (Exception ex)
