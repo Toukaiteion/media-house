@@ -12,7 +12,9 @@ import {
   type SelectChangeEvent,
 } from '@mui/material';
 import { useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
+import { movieListCache } from '../../services/movieListCache';
 import { MovieCard } from '../../components/MovieCard';
 import { MovieFilterBar, type SortByKey, type CardSize } from '../../components/MovieFilterBar';
 import { FilterStatusBar } from '../../components/FilterStatusBar';
@@ -20,7 +22,6 @@ import type { MovieDetail, MovieListParams, Tag, Actor, MediaLibrary } from '../
 
 const PAGE_SIZE_OPTIONS = [30, 50, 100];
 const DEFAULT_PAGE_SIZE = 30;
-const MOVIES_STATE_KEY = 'movies-page-state';
 // 根据卡片大小获取网格列数
 const getGridSize = (cardSize: CardSize) => {
   if (cardSize === 'small') {
@@ -33,16 +34,9 @@ const getGridSize = (cardSize: CardSize) => {
 
 export function MoviesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [movies, setMovies] = useState<MovieDetail[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [cardSize, setCardSize] = useState<CardSize>('medium');
-  const [total, setTotal] = useState(0);
-
-  // 滚动位置恢复
-  const [restoreScrollY, setRestoreScrollY] = useState<number | null>(null);
 
   // 筛选栏状态
   const [searchValue, setSearchValue] = useState('');
@@ -60,14 +54,15 @@ export function MoviesPage() {
   // 库数据
   const [libraries, setLibraries] = useState<MediaLibrary[]>([]);
 
+  // 是否使用缓存（从播放页或详情页返回）
+  const [shouldUseCache, setShouldUseCache] = useState(false);
+
   // 滚动相关
   const [filterBarVisible, setFilterBarVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 追踪初始加载是否已执行（防止重复请求）
-  const hasInitializedRef = useRef(false);
+  const queryClient = useQueryClient();
 
   // 加载标签和演员数据
   const loadTagsAndActors = useCallback(async () => {
@@ -98,8 +93,12 @@ export function MoviesPage() {
     }
   }, []);
 
-  // 从 URL 初始化筛选状态，或从 sessionStorage 恢复状态
+  // 检查是否应该使用缓存并恢复 UI 状态
   useEffect(() => {
+    const navigationSource = movieListCache.getNavigationSource();
+    setShouldUseCache(navigationSource !== null);
+
+    // 检查 URL 参数
     const urlHasParams = searchParams.toString().length > 0;
     const libraryId = searchParams.get('library_id');
     const hasNavigationParams = libraryId !== null;
@@ -125,24 +124,22 @@ export function MoviesPage() {
       } else {
         setSelectedActor(null);
       }
-    } else {
-      // 没有 URL 参数，从 sessionStorage 恢复状态
-      const savedState = sessionStorage.getItem(MOVIES_STATE_KEY);
-      if (savedState) {
-        try {
-          const { page: savedPage, pageSize: savedPageSize, scrollY } = JSON.parse(savedState);
-          setPage(savedPage);
-          setPageSize(savedPageSize);
-          updateSearchParams({
-            page: savedPage.toString(),
-            pageSize: savedPageSize.toString(),
+    }
+
+    // 如果从播放/详情页返回，恢复 UI 状态
+    if (navigationSource) {
+      const uiState = movieListCache.loadUIState();
+      if (uiState) {
+        setFilterBarVisible(uiState.filterBarVisible);
+        setTimeout(() => {
+          contentRef.current?.scrollTo({
+            top: uiState.scrollY,
+            behavior: 'auto',
           });
-          // 保存滚动位置以便数据加载后恢复
-          setRestoreScrollY(scrollY);
-        } catch (err) {
-          console.error('恢复状态失败:', err);
-        }
+        }, 100);
       }
+      // 清除导航来源标记
+      movieListCache.setNavigationSource(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -266,12 +263,11 @@ export function MoviesPage() {
     const target = e.target as HTMLElement;
     const currentScrollY = target.scrollTop;
 
-    // 实时保存滚动位置到 sessionStorage
-    sessionStorage.setItem(MOVIES_STATE_KEY, JSON.stringify({
-      page,
-      pageSize,
+    // 保存 UI 状态到缓存
+    movieListCache.saveUIState({
       scrollY: currentScrollY,
-    }));
+      filterBarVisible,
+    });
 
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
@@ -287,7 +283,7 @@ export function MoviesPage() {
       }
       setLastScrollY(currentScrollY);
     }, 50);
-  }, [lastScrollY, page, pageSize]);
+  }, [lastScrollY, filterBarVisible]);
 
   // 注册滚动监听
   useEffect(() => {
@@ -308,39 +304,6 @@ export function MoviesPage() {
       }
     };
   }, []);
-
-  // 恢复滚动位置
-  useEffect(() => {
-    if (!loading && movies.length > 0 && restoreScrollY !== null) {
-      setTimeout(() => {
-        console.log('恢复滚动位置到:', restoreScrollY);
-        contentRef.current?.scrollTo({
-          top: restoreScrollY,
-          behavior: 'auto',
-        });
-        setRestoreScrollY(null);
-        sessionStorage.removeItem(MOVIES_STATE_KEY);
-      }, 1000);
-    }
-  }, [loading, movies.length, restoreScrollY]);
-
-  // 处理收藏切换
-  const handleFavoriteToggle = async (movieId: number, currentIndex: number) => {
-    try {
-      const response = await api.toggleFavorite(movieId, 1);
-      // 更新本地收藏状态
-      setMovies((prev) => {
-        const newMovies = [...prev];
-        newMovies[currentIndex] = {
-          ...newMovies[currentIndex],
-          is_favorited: response.is_favorited,
-        };
-        return newMovies;
-      });
-    } catch (err) {
-      console.error('收藏切换失败:', err);
-    }
-  };
 
   // 构建查询参数
   const buildQueryParams = (): MovieListParams => {
@@ -398,48 +361,47 @@ export function MoviesPage() {
     return params;
   };
 
-  // 加载电影列表
-  const loadMovies = async () => {
-    try {
-      setError(null);
+  // 使用 react-query 缓存电影列表数据
+  const { data: moviesData, isLoading, error } = useQuery({
+    queryKey: ['movies', searchParams.toString()],
+    queryFn: async () => {
       const params = buildQueryParams();
-      const data = await api.getMoviesWithParams(params);
+      return await api.getMoviesWithParams(params);
+    },
+    // 从播放/详情页返回时，优先使用缓存（staleTime = Infinity）
+    staleTime: shouldUseCache ? Infinity : 5 * 60 * 1000,
+    // 正常情况下 5 分钟后重新获取数据
+  });
 
-      setMovies(data.items);
-      setTotal(data.total_count);
+  const movies = moviesData?.items || [];
+  const total = moviesData?.total_count || 0;
+
+  // 如果使用缓存，不显示 loading 状态
+  const loading = shouldUseCache ? false : isLoading;
+
+  // 处理收藏切换
+  const handleFavoriteToggle = async (movieId: number, currentIndex: number) => {
+    try {
+      const response = await api.toggleFavorite(movieId, 1);
+      // 更新 react-query 缓存中的数据
+      queryClient.setQueryData(['movies', searchParams.toString()], (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          items: oldData.items.map((item: MovieDetail, idx: number) =>
+            idx === currentIndex ? { ...item, is_favorited: response.is_favorited } : item
+          ),
+        };
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
-    } finally {
-      setLoading(false);
+      console.error('收藏切换失败:', err);
     }
   };
-
-  // 初始化加载和页码变化时加载
-  useEffect(() => {
-    if (hasInitializedRef.current) {
-      // 已经初始化过，按正常逻辑加载
-      setLoading(true);
-      loadMovies();
-      return;
-    }
-
-    // 首次加载：检查 URL 参数或 sessionStorage 状态是否已设置
-    const urlHasParams = searchParams.toString().length > 0;
-    const libraryId = searchParams.get('library_id');
-    const hasNavigationParams = libraryId !== null;
-
-    if (urlHasParams || hasNavigationParams || searchParams.get('page')) {
-      hasInitializedRef.current = true;
-      setLoading(true);
-      loadMovies();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams.toString(), page, pageSize]);
 
   if (error && movies.length === 0) {
     return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="error">{error}</Alert>
+        <Alert severity="error">{error instanceof Error ? error.message : '加载失败'}</Alert>
       </Box>
     );
   }
@@ -562,7 +524,7 @@ export function MoviesPage() {
           {/* 错误提示（已有数据时） */}
           {error && movies.length > 0 && (
             <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
+              {error instanceof Error ? error.message : '加载失败'}
             </Alert>
           )}
         </Box>

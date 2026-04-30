@@ -3,10 +3,21 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, useNavigate } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App.tsx'
 import { AuthProvider } from './contexts/AuthContext';
 import { api } from './services/api';
 import './index.css'
+
+// React Query 配置
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,  // 5分钟内数据视为新鲜
+      gcTime: 30 * 60 * 1000,    // 30分钟后清理缓存
+    },
+  },
+});
 
 const theme = createTheme({
   palette: {
@@ -64,9 +75,11 @@ function Root() {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <AuthAwareRoot />
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AuthAwareRoot />
+        </AuthProvider>
+      </QueryClientProvider>
     </BrowserRouter>
   </StrictMode>,
 )

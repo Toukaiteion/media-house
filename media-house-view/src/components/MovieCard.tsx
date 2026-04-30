@@ -4,6 +4,7 @@ import { useTheme } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import { PlayArrow as PlayIcon, Favorite, FavoriteBorder } from '@mui/icons-material';
 import { api } from '../services/api';
+import { movieListCache } from '../services/movieListCache';
 import type { CardSize } from './MovieFilterBar';
 
 interface MovieCardProps {
@@ -48,10 +49,12 @@ export function MovieCard({ media_id, poster_url, title, year, is_favorited, onF
   const posterUrl = poster_url ? api.imageUrl(poster_url) : undefined;
 
   const handlePosterClick = () => {
+    movieListCache.setNavigationSource('play');
     navigate(`/play/${media_id}`);
   };
 
   const handleTitleClick = () => {
+    movieListCache.setNavigationSource('detail');
     navigate(`/media-center/movies/${media_id}`);
   };
 

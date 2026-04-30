@@ -16,6 +16,7 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { PlayArrow as PlayIcon, Delete as DeleteIcon, Favorite, FavoriteBorder } from '@mui/icons-material';
 import { api } from '../../services/api';
+import { movieListCache } from '../../services/movieListCache';
 import type { MovieDetail } from '../../types';
 import { ImageViewer } from '../../components/ImageViewer';
 
@@ -52,6 +53,7 @@ export function MovieDetailPage() {
 
   const handlePlay = () => {
     if (!id) return;
+    movieListCache.setNavigationSource('play');
     navigate(`/play/${id}`);
   };
 
