@@ -163,6 +163,7 @@ export function PlayerPage() {
       });
     } catch (err) {
       console.log('No play record found:', err);
+      updatePlayProgress();
     }
     setDuration(videoRef.current.duration);
     videoRef.current.volume = volume;
@@ -252,7 +253,6 @@ export function PlayerPage() {
       if (progressUpdateTimerRef.current) {
         clearInterval(progressUpdateTimerRef.current);
       }
-      updatePlayProgress();
     };
   }, [mediaId]);
 

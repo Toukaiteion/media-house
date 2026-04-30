@@ -78,10 +78,7 @@ public class PlayRecordService(MediaHouseDbContext context, ILogger<PlayRecordSe
         {
             // Get media type and library id
             var media = await _context.Medias
-                .FirstOrDefaultAsync(m => m.Id == mediaId);
-
-            if (media == null)
-                throw new Exception("Media not found");
+                .FirstOrDefaultAsync(m => m.Id == mediaId) ?? throw new Exception("Media not found");
 
             playRecord = new PlayRecord
             {
