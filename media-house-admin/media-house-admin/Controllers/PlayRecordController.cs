@@ -23,26 +23,6 @@ public class PlayRecordController : ControllerBase
         _logger = logger;
     }
 
-    [HttpGet("url")]
-    public async Task<ActionResult<PlayRecordUrlDto>> GetPlaybackUrl([FromQuery] int mediaId, [FromQuery] string mediaType)
-    {
-        try
-        {
-            var url = await _playRecordService.GetPlaybackUrlAsync(mediaId, mediaType);
-            return Ok(new PlayRecordUrlDto
-            {
-                Url = url,
-                MimeType = GetMimeType(mediaType),
-                CanDirectPlay = true
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting playback URL for media {MediaId}", mediaId);
-            return StatusCode(500, new { error = "Failed to get playback URL" });
-        }
-    }
-
     [HttpGet("{mediaId}")]
     public async Task<ActionResult<PlayRecordDto>> GetPlayRecord(int mediaId)
     {

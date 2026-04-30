@@ -10,33 +10,6 @@ public class PlayRecordService(MediaHouseDbContext context, ILogger<PlayRecordSe
     private readonly MediaHouseDbContext _context = context;
     private readonly ILogger<PlayRecordService> _logger = logger;
 
-    public async Task<string> GetPlaybackUrlAsync(int mediaId, string mediaType)
-    {
-        string? filePath = null;
-
-        if (mediaType.Equals("movie", StringComparison.CurrentCultureIgnoreCase))
-        {
-            var movie = await _context.Movies
-                .FirstOrDefaultAsync(m => m.Id == mediaId);
-            filePath = "";
-        }
-
-        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
-            throw new FileNotFoundException("Media file not found");
-
-        // Return URL to media controller
-        return $"/api/media/file?path={Uri.EscapeDataString(filePath)}";
-    }
-
-    public async Task<PlayRecord?> GetPlaybackProgressAsync(int userId, int mediaLibraryId, int mediaId)
-    {
-        return await _context.PlayRecords
-            .FirstOrDefaultAsync(p =>
-                p.UserId == userId &&
-                p.LibraryId == mediaLibraryId &&
-                p.MediaId == mediaId);
-    }
-
     public async Task UpdatePlaybackProgressAsync(int userId, int mediaLibraryId, int mediaId, double positionSeconds)
     {
         var progress = await _context.PlayRecords
@@ -88,6 +61,7 @@ public class PlayRecordService(MediaHouseDbContext context, ILogger<PlayRecordSe
 
     public async Task<PlayRecord?> GetPlayRecordAsync(int mediaId, int userId)
     {
+        _logger.LogInformation("Getting play record for media {MediaId} and user {UserId}", mediaId, userId);
         return await _context.PlayRecords
             .FirstOrDefaultAsync(p => p.MediaId == mediaId && p.UserId == userId);
     }
