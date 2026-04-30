@@ -273,8 +273,8 @@ export function MovieFilterBar({
         ) : filteredTags.length === 0 ? (
           <MenuItem disabled>无匹配标签</MenuItem>
         ) : (
-          <>
-            {paginatedTags.map((tag) => (
+          [
+            ...paginatedTags.map((tag) => (
               <MenuItem
                 key={tag.id}
                 value={tag.id}
@@ -287,8 +287,8 @@ export function MovieFilterBar({
                 />
                 {tag.tag_name}
               </MenuItem>
-            ))}
-            {hasMoreTags && (
+            )),
+            hasMoreTags && (
               <MenuItem
                 onClick={(e) => {
                   e.stopPropagation();
@@ -300,8 +300,8 @@ export function MovieFilterBar({
                   加载更多 ({filteredTags.length - paginatedTags.length} 条)
                 </Button>
               </MenuItem>
-            )}
-          </>
+            )
+          ]
         )}
       </Select>
 
@@ -362,8 +362,8 @@ export function MovieFilterBar({
         ) : filteredActors.length === 0 ? (
           <MenuItem disabled>无匹配演员</MenuItem>
         ) : (
-          <>
-            {paginatedActors.map((actor) => (
+          [
+            ...paginatedActors.map((actor) => (
               <MenuItem
                 key={actor.id}
                 value={actor.id}
@@ -371,8 +371,8 @@ export function MovieFilterBar({
               >
                 {actor.name}
               </MenuItem>
-            ))}
-            {hasMoreActors && (
+            )),
+            hasMoreActors && (
               <MenuItem
                 onClick={(e) => {
                   e.stopPropagation();
@@ -384,8 +384,8 @@ export function MovieFilterBar({
                   加载更多 ({filteredActors.length - paginatedActors.length} 条)
                 </Button>
               </MenuItem>
-            )}
-          </>
+            )
+          ]   
         )}
       </Select>
 

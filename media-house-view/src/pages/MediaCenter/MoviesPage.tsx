@@ -23,7 +23,6 @@ const DEFAULT_PAGE_SIZE = 30;
 const MOVIES_STATE_KEY = 'movies-page-state';
 // 根据卡片大小获取网格列数
 const getGridSize = (cardSize: CardSize) => {
-  console.log('getGridSize', cardSize);
   if (cardSize === 'small') {
     return { xs: 8, sm: 6, md: 4, lg: 3, xl: 2 };
   } else if (cardSize === 'large') {
