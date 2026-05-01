@@ -218,8 +218,8 @@ export function LibraryCard({ library, onEdit, onRefresh, onIncrementalScan, onD
               bottom: 0,
               bgcolor: 'rgba(0, 0, 0, 0.4)',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              alignItems: 'flex-end',
+              justifyContent: 'flex-end',
               gridRow: '1 / -1',
               gridColumn: '1 / -1',
             }}
@@ -228,6 +228,7 @@ export function LibraryCard({ library, onEdit, onRefresh, onIncrementalScan, onD
               ref={menuButtonRef}
               onClick={handleMenuOpen}
               sx={{
+                m: 1,
                 bgcolor: 'rgba(255, 255, 255, 0.9)',
                 '&:hover': {
                   bgcolor: 'rgba(255, 255, 255, 1)',
@@ -293,7 +294,7 @@ export function LibraryCard({ library, onEdit, onRefresh, onIncrementalScan, onD
         }}
         transformOrigin={{
           vertical: 'top',
-          horizontal: 'right',
+          horizontal: 'left',
         }}
         TransitionComponent={Fade}
         sx={{ mt: 1, zIndex: 9999 }}
