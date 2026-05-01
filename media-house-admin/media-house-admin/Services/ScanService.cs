@@ -401,7 +401,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         var movieIdentifier = parseResult?.Num ?? movieDirName;
 
         // 处理所有相关实体
-        await ProcessMediaItemAsync(context, libraryId, libraryPath, movieDirName, movieDirPath, movieIdentifier, parseResult, log);
+        await ProcessMediaItemAsync(context, libraryId, movieDirName, movieDirPath, movieIdentifier, parseResult, log);
     }
 
     /// <summary>
@@ -418,7 +418,6 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
     private async Task<MediaScanResult> ProcessMediaItemAsync(
         MediaHouseDbContext context,
         int libraryId,
-        string libraryPath,
         string movieDirName,
         string movieDirPath,
         string movieIdentifier,
@@ -1135,6 +1134,6 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         var movieIdentifier = parseResult?.Num ?? movieDirName;
 
         // 处理所有相关实体并返回结果
-        return await ProcessMediaItemAsync(context, libraryId, library.Path, movieDirName, movieDirPath, movieIdentifier, parseResult, null);
+        return await ProcessMediaItemAsync(context, libraryId, movieDirName, movieDirPath, movieIdentifier, parseResult, null);
     }
 }
