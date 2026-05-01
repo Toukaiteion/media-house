@@ -129,28 +129,31 @@ public class MediaMetadataHandler(
             return;
         }
 
-        // 获取输出目录中的所有文件和子目录
-        var files = Directory.GetFiles(outputDir, "*", SearchOption.AllDirectories);
-        var directories = Directory.GetDirectories(outputDir, "*", SearchOption.AllDirectories);
+        await CopyDirectoryRecursiveAsync(outputDir, sourceDir);
 
-        // 先创建所有子目录
-        foreach (var dir in directories)
+        _logger.LogInformation("Copy completed from {OutputDir} to {SourceDir}", outputDir, sourceDir);
+    }
+
+    private async Task CopyDirectoryRecursiveAsync(string sourcePath, string targetPath)
+    {
+        // 确保目标目录存在
+        Directory.CreateDirectory(targetPath);
+
+        // 复制当前目录中的所有文件
+        foreach (var filePath in Directory.GetFiles(sourcePath))
         {
-            var relativePath = Path.GetRelativePath(outputDir, dir);
-            var targetDir = Path.Combine(sourceDir, relativePath);
-            Directory.CreateDirectory(targetDir);
+            var fileName = Path.GetFileName(filePath);
+            var targetFilePath = Path.Combine(targetPath, fileName);
+            File.Copy(filePath, targetFilePath, overwrite: true);
+            _logger.LogDebug("Copied file: {Source} -> {Target}", filePath, targetFilePath);
         }
 
-        // 复制所有文件
-        foreach (var file in files)
+        // 递归复制子目录
+        foreach (var sourceSubDir in Directory.GetDirectories(sourcePath))
         {
-            var relativePath = Path.GetRelativePath(outputDir, file);
-            var targetFile = Path.Combine(sourceDir, relativePath);
-            File.Copy(file, targetFile, overwrite: true);
-            _logger.LogDebug("Copied file: {Source} -> {Target}", file, targetFile);
+            var subDirName = Path.GetFileName(sourceSubDir);
+            var targetSubDir = Path.Combine(targetPath, subDirName);
+            await CopyDirectoryRecursiveAsync(sourceSubDir, targetSubDir);
         }
-
-        _logger.LogInformation("Copied {FileCount} files and {DirCount} directories from {OutputDir} to {SourceDir}",
-            files.Length, directories.Length, outputDir, sourceDir);
     }
 }
