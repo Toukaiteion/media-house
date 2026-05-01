@@ -819,3 +819,23 @@ export interface SetLogLevelRequest {
 export interface SetLogLevelResponse {
   message: string;
 }
+
+/**
+ * 插件版本信息
+ */
+export interface PluginVersion {
+  id: number;
+  version: string;
+}
+
+/**
+ * 按组分组的插件信息
+ */
+export interface PluginGrouped {
+  pluginKey: string;
+  name: string;
+  description: string;
+  author: string;
+  homepage: string | null;
+  versions: PluginVersion[];
+}

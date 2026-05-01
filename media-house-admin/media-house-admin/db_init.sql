@@ -8,6 +8,8 @@ CREATE TABLE media_libraries (
     name VARCHAR(100) NOT NULL,         -- 库名
     type VARCHAR(20) NOT NULL,          -- movie / tv
     path VARCHAR(500) NOT NULL,         -- 库路径
+    plugin_id INTEGER,                 -- 关联的插件ID（可选）
+    plugin_config_id INTEGER,          -- 关联的插件配置ID（可选）
     status VARCHAR(20) ,
     is_enabled BOOLEAN DEFAULT 1,
     create_time TIMESTAMP DEFAULT (datetime('now','localtime')),

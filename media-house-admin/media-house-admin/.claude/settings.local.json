@@ -12,7 +12,8 @@
       "Bash(dotnet list:*)",
       "Bash(dotnet why:*)",
       "Bash(dotnet nuget:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(fuser bin/Debug/net10.0/*.dll)"
     ]
   }
 }

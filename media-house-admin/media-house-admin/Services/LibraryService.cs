@@ -23,7 +23,7 @@ public class LibraryService(MediaHouseDbContext context, ILogger<LibraryService>
             .FirstOrDefaultAsync(l => l.Id == id);
     }
 
-    public async Task<MediaLibrary> CreateLibraryAsync(string name, LibraryType type, string path)
+    public async Task<MediaLibrary> CreateLibraryAsync(string name, LibraryType type, string path, int? pluginId = null, int? pluginConfigId = null)
     {
         var library = new MediaLibrary
         {
@@ -31,7 +31,9 @@ public class LibraryService(MediaHouseDbContext context, ILogger<LibraryService>
             Type = type,
             Path = path,
             Status = ScanStatus.Idle,
-            IsEnabled = true
+            IsEnabled = true,
+            PluginId = pluginId,
+            PluginConfigId = pluginConfigId
         };
 
         _context.MediaLibraries.Add(library);
@@ -42,7 +44,7 @@ public class LibraryService(MediaHouseDbContext context, ILogger<LibraryService>
         return library;
     }
 
-    public async Task<MediaLibrary?> UpdateLibraryAsync(int id, string name, string path, bool isEnabled)
+    public async Task<MediaLibrary?> UpdateLibraryAsync(int id, string name, string path, bool isEnabled, int? pluginId = null, int? pluginConfigId = null)
     {
         var library = await _context.MediaLibraries.FindAsync(id);
         if (library == null) return null;
@@ -50,6 +52,8 @@ public class LibraryService(MediaHouseDbContext context, ILogger<LibraryService>
         library.Name = name;
         library.Path = path;
         library.IsEnabled = isEnabled;
+        library.PluginId = pluginId;
+        library.PluginConfigId = pluginConfigId;
         library.UpdateTime = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();

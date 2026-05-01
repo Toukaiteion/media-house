@@ -158,3 +158,19 @@ public class PluginProgressDto
     public string Message { get; set; } = string.Empty;
     public int Percent { get; set; }
 }
+
+public class PluginVersionDto
+{
+    public int Id { get; set; }
+    public string Version { get; set; } = string.Empty;
+}
+
+public class PluginWithVersionsDto
+{
+    public string PluginKey { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? Author { get; set; }
+    public string? Homepage { get; set; }
+    public List<PluginVersionDto> Versions { get; set; } = [];
+}

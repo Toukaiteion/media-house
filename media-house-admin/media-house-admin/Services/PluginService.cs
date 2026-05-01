@@ -1,6 +1,7 @@
 using MediaHouse.Data.Entities;
 using MediaHouse.Interfaces;
 using MediaHouse.Data;
+using MediaHouse.DTOs;
 using Microsoft.EntityFrameworkCore;
 
 namespace MediaHouse.Services;
@@ -102,5 +103,32 @@ public class PluginService(MediaHouseDbContext context, ILogger<PluginService> l
     {
         return await _context.Plugins
             .AnyAsync(p => p.PluginKey == pluginKey && p.Version == version);
+    }
+
+    public async Task<List<PluginWithVersionsDto>> GetPluginsGroupedByKeyAsync()
+    {
+        var allPlugins = await _context.Plugins
+            .OrderByDescending(p => p.Version)
+            .ToListAsync();
+
+        var grouped = allPlugins
+            .GroupBy(p => p.PluginKey)
+            .Select(g => new PluginWithVersionsDto
+            {
+                PluginKey = g.Key,
+                Name = g.First().Name,
+                Description = g.First().Description,
+                Author = g.First().Author,
+                Homepage = g.First().Homepage,
+                Versions = g.Select(p => new PluginVersionDto
+                {
+                    Id = p.Id,
+                    Version = p.Version
+                }).OrderByDescending(v => v.Version).ToList()
+            })
+            .OrderBy(p => p.Name)
+            .ToList();
+
+        return grouped;
     }
 }

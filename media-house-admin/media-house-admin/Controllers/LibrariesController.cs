@@ -63,7 +63,7 @@ public class LibrariesController(
                 return BadRequest(new { error = "Invalid library type" });
             }
 
-            var library = await _libraryService.CreateLibraryAsync(dto.Name, libraryType, dto.Path);
+            var library = await _libraryService.CreateLibraryAsync(dto.Name, libraryType, dto.Path, dto.PluginId, dto.PluginConfigId);
             return CreatedAtAction(nameof(GetLibrary), new { id = library.Id }, MapToDto(library));
         }
         catch (Exception ex)
@@ -78,7 +78,7 @@ public class LibrariesController(
     {
         try
         {
-            var library = await _libraryService.UpdateLibraryAsync(id, dto.Name, dto.Path, dto.IsEnabled);
+            var library = await _libraryService.UpdateLibraryAsync(id, dto.Name, dto.Path, dto.IsEnabled, dto.PluginId, dto.PluginConfigId);
             if (library == null)
             {
                 return NotFound(new { error = "Library not found" });
@@ -179,7 +179,9 @@ public class LibrariesController(
             Status = library.Status.ToString() ?? "Unknown",
             CreatedAt = library.CreateTime,
             UpdatedAt = library.UpdateTime,
-            IsEnabled = library.IsEnabled
+            IsEnabled = library.IsEnabled,
+            PluginId = library.PluginId,
+            PluginConfigId = library.PluginConfigId
         };
     }
 }

@@ -34,6 +34,7 @@ import type {
   DeleteAccountDto,
   UserPageResponse,
   Plugin,
+  PluginGrouped,
   PluginConfig,
   PluginExecutionLog,
   PluginInstallResponse,
@@ -497,6 +498,13 @@ class ApiClient {
    */
   async getPlugins(): Promise<Plugin[]> {
     return this.request<Plugin[]>('/plugins');
+  }
+
+  /**
+   * 获取按组分组的插件列表
+   */
+  async getPluginsGrouped(): Promise<PluginGrouped[]> {
+    return this.request<PluginGrouped[]>('/plugins/grouped');
   }
 
   /**

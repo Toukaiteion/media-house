@@ -44,6 +44,22 @@ public class PluginsController(
         }
     }
 
+    // GET /api/plugins/grouped
+    [HttpGet("grouped")]
+    public async Task<ActionResult<List<PluginWithVersionsDto>>> GetPluginsGrouped()
+    {
+        try
+        {
+            var groupedPlugins = await _pluginService.GetPluginsGroupedByKeyAsync();
+            return Ok(groupedPlugins);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching grouped plugins");
+            return StatusCode(500, new { error = "Failed to fetch grouped plugins" });
+        }
+    }
+
     // GET /api/plugins/{pluginKey}
     [HttpGet("{pluginKey}")]
     public async Task<ActionResult<PluginDto>> GetPlugin(string pluginKey, [FromQuery] string? version = null)

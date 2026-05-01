@@ -1,10 +1,12 @@
 using MediaHouse.Data.Entities;
+using MediaHouse.DTOs;
 
 namespace MediaHouse.Interfaces;
 
 public interface IPluginService
 {
     Task<List<Plugin>> GetAllPluginsAsync();
+    Task<List<PluginWithVersionsDto>> GetPluginsGroupedByKeyAsync();
     Task<Plugin?> GetPluginByDbKeyAsync(string pluginKey, string? version = null);
     Task<Plugin?> GetPluginByDbIdAsync(int id);
     Task<Plugin> CreatePluginAsync(Plugin plugin);

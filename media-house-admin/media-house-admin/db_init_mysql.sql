@@ -11,6 +11,8 @@ CREATE TABLE media_libraries (
     type VARCHAR(20) NOT NULL COMMENT '类型: movie/tv',
     path VARCHAR(500) NOT NULL COMMENT '库路径',
     status VARCHAR(20) DEFAULT NULL,
+    plugin_id INTEGER,                 -- 关联的插件ID（可选）
+    plugin_config_id INTEGER,          -- 关联的插件配置ID（可选）
     is_enabled TINYINT(1) DEFAULT 1,
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
