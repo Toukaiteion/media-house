@@ -29,6 +29,8 @@ export function MovieDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [scanDialogOpen, setScanDialogOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -75,6 +77,30 @@ export function MovieDetailPage() {
 
   const handleDeleteCancel = () => {
     setDeleteDialogOpen(false);
+  };
+
+  const handleScanClick = () => {
+    setScanDialogOpen(true);
+  };
+
+  const handleScanConfirm = async () => {
+    if (!id) return;
+
+    try {
+      setScanning(true);
+      await api.scrapeMedia(id);
+      setScanDialogOpen(false);
+      await loadMovie();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '搜刮失败');
+      setScanDialogOpen(false);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleScanCancel = () => {
+    setScanDialogOpen(false);
   };
 
   const handleImageClick = (index: number) => {
@@ -307,6 +333,14 @@ export function MovieDetailPage() {
             </Button>
             <Button
               variant="outlined"
+              onClick={handleScanClick}
+              size="large"
+              disabled={scanning}
+            >
+              {scanning ? '搜刮中...' : '重新搜刮'}
+            </Button>
+            <Button
+              variant="outlined"
               color="error"
               startIcon={<DeleteIcon />}
               onClick={handleDeleteClick}
@@ -365,6 +399,20 @@ export function MovieDetailPage() {
           onClose={handleViewerClose}
         />
       )}
+
+      {/* 搜刮确认对话框 */}
+      <Dialog open={scanDialogOpen} onClose={handleScanCancel}>
+        <DialogTitle>确认重新搜刮</DialogTitle>
+        <DialogContent>
+          确定要重新从数据源搜刮电影"{movie.title}"的元数据吗？这将覆盖当前的元数据信息。
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleScanCancel} disabled={scanning}>取消</Button>
+          <Button onClick={handleScanConfirm} color="primary" variant="contained" disabled={scanning}>
+            {scanning ? '搜刮中...' : '确认'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* 删除确认对话框 */}
       <Dialog open={deleteDialogOpen} onClose={handleDeleteCancel}>

@@ -4,6 +4,7 @@ using MediaHouse.Data;
 using MediaHouse.DTOs;
 using MediaHouse.Extensions;
 using MediaHouse.Interfaces;
+using MediaHouse.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace MediaHouse.Controllers;
@@ -16,12 +17,14 @@ public class MediaController(
     IMediaService mediaService,
     IFavorService favorService,
     IPlayRecordService playRecordService,
+    IPluginExecutionService pluginExecutionService,
     ILogger<MediaController> logger) : ControllerBase
 {
     private readonly MediaHouseDbContext _dbContext = dbContext;
     private readonly IMediaService _mediaService = mediaService;
     private readonly IFavorService _favorService = favorService;
     private readonly IPlayRecordService _playRecordService = playRecordService;
+    private readonly IPluginExecutionService _pluginExecutionService = pluginExecutionService;
     private readonly ILogger<MediaController> _logger = logger;
 
     [HttpGet("file")]
@@ -186,6 +189,88 @@ public class MediaController(
         {
             _logger.LogError(ex, "Error toggling favorite for media {MediaId}", mediaId);
             return StatusCode(500, new { error = "Failed to toggle favorite" });
+        }
+    }
+
+    [HttpPost("{mediaId}/scan")]
+    public async Task<ActionResult> ScanMedia(int mediaId)
+    {
+        try
+        {
+            // 1. 获取媒体及其库信息
+            var media = await _dbContext.Medias
+                .Include(m => m.Library)
+                    .ThenInclude(l => l!.Plugin)
+                .Include(m => m.Library!)
+                    .ThenInclude(l => l!.PluginConfig)
+                .Include(m => m.MediaFiles)
+                .FirstOrDefaultAsync(m => m.Id == mediaId);
+
+            if (media == null || media.Library == null)
+            {
+                return NotFound(new { error = "Media or library not found" });
+            }
+
+            // 2. 检查库是否配置了插件
+            if (media.Library.Plugin == null)
+            {
+                return BadRequest(new { error = "Library has no plugin configured" });
+            }
+
+            // 3. 获取视频文件路径和源目录
+            if (!media.MediaFiles.Any())
+            {
+                return BadRequest(new { error = "Media has no video files" });
+            }
+
+            var videoPath = media.MediaFiles.First().Path;
+            var sourceDir = System.IO.Path.GetDirectoryName(videoPath) ?? videoPath;
+
+            if (!System.IO.Directory.Exists(sourceDir))
+            {
+                return NotFound(new { error = "Source directory not found" });
+            }
+
+            // 4. 创建临时输出目录
+            var outputDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"media_scan_{Guid.NewGuid()}");
+            System.IO.Directory.CreateDirectory(outputDir);
+
+            try
+            {
+                // 5. 调用插件执行服务
+                var log = await _pluginExecutionService.ExecutePluginAsync(
+                    media.Library.Plugin.PluginKey,
+                    sourceDir,
+                    outputDir: outputDir,
+                    pluginVersion: media.Library.Plugin.Version,
+                    configName: media.Library.PluginConfig?.ConfigName,
+                    businessId: media.Id,
+                    businessType: PluginBusinessType.Media
+                );
+
+                return Accepted(new { ExecutionId = log.Id, Status = log.Status });
+            }
+            catch
+            {
+                // 清理临时目录
+                if (System.IO.Directory.Exists(outputDir))
+                {
+                    try
+                    {
+                        System.IO.Directory.Delete(outputDir, true);
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        _logger.LogWarning(cleanupEx, "Failed to cleanup output directory: {OutputDir}", outputDir);
+                    }
+                }
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error scanning media {MediaId}", mediaId);
+            return StatusCode(500, new { error = "Failed to scan media" });
         }
     }
 

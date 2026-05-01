@@ -56,6 +56,7 @@ builder.Services.AddScoped<ILogService, LogService>();
 
 // Configure Serilog
 var loggerConfig = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
     .MinimumLevel.ControlledBy(levelSwitchConfig.LevelSwitch)
     .Enrich.FromLogContext()
     .Enrich.WithMachineName()
@@ -70,6 +71,7 @@ databaseConfigurator.PrintDatabaseInfo();
 Log.Logger = loggerConfig.CreateLogger();
 
 builder.Services.AddHostedService<StagingMetadataHandler>();
+builder.Services.AddHostedService<MediaMetadataHandler>();
 
 builder.Host.UseSerilog();
 

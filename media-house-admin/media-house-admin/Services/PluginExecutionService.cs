@@ -406,7 +406,9 @@ public class PluginExecutionService(
                         MetadataOutput = result.MetadataOutput,
                         CreatedFile = result.CreatedFiles,
                         StartTime = dbLog.StartTime,
-                        EndTime = dbLog.EndTime
+                        EndTime = dbLog.EndTime,
+                        SourceDir = sourceDir,
+                        OutputDir = outputDir
                     };
                     await _eventBus.PublishAsync(completedEvent);
                 }
@@ -532,9 +534,12 @@ public class PluginExecutionService(
             // Update status to running
             await UpdateExecutionStatusAsync(log.Id, "running");
 
-            // Parse saved input to get plugin key
+            // Parse saved input to get plugin key and directories
             var inputDoc = System.Text.Json.JsonDocument.Parse(savedInputJson);
+            var inputRoot = inputDoc.RootElement;
             var pluginKey = log.PluginKey;
+            var sourceDir = inputRoot.TryGetProperty("source_dir", out var sourceDirProp) ? sourceDirProp.GetString() ?? log.SourceDir : log.SourceDir;
+            var outputDir = inputRoot.TryGetProperty("output_dir", out var outputDirProp) ? outputDirProp.GetString() : sourceDir;
 
             // Get plugin
             var plugin = await _pluginService.GetPluginByDbKeyAsync(pluginKey, log.PluginVersion);
@@ -647,7 +652,9 @@ public class PluginExecutionService(
                         MetadataOutput = result.MetadataOutput,
                         CreatedFile = result.CreatedFiles,
                         StartTime = dbLog.StartTime,
-                        EndTime = dbLog.EndTime
+                        EndTime = dbLog.EndTime,
+                        SourceDir = sourceDir,
+                        OutputDir = outputDir
                     };
                     await _eventBus.PublishAsync(completedEvent);
                 }

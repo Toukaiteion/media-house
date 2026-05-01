@@ -491,6 +491,15 @@ class ApiClient {
   }
 
   /**
+   * 搜刮媒体源数据
+   */
+  async scrapeMedia(mediaId: string | number): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/media/${mediaId}/scan`, {
+      method: 'POST',
+    });
+  }
+
+  /**
    * 插件相关 API
    */
   /**

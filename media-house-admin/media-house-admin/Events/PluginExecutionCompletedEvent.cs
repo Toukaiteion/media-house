@@ -48,4 +48,14 @@ public class PluginExecutionCompletedEvent
     /// 执行结束时间
     /// </summary>
     public DateTime? EndTime { get; set; }
+
+    /// <summary>
+    /// 源目录（插件输入的目录）
+    /// </summary>
+    public string? SourceDir { get; set; }
+
+    /// <summary>
+    /// 输出目录（插件输出的目录）
+    /// </summary>
+    public string? OutputDir { get; set; }
 }
