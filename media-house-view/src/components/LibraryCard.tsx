@@ -46,13 +46,13 @@ export function LibraryCard({ library, onEdit, onRefresh, onIncrementalScan, onD
             libraryId: library.id,
             sortBy: 'create_time',
             sortOrder: 'desc',
-            pageSize: 4,
+            pageSize: 3,
           });
           setRecentItems(data.items);
         } else {
           // TVShow 类型，获取最近的 4 个电视剧
           const shows = await api.getTVShows(library.id);
-          setRecentItems(shows.slice(0, 4));
+          setRecentItems(shows.slice(0, 3));
         }
       } catch (err) {
         console.error('Failed to load recent items:', err);
@@ -127,19 +127,26 @@ export function LibraryCard({ library, onEdit, onRefresh, onIncrementalScan, onD
       return (
         <Box
           key={index}
-          component="img"
-          src={api.imageUrl(posterPath)}
-          alt={(item as MovieDetail)?.title || (item as TVShow)?.title}
           sx={{
             width: '100%',
             height: '100%',
-            objectFit: 'cover',
+            overflow: 'hidden',
           }}
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
-            (e.target as HTMLImageElement).nextElementSibling?.setAttribute('style', 'display: flex');
-          }}
-        />
+        >
+          <Box
+            component="img"
+            src={api.imageUrl(posterPath)}
+            alt={(item as MovieDetail)?.title || (item as TVShow)?.title}
+            sx={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        </Box>
       );
     }
 
@@ -191,10 +198,7 @@ export function LibraryCard({ library, onEdit, onRefresh, onIncrementalScan, onD
           position: 'relative',
           width: 360,
           height: 220,
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gridTemplateRows: '1fr 1fr',
-          gap: 1,
+          display: 'flex',
           bgcolor: 'grey.800',
           overflow: 'hidden',
         }}
@@ -202,7 +206,6 @@ export function LibraryCard({ library, onEdit, onRefresh, onIncrementalScan, onD
         {renderItemCell(recentItems[0] || null, 0)}
         {renderItemCell(recentItems[1] || null, 1)}
         {renderItemCell(recentItems[2] || null, 2)}
-        {renderItemCell(recentItems[3] || null, 3)}
 
         {/* 悬浮遮幕层 */}
         <Fade in={hovered}>
