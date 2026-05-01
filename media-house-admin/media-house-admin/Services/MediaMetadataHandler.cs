@@ -145,12 +145,13 @@ public class MediaMetadataHandler(
             var fileName = Path.GetFileName(filePath);
             var targetFilePath = Path.Combine(targetPath, fileName);
             File.Copy(filePath, targetFilePath, overwrite: true);
-            _logger.LogDebug("Copied file: {Source} -> {Target}", filePath, targetFilePath);
+            _logger.LogInformation("Copied file: {Source} -> {Target}", filePath, targetFilePath);
         }
 
         // 递归复制子目录
         foreach (var sourceSubDir in Directory.GetDirectories(sourcePath))
         {
+            _logger.LogInformation("Copying subdirectory: {Source}", sourceSubDir);
             var subDirName = Path.GetFileName(sourceSubDir);
             var targetSubDir = Path.Combine(targetPath, subDirName);
             await CopyDirectoryRecursiveAsync(sourceSubDir, targetSubDir);

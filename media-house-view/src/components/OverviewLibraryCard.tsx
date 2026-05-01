@@ -25,7 +25,7 @@ export function OverviewLibraryCard({ library }: OverviewLibraryCardProps) {
           libraryId: library.id,
           sortBy: 'create_time',
           sortOrder: 'desc',
-          pageSize: 4,
+          pageSize: 3,
         });
         setRecentMovies(data.items);
       } catch (err) {
@@ -74,19 +74,26 @@ export function OverviewLibraryCard({ library }: OverviewLibraryCardProps) {
       return (
         <Box
           key={index}
-          component="img"
-          src={api.imageUrl(movie.poster_path)}
-          alt={movie.title}
           sx={{
             width: '100%',
             height: '100%',
-            objectFit: 'cover',
+            overflow: 'hidden',
           }}
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
-            (e.target as HTMLImageElement).nextElementSibling?.setAttribute('style', 'display: flex');
-          }}
-        />
+        >
+          <Box
+            component="img"
+            src={api.imageUrl(movie.poster_path)}
+            alt={movie.title}
+            sx={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        </Box>
       );
     }
 
@@ -97,7 +104,7 @@ export function OverviewLibraryCard({ library }: OverviewLibraryCardProps) {
           width: '100%',
           height: '100%',
           bgcolor: 'grey.800',
-          display: 'none',
+          display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -133,23 +140,19 @@ export function OverviewLibraryCard({ library }: OverviewLibraryCardProps) {
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
     >
-      {/* 背景图片区域 - 2x2 网格拼图 */}
+      {/* 背景图片区域 - 横向 3 张 */}
       <Box
         sx={{
           position: 'relative',
           width: CARD_WIDTH,
           height: CARD_HEIGHT,
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gridTemplateRows: '1fr 1fr',
-          gap: 1,
+          display: 'flex',
           bgcolor: 'grey.800',
         }}
       >
         {renderMovieCell(recentMovies[0] || null, 0)}
         {renderMovieCell(recentMovies[1] || null, 1)}
         {renderMovieCell(recentMovies[2] || null, 2)}
-        {renderMovieCell(recentMovies[3] || null, 3)}
       </Box>
 
       {/* 库名称 */}
