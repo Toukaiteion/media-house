@@ -7,6 +7,8 @@ export interface MediaLibrary {
   createdAt: string;
   updatedAt: string;
   isEnabled: boolean;
+  plugin_id?: number;
+  plugin_config_id?: number;
 }
 
 export interface PageDto<T> {
@@ -21,6 +23,8 @@ export interface CreateMediaLibraryDto {
   name: string;
   type: 'Movie' | 'TVShow';
   path: string;
+  plugin_id?: number;
+  plugin_config_id?: number;
 }
 
 export interface UpdateMediaLibraryDto {
@@ -28,6 +32,8 @@ export interface UpdateMediaLibraryDto {
   type: 'Movie' | 'TVShow';
   path: string;
   isEnabled: boolean;
+  plugin_id?: number;
+  plugin_config_id?: number;
 }
 
 export interface Movie {

@@ -22,7 +22,7 @@ import {
 import { Add as AddIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { api } from '../../services/api';
 import { LibraryCard } from '../../components/LibraryCard';
-import type { MediaLibrary, UpdateMediaLibraryDto } from '../../types';
+import type { MediaLibrary, UpdateMediaLibraryDto, PluginGrouped, PluginConfig } from '../../types';
 
 export function MediaLibrarySettingsPage() {
   // 库列表状态
@@ -45,10 +45,27 @@ export function MediaLibrarySettingsPage() {
     type: 'Movie' as 'Movie' | 'TVShow',
     path: '',
     isEnabled: true,
+    pluginId: undefined as number | undefined,
+    pluginConfigId: undefined as number | undefined,
+    pluginKey: undefined as string | undefined,
   });
 
   // 扫描状态提示
   const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // 插件相关状态
+  const [_, setPluginsGrouped] = useState<PluginGrouped[]>([]);
+  const [pluginConfigs, setPluginConfigs] = useState<PluginConfig[]>([]);
+  const [loadingPlugins, setLoadingPlugins] = useState(false);
+
+  // 展平后的插件选项（用于下拉菜单）
+  interface PluginOption {
+    id: number;
+    pluginKey: string;
+    version: string;
+    name: string;
+  }
+  const [pluginOptions, setPluginOptions] = useState<PluginOption[]>([]);
 
   // 刷新库列表
   const refreshLibraries = async () => {
@@ -67,7 +84,54 @@ export function MediaLibrarySettingsPage() {
   // 组件挂载时加载数据
   useEffect(() => {
     refreshLibraries();
+    loadPluginsGrouped();
   }, []);
+
+  // 加载插件分组列表
+  const loadPluginsGrouped = async () => {
+    try {
+      setLoadingPlugins(true);
+      const data = await api.getPluginsGrouped();
+      setPluginsGrouped(data);
+
+      // 展平插件选项用于下拉菜单
+      const options: PluginOption[] = [];
+      data.forEach((plugin) => {
+        plugin.versions.forEach((version) => {
+          options.push({
+            id: version.id,
+            pluginKey: plugin.pluginKey,
+            version: version.version,
+            name: plugin.name,
+          });
+        });
+      });
+      setPluginOptions(options);
+    } catch (err) {
+      console.error('Failed to load plugins:', err);
+    } finally {
+      setLoadingPlugins(false);
+    }
+  };
+
+  // 当插件选择改变时，加载对应的配置
+  useEffect(() => {
+    const loadPluginConfigs = async () => {
+      if (formData.pluginKey) {
+        try {
+          const configs = await api.getPluginConfigs(formData.pluginKey);
+          setPluginConfigs(configs);
+        } catch (err) {
+          console.error('Failed to load plugin configs:', err);
+          setPluginConfigs([]);
+        }
+      } else {
+        setPluginConfigs([]);
+      }
+    };
+
+    loadPluginConfigs();
+  }, [formData.pluginKey]);
 
   // 打开添加库对话框
   const handleOpenCreateDialog = () => {
@@ -77,7 +141,11 @@ export function MediaLibrarySettingsPage() {
       type: 'Movie',
       path: '',
       isEnabled: true,
+      pluginId: undefined,
+      pluginConfigId: undefined,
+      pluginKey: undefined,
     });
+    setPluginConfigs([]);
     setDialogOpen(true);
   };
 
@@ -90,8 +158,27 @@ export function MediaLibrarySettingsPage() {
       type: library.type,
       path: library.path,
       isEnabled: library.isEnabled,
+      pluginId: library.plugin_id,
+      pluginConfigId: library.plugin_config_id,
+      pluginKey: undefined,
     });
     setDialogOpen(true);
+
+    // 如果已选择插件，加载对应的配置
+    if (library.plugin_id) {
+      const selectedOption = pluginOptions.find(p => p.id === library.plugin_id);
+      if (selectedOption) {
+        setFormData(prev => ({ ...prev, pluginKey: selectedOption.pluginKey }));
+        api.getPluginConfigs(selectedOption.pluginKey)
+          .then(configs => setPluginConfigs(configs))
+          .catch(err => {
+            console.error('Failed to load plugin configs:', err);
+            setPluginConfigs([]);
+          });
+      }
+    } else {
+      setPluginConfigs([]);
+    }
   };
 
   // 关闭对话框
@@ -111,6 +198,8 @@ export function MediaLibrarySettingsPage() {
         name: formData.name,
         type: formData.type,
         path: formData.path,
+        plugin_id: formData.pluginId,
+        plugin_config_id: formData.pluginConfigId,
       });
       setDialogOpen(false);
       refreshLibraries();
@@ -131,6 +220,8 @@ export function MediaLibrarySettingsPage() {
         type: formData.type,
         path: formData.path,
         isEnabled: formData.isEnabled,
+        plugin_id: formData.pluginId,
+        plugin_config_id: formData.pluginConfigId,
       };
       await api.updateLibrary(selectedLibrary.id, updateDto);
       setDialogOpen(false);
@@ -263,7 +354,7 @@ export function MediaLibrarySettingsPage() {
       </Grid>
 
       {/* 添加/编辑对话框 */}
-      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <DialogTitle>{dialogMode === 'create' ? '添加媒体库' : '编辑媒体库'}</DialogTitle>
         <DialogContent>
           <TextField
@@ -295,6 +386,57 @@ export function MediaLibrarySettingsPage() {
             helperText="媒体文件夹的绝对路径"
             sx={{ mb: 2 }}
           />
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>元数据插件</InputLabel>
+            <Select
+              value={formData.pluginId || ''}
+              label="元数据插件"
+              onChange={(e) => {
+                const value = e.target.value ? Number(e.target.value) : undefined;
+                const selectedOption = pluginOptions.find(p => p.id === value);
+                setFormData({
+                  ...formData,
+                  pluginId: value,
+                  pluginKey: selectedOption?.pluginKey,
+                  pluginConfigId: undefined, // Reset config when plugin changes
+                });
+              }}
+              disabled={loadingPlugins}
+            >
+              <MenuItem value="">
+                <em>不使用插件</em>
+              </MenuItem>
+              {pluginOptions.map((option) => (
+                <MenuItem key={option.id} value={option.id}>
+                  {option.name} v{option.version}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          {formData.pluginId && (
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>插件配置</InputLabel>
+              <Select
+                value={formData.pluginConfigId || ''}
+                label="插件配置"
+                onChange={(e) => {
+                  setFormData({
+                    ...formData,
+                    pluginConfigId: e.target.value ? Number(e.target.value) : undefined,
+                  });
+                }}
+              >
+                <MenuItem value="">
+                  <em>不使用配置</em>
+                </MenuItem>
+                {pluginConfigs.map((config) => (
+                  <MenuItem key={config.id} value={config.id}>
+                    {config.config_name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
           {dialogMode === 'edit' && (
             <FormControlLabel
               control={
