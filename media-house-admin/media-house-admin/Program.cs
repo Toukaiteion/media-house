@@ -41,6 +41,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPluginService, PluginService>();
 builder.Services.AddScoped<IPluginConfigService, PluginConfigService>();
 builder.Services.AddScoped<IPluginExecutionService, PluginExecutionService>();
+builder.Services.AddScoped<IMetadataUpdateService, MetadataUpdateService>();
 builder.Services.AddScoped<IUploadService, UploadService>();
 builder.Services.AddScoped<IChunkService, ChunkService>();
 builder.Services.AddScoped<IStagingService, StagingService>();

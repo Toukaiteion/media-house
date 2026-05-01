@@ -18,6 +18,7 @@ public class MediaController(
     IFavorService favorService,
     IPlayRecordService playRecordService,
     IPluginExecutionService pluginExecutionService,
+    IMetadataUpdateService metadataUpdateService,
     ILogger<MediaController> logger) : ControllerBase
 {
     private readonly MediaHouseDbContext _dbContext = dbContext;
@@ -25,6 +26,7 @@ public class MediaController(
     private readonly IFavorService _favorService = favorService;
     private readonly IPlayRecordService _playRecordService = playRecordService;
     private readonly IPluginExecutionService _pluginExecutionService = pluginExecutionService;
+    private readonly IMetadataUpdateService _metadataUpdateService = metadataUpdateService;
     private readonly ILogger<MediaController> _logger = logger;
 
     [HttpGet("file")]
@@ -272,6 +274,29 @@ public class MediaController(
             _logger.LogError(ex, "Error scanning media {MediaId}", mediaId);
             return StatusCode(500, new { error = "Failed to scan media" });
         }
+    }
+
+    [HttpPost("{mediaId}/update-metadata")]
+    [RequestSizeLimit(50 * 1024 * 1024)] // 50MB limit
+    public async Task<ActionResult> UpdateMetadataFromArchive(int mediaId, [FromForm] IFormFile file)
+    {
+        var result = await _metadataUpdateService.UpdateMetadataFromArchiveAsync(mediaId, file);
+
+        if (!result.Success)
+        {
+            if (result.ErrorMessage == "Media not found")
+            {
+                return NotFound(new { error = result.ErrorMessage });
+            }
+            return BadRequest(new { error = result.ErrorMessage });
+        }
+
+        return Ok(new
+        {
+            message = "Metadata updated successfully",
+            mediaId = result.MediaId,
+            title = result.Title
+        });
     }
 
     private static string GetContentType(string extension)
