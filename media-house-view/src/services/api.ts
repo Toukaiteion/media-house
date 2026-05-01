@@ -500,6 +500,34 @@ class ApiClient {
   }
 
   /**
+   * 上传元数据zip文件
+   */
+  async uploadMetadataZip(mediaId: string | number, file: File): Promise<{ message: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = this.getAuthToken();
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = `${this.baseUrl}/media/${mediaId}/update-metadata`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new Error(error.message || error.error || `HTTP error! status: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /**
    * 插件相关 API
    */
   /**

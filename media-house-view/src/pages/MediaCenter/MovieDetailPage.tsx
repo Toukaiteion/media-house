@@ -14,11 +14,12 @@ import {
   Avatar,
 } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PlayArrow as PlayIcon, Delete as DeleteIcon, Favorite, FavoriteBorder } from '@mui/icons-material';
+import { PlayArrow as PlayIcon, Delete as DeleteIcon, Favorite, FavoriteBorder, Upload as UploadIcon } from '@mui/icons-material';
 import { api } from '../../services/api';
 import { movieListCache } from '../../services/movieListCache';
 import type { MovieDetail } from '../../types';
 import { ImageViewer } from '../../components/ImageViewer';
+import { MetadataUploadDialog } from '../../components/MetadataUploadDialog';
 
 const POSTER_WIDTH = 300;
 
@@ -30,6 +31,7 @@ export function MovieDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scanDialogOpen, setScanDialogOpen] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -101,6 +103,19 @@ export function MovieDetailPage() {
 
   const handleScanCancel = () => {
     setScanDialogOpen(false);
+  };
+
+  const handleUploadClick = () => {
+    setUploadDialogOpen(true);
+  };
+
+  const handleUploadClose = () => {
+    setUploadDialogOpen(false);
+  };
+
+  const handleMetadataUpload = async (file: File) => {
+    if (!id) throw new Error('缺少媒体ID');
+    await api.uploadMetadataZip(id, file);
   };
 
   const handleImageClick = (index: number) => {
@@ -341,6 +356,14 @@ export function MovieDetailPage() {
             </Button>
             <Button
               variant="outlined"
+              startIcon={<UploadIcon />}
+              onClick={handleUploadClick}
+              size="large"
+            >
+              上传元数据
+            </Button>
+            <Button
+              variant="outlined"
               color="error"
               startIcon={<DeleteIcon />}
               onClick={handleDeleteClick}
@@ -427,6 +450,14 @@ export function MovieDetailPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 上传元数据对话框 */}
+      <MetadataUploadDialog
+        open={uploadDialogOpen}
+        onClose={handleUploadClose}
+        onUpload={handleMetadataUpload}
+        mediaTitle={movie.title}
+      />
 
       {/* 错误提示 */}
       {error && (
