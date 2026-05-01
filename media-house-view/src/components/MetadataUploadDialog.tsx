@@ -10,20 +10,16 @@ import {
   Alert,
   LinearProgress,
   IconButton,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
-  CloudUpload as UploadIcon,
   Close as CloseIcon,
-  FolderZip as ZipIcon,
   Refresh as RefreshIcon,
-  Folder as FolderIcon,
-  Description as FileIcon,
-  Image as ImageIcon,
 } from '@mui/icons-material';
+import JSZip from 'jszip';
+import { ZipUploadTab } from './ZipUploadTab';
+import { FolderUploadTab } from './FolderUploadTab';
 
 interface MetadataUploadDialogProps {
   open: boolean;
@@ -32,33 +28,47 @@ interface MetadataUploadDialogProps {
   mediaTitle: string;
 }
 
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+
+const VIDEO_EXTENSIONS = [
+  '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm',
+  '.m4v', '.ts', '.m2ts', '.mpeg', '.mpg', '.m4v'
+];
+
 export function MetadataUploadDialog({ open, onClose, onUpload, mediaTitle }: MetadataUploadDialogProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const zipFileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  const [tabValue, setTabValue] = useState(0);
+  const [zipFile, setZipFile] = useState<File | null>(null);
+  const [folderFiles, setFolderFiles] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setError(null);
-      setUploadSuccess(false);
-    }
+  const handleZipFileSelect = (file: File) => {
+    setZipFile(file);
+    setError(null);
+    setUploadSuccess(false);
   };
 
-  const handleUpload = async () => {
-    if (!selectedFile) return;
+  const handleFolderSelect = (files: any[]) => {
+    setFolderFiles(files);
+    setError(null);
+    setUploadSuccess(false);
+  };
+
+  const handleZipUpload = async () => {
+    if (!zipFile) return;
 
     try {
       setUploading(true);
       setError(null);
-      await onUpload(selectedFile);
+      await onUpload(zipFile);
       setUploadSuccess(true);
-      setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      setZipFile(null);
+      if (zipFileInputRef.current) {
+        zipFileInputRef.current.value = '';
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '上传失败');
@@ -67,15 +77,79 @@ export function MetadataUploadDialog({ open, onClose, onUpload, mediaTitle }: Me
     }
   };
 
+  const handleFolderUpload = async () => {
+    if (folderFiles.length === 0) return;
+
+    try {
+      setUploading(true);
+      setError(null);
+
+      // 创建zip并压缩文件
+      const zip = new JSZip();
+      console.log('准备压缩的文件列表:', folderFiles);
+      const validFiles = folderFiles.filter((f: any) => {
+        const check = shouldIgnoreFile(f.file.name, f.file.size);
+        return !check.ignore;
+      });
+      console.log('压缩的文件列表:', validFiles);
+
+      if (validFiles.length === 0) {
+        throw new Error('没有符合条件的文件可压缩');
+      }
+
+      for (const f of validFiles) {
+        zip.file(f.path, f.file);
+      }
+      console.log('压缩完成', zip);
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      console.log('准备上传的zip文件大小:', zipBlob.size, zipBlob);
+      const zipFile = new File([zipBlob], 'metadata.zip', { type: 'application/zip' });
+      console.log('准备上传的zip文件大小:', zipFile.size, zipFile);
+
+      await onUpload(zipFile);
+      setUploadSuccess(true);
+      setFolderFiles([]);
+      if (folderInputRef.current) {
+        folderInputRef.current.value = '';
+      }
+    } catch (err) {
+      console.log('上传失败', err);
+      setError(err instanceof Error ? err.message : '压缩上传失败');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleClose = () => {
-    setSelectedFile(null);
+    setZipFile(null);
+    setFolderFiles([]);
     setError(null);
     setUploadSuccess(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    if (zipFileInputRef.current) {
+      zipFileInputRef.current.value = '';
+    }
+    if (folderInputRef.current) {
+      folderInputRef.current.value = '';
     }
     onClose();
   };
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  function shouldIgnoreFile(name: string, size: number): { ignore: boolean; reason?: string } {
+    const ext = name.toLowerCase().substring(name.lastIndexOf('.'));
+    if (VIDEO_EXTENSIONS.includes(ext)) {
+      return { ignore: true, reason: '视频文件' };
+    }
+    if (size > MAX_FILE_SIZE) {
+      return { ignore: true, reason: `文件过大（${formatFileSize(size)}）` };
+    }
+    return { ignore: false };
+  }
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
@@ -91,97 +165,37 @@ export function MetadataUploadDialog({ open, onClose, onUpload, mediaTitle }: Me
       <DialogContent>
         {!uploadSuccess ? (
           <>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              上传包含电影元数据的zip文件到"{mediaTitle}"
-            </Typography>
+            <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ mb: 2 }}>
+              <Tab label="上传zip文件" />
+              <Tab label="选择文件夹压缩" />
+            </Tabs>
 
-            <Box
-              sx={{
-                border: '2px dashed',
-                borderColor: 'divider',
-                borderRadius: 2,
-                p: 4,
-                textAlign: 'center',
-                cursor: 'pointer',
-                '&:hover': {
-                  borderColor: 'primary.main',
-                  bgcolor: 'action.hover',
-                },
-              }}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".zip"
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
+            {/* Tab 1: 上传zip文件 */}
+            {tabValue === 0 && (
+              <ZipUploadTab
+                mediaTitle={mediaTitle}
+                selectedFile={zipFile}
+                onFileSelect={handleZipFileSelect}
+                inputRef={zipFileInputRef}
               />
-              {selectedFile ? (
-                <Box>
-                  <ZipIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
-                  <Typography variant="subtitle1" gutterBottom>
-                    {selectedFile.name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                  </Typography>
-                </Box>
-              ) : (
-                <Box>
-                  <UploadIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-                  <Typography variant="subtitle1">点击选择zip文件</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    支持上传包含元数据的zip压缩包
-                  </Typography>
-                </Box>
-              )}
-            </Box>
+            )}
 
-            {/* 静态结构说明 */}
-            <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Zip文件应包含的结构：
-              </Typography>
-              <List dense>
-                <ListItem>
-                  <ListItemIcon>
-                    <FileIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText primary="movie.nfo - 电影信息文件" />
-                </ListItem>
-                <ListItem>
-                  <ListItemIcon>
-                    <ImageIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText primary="poster.jpg - 海报图片" />
-                </ListItem>
-                <ListItem>
-                  <ListItemIcon>
-                    <ImageIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText primary="fanart.jpg - 背景图片" />
-                </ListItem>
-                <ListItem>
-                  <ListItemIcon>
-                    <FolderIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText primary="extrathumbs/ - 截图目录" />
-                </ListItem>
-                <ListItem sx={{ pl: 4 }}>
-                  <ListItemIcon>
-                    <ImageIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText primary="thumb1.jpg, thumb2.jpg, ..." />
-                </ListItem>
-              </List>
-            </Box>
+            {/* Tab 2: 选择文件夹压缩 */}
+            {tabValue === 1 && (
+              <FolderUploadTab
+                mediaTitle={mediaTitle}
+                folderFiles={folderFiles}
+                onFolderSelect={handleFolderSelect}
+                onClearFiles={() => setFolderFiles([])}
+                inputRef={folderInputRef}
+              />
+            )}
 
             {uploading && (
               <Box sx={{ mt: 3 }}>
                 <LinearProgress />
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  上传中...
+                  {tabValue === 0 ? '上传中...' : '压缩并上传中...'}
                 </Typography>
               </Box>
             )}
@@ -217,13 +231,24 @@ export function MetadataUploadDialog({ open, onClose, onUpload, mediaTitle }: Me
           <Button onClick={handleClose} disabled={uploading}>
             取消
           </Button>
-          <Button
-            onClick={handleUpload}
-            variant="contained"
-            disabled={!selectedFile || uploading}
-          >
-            {uploading ? '上传中...' : '上传'}
-          </Button>
+          {tabValue === 0 && (
+            <Button
+              onClick={handleZipUpload}
+              variant="contained"
+              disabled={!zipFile || uploading}
+            >
+              {uploading ? '上传中...' : '上传'}
+            </Button>
+          )}
+          {tabValue === 1 && (
+            <Button
+              onClick={handleFolderUpload}
+              variant="contained"
+              disabled={folderFiles.length === 0 || uploading}
+            >
+              {uploading ? '压缩中...' : '压缩并上传'}
+            </Button>
+          )}
         </DialogActions>
       )}
     </Dialog>
