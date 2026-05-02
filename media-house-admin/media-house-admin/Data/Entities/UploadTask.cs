@@ -12,6 +12,7 @@ public class UploadTask
     public long UploadedSize { get; set; }
     public int Status { get; set; } // 0=待上传，1=上传中，2=已完成，3=已取消，4=失败
     public string? MimeType { get; set; }
+    public string? UploadDir { get; set; } // 上传目录绝对路径
     public string? FolderId { get; set; } // 所属文件夹ID，单文件上传时为空
     public string? RelativePath { get; set; } // 文件在文件夹中的相对路径
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

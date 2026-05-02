@@ -305,6 +305,9 @@ CREATE TABLE upload_tasks (
     uploaded_size BIGINT DEFAULT 0,     -- 已上传大小（字节）
     status INTEGER DEFAULT 0,            -- 状态：0=待上传，1=上传中，2=已完成，3=已取消，4=失败
     mime_type VARCHAR(100),             -- 文件MIME类型
+    upload_dir VARCHAR(500),            -- 上传目录绝对路径
+    folder_id VARCHAR(36),              -- 所属文件夹ID
+    relative_path VARCHAR(500),         -- 文件在文件夹中的相对路径
     created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
     updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
     completed_at TIMESTAMP

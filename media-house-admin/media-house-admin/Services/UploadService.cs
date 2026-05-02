@@ -56,6 +56,11 @@ public class UploadService(
             var uploadId = Guid.NewGuid().ToString();
             var totalChunks = (int)Math.Ceiling((double)request.file_size / request.chunk_size);
 
+            // 创建上传目录
+            var uploadDir = Path.Combine(_settings.UploadPath, uploadId);
+            Directory.CreateDirectory(uploadDir);
+            Directory.CreateDirectory(Path.Combine(uploadDir, "chunks"));
+
             var uploadTask = new UploadTask
             {
                 Id = uploadId,
@@ -67,17 +72,13 @@ public class UploadService(
                 UploadedChunksNum = 0,
                 UploadedSize = 0,
                 Status = 0, // 待上传
+                UploadDir = uploadDir,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
 
             _context.UploadTasks.Add(uploadTask);
             await _context.SaveChangesAsync();
-
-            // 创建上传目录
-            var uploadDir = Path.Combine(_settings.UploadPath, uploadId);
-            Directory.CreateDirectory(uploadDir);
-            Directory.CreateDirectory(Path.Combine(uploadDir, "chunks"));
 
             _logger.LogInformation("Created upload task {UploadId} for file {FileName}", uploadId, request.file_name);
 
@@ -172,18 +173,10 @@ public class UploadService(
             };
         }
 
-        // 支持文件夹上传 - 确定上传目录
-        string uploadDir;
-        if (!string.IsNullOrEmpty(task.FolderId))
-        {
-            // 文件夹上传：uploads/folders/{folder_id}/{upload_id}/
-            uploadDir = Path.Combine(_settings.UploadPath, "folders", task.FolderId, uploadId);
-        }
-        else
-        {
-            // 单文件上传：uploads/{upload_id}/
-            uploadDir = Path.Combine(_settings.UploadPath, uploadId);
-        }
+        // 确定上传目录 - 优先使用保存的路径
+        var uploadDir = !string.IsNullOrEmpty(task.UploadDir)
+            ? task.UploadDir
+            : Path.Combine(_settings.UploadPath, uploadId);
 
         // 检查所有分片是否完整
         var chunkDir = Path.Combine(uploadDir, "chunks");
@@ -328,7 +321,7 @@ public class UploadService(
         };
     }
 
-    private UploadedChunkInfo CalculateUploadedChunk(string uploadId, int totalChunks, int chunkSize, long fileSize, string? folderId = null)
+    private UploadedChunkInfo CalculateUploadedChunk(string uploadId, int totalChunks, int chunkSize, long fileSize, string? taskUploadDir = null)
     {
         var uploadedInfo = new UploadedChunkInfo
         {
@@ -337,16 +330,10 @@ public class UploadService(
             UploadedSize = 0
         };
 
-        // 支持文件夹上传路径
-        string chunkDir;
-        if (!string.IsNullOrEmpty(folderId))
-        {
-            chunkDir = Path.Combine(_settings.UploadPath, "folders", folderId, uploadId, "chunks");
-        }
-        else
-        {
-            chunkDir = Path.Combine(_settings.UploadPath, uploadId, "chunks");
-        }
+        // 使用保存的路径，如果未保存则使用默认路径
+        string chunkDir = Path.Combine(!string.IsNullOrEmpty(taskUploadDir)
+            ? taskUploadDir
+            : Path.Combine(_settings.UploadPath, uploadId), "chunks");
 
         var MissingChunksInUploadedRange = new List<int>();
         
@@ -419,7 +406,7 @@ public class UploadService(
 
     private UploadTaskDto MapToDto(UploadTask task)
     {
-        var uploadedChunkInfo = CalculateUploadedChunk(task.Id, task.TotalChunks, task.ChunkSize, task.FileSize);
+        var uploadedChunkInfo = CalculateUploadedChunk(task.Id, task.TotalChunks, task.ChunkSize, task.FileSize, task.UploadDir);
         return new UploadTaskDto
         {
             UploadId = task.Id,
@@ -568,6 +555,11 @@ public class UploadService(
             var uploadId = Guid.NewGuid().ToString();
             var totalChunks = (int)Math.Ceiling((double)request.file_size / request.chunk_size);
 
+            // 创建上传目录
+            var uploadDir = Path.Combine(_settings.UploadPath, "folders", folderId, uploadId);
+            Directory.CreateDirectory(uploadDir);
+            Directory.CreateDirectory(Path.Combine(uploadDir, "chunks"));
+
             var uploadTask = new UploadTask
             {
                 Id = uploadId,
@@ -581,17 +573,13 @@ public class UploadService(
                 Status = 0, // 待上传
                 FolderId = folderId,
                 RelativePath = request.relative_path,
+                UploadDir = uploadDir,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
 
             _context.UploadTasks.Add(uploadTask);
             await _context.SaveChangesAsync();
-
-            // 创建上传目录
-            var uploadDir = Path.Combine(_settings.UploadPath, "folders", folderId, uploadId);
-            Directory.CreateDirectory(uploadDir);
-            Directory.CreateDirectory(Path.Combine(uploadDir, "chunks"));
 
             _logger.LogInformation("Added file {FileName} to folder upload task {FolderId} with upload task {UploadId}",
                 request.file_name, folderId, uploadId);
@@ -619,7 +607,7 @@ public class UploadService(
             // 返回已有任务信息
             _logger.LogInformation("Found existing upload task {UploadId} for file {FileName} in folder {FolderId}",
                 existingTask.Id, request.file_name, folderId);
-            var uploadedChunkInfo = CalculateUploadedChunk(existingTask.Id, existingTask.TotalChunks, existingTask.ChunkSize, existingTask.FileSize);
+            var uploadedChunkInfo = CalculateUploadedChunk(existingTask.Id, existingTask.TotalChunks, existingTask.ChunkSize, existingTask.FileSize, existingTask.UploadDir);
 
             return new UploadTaskDto
             {
@@ -669,7 +657,7 @@ public class UploadService(
 
         var files = folder.Files.Select(f =>
         {
-            var uploadedChunkInfo = CalculateUploadedChunk(f.Id, f.TotalChunks, f.ChunkSize, f.FileSize, folder.Id);
+            var uploadedChunkInfo = CalculateUploadedChunk(f.Id, f.TotalChunks, f.ChunkSize, f.FileSize, f.UploadDir);
             return new FileUploadInfo
             {
                 UploadId = f.Id,

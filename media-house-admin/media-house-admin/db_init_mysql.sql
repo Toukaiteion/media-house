@@ -323,12 +323,16 @@ CREATE TABLE upload_tasks (
     uploaded_size BIGINT DEFAULT 0,
     status INT DEFAULT 0 COMMENT '0=待上传,1=上传中,2=已完成,3=已取消,4=失败',
     mime_type VARCHAR(100) DEFAULT NULL,
+    upload_dir VARCHAR(500) DEFAULT NULL COMMENT '上传目录绝对路径',
+    folder_id VARCHAR(36) DEFAULT NULL COMMENT '所属文件夹ID',
+    relative_path VARCHAR(500) DEFAULT NULL COMMENT '文件在文件夹中的相对路径',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     completed_at TIMESTAMP NULL DEFAULT NULL,
     INDEX idx_status (status),
     INDEX idx_file_md5 (file_md5),
-    INDEX idx_created_at (created_at)
+    INDEX idx_created_at (created_at),
+    INDEX idx_folder_id (folder_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='上传任务表';
 
 -- ==============================

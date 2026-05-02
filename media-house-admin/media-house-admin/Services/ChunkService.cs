@@ -26,18 +26,10 @@ public class ChunkService(
         }
 
 
-        // 保存分片 - 支持文件夹上传
-        string uploadBasePath;
-        if (!string.IsNullOrEmpty(task.FolderId))
-        {
-            // 文件夹上传：uploads/folders/{folder_id}/{upload_id}/
-            uploadBasePath = Path.Combine(_uploadSettings.UploadPath, "folders", task.FolderId, uploadId);
-        }
-        else
-        {
-            // 单文件上传：uploads/{upload_id}/
-            uploadBasePath = Path.Combine(_uploadSettings.UploadPath, uploadId);
-        }
+        // 保存分片 - 使用保存的路径
+        var uploadBasePath = !string.IsNullOrEmpty(task.UploadDir)
+            ? task.UploadDir
+            : Path.Combine(_uploadSettings.UploadPath, uploadId);
 
         var chunkDir = Path.Combine(uploadBasePath, "chunks");
         var chunkFile = Path.Combine(chunkDir, $"{chunkIndex}.chunk");
@@ -80,16 +72,10 @@ public class ChunkService(
             };
         }
 
-        // 支持文件夹上传
-        string uploadBasePath;
-        if (!string.IsNullOrEmpty(task.FolderId))
-        {
-            uploadBasePath = Path.Combine(_uploadSettings.UploadPath, "folders", task.FolderId, uploadId);
-        }
-        else
-        {
-            uploadBasePath = Path.Combine(_uploadSettings.UploadPath, uploadId);
-        }
+        // 使用保存的路径
+        var uploadBasePath = !string.IsNullOrEmpty(task.UploadDir)
+            ? task.UploadDir
+            : Path.Combine(_uploadSettings.UploadPath, uploadId);
 
         var chunkDir = Path.Combine(uploadBasePath, "chunks");
         var missingChunks = new List<int>();
