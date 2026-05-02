@@ -86,12 +86,10 @@ export function MetadataUploadDialog({ open, onClose, onUpload, mediaTitle }: Me
 
       // 创建zip并压缩文件
       const zip = new JSZip();
-      console.log('准备压缩的文件列表:', folderFiles);
       const validFiles = folderFiles.filter((f: any) => {
         const check = shouldIgnoreFile(f.file.name, f.file.size);
         return !check.ignore;
       });
-      console.log('压缩的文件列表:', validFiles);
 
       if (validFiles.length === 0) {
         throw new Error('没有符合条件的文件可压缩');
@@ -100,11 +98,8 @@ export function MetadataUploadDialog({ open, onClose, onUpload, mediaTitle }: Me
       for (const f of validFiles) {
         zip.file(f.path, f.file);
       }
-      console.log('压缩完成', zip);
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      console.log('准备上传的zip文件大小:', zipBlob.size, zipBlob);
       const zipFile = new File([zipBlob], 'metadata.zip', { type: 'application/zip' });
-      console.log('准备上传的zip文件大小:', zipFile.size, zipFile);
 
       await onUpload(zipFile);
       setUploadSuccess(true);

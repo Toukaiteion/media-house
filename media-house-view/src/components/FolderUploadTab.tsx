@@ -97,38 +97,70 @@ export function FolderUploadTab({
     setIsDragging(false);
   }, []);
 
-  const handleDrop = useCallback(async (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
+const handleDrop = useCallback(async (e: DragEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  setIsDragging(false);
 
-    const items = Array.from(e.dataTransfer?.items || []);
-    const fileNodes: FileNode[] = [];
+  const items = Array.from(e.dataTransfer?.items || []);
 
-    // 尝试从 DataTransferItem 获取文件
-    for (const item of items) {
-      if (item.kind === 'file') {
-        const file = item.getAsFile();
-        if (file) {
+  // 辅助函数：递归读取文件夹内的文件
+  const readEntry = (entry: any, path = ''): Promise<FileNode[]> => {
+    return new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file((file: File) => {
           const check = shouldIgnoreFile(file.name, file.size);
-          fileNodes.push({
+          // 拼接完整的相对路径
+          const fullPath = path + file.name; 
+          resolve([{
             file,
-            path: file.name,
+            path: fullPath,
             include: !check.ignore,
             reason: check.reason,
+          }]);
+        });
+      } else if (entry.isDirectory) {
+        const dirReader = entry.createReader();
+        // readEntries 可能需要多次调用才能读完所有子项
+        const readAllEntries = () => {
+          dirReader.readEntries(async (entries: any[]) => {
+            if (entries.length === 0) {
+              resolve([]);
+              return;
+            }
+            const promises = entries.map((childEntry) => 
+              readEntry(childEntry, path + entry.name + '/')
+            );
+            const results = await Promise.all(promises);
+            // 继续读取（防止文件夹内文件过多一次读不完）
+            readAllEntries(); 
+            resolve(results.flat());
           });
-        }
-      } else if (item.kind === 'directory' || (item as any).webkitGetAsEntry) {
-        // 对于拖放的文件夹，提示用户点击选择
-        onFolderSelect([]);
-        return;
+        };
+        readAllEntries();
+      } else {
+        resolve([]);
       }
-    }
+    });
+  };
 
-    if (fileNodes.length > 0) {
-      onFolderSelect(fileNodes);
+  // 遍历拖拽的所有项
+  const promises = items.map(async (item) => {
+    const entry = item.webkitGetAsEntry?.();
+    if (entry) {
+      return await readEntry(entry);
     }
-  }, [onFolderSelect]);
+    return [];
+  });
+
+  // 等待所有文件和文件夹读取完成
+  const results = await Promise.all(promises);
+  const allFileNodes = results.flat();
+
+  if (allFileNodes.length > 0) {
+    onFolderSelect(allFileNodes);
+  }
+}, [onFolderSelect]);
 
   useEffect(() => {
     const dropZone = inputRef.current?.closest('[role="dropzone"]') as HTMLElement;
@@ -182,10 +214,11 @@ export function FolderUploadTab({
               for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 const check = shouldIgnoreFile(file.name, file.size);
-                const path = (file as any).webkitRelativePath || file.name;
+                // 获取相对路径：优先使用 webkitRelativePath
+                const relativePath = (file as any).webkitRelativePath || file.name;
                 fileNodes.push({
                   file,
-                  path,
+                  path: relativePath,
                   include: !check.ignore,
                   reason: check.reason,
                 });
