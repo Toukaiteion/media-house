@@ -196,7 +196,6 @@ export function FolderUploadDialog({ open, onClose, onStartUpload }: FolderUploa
           type="file"
           {...({ webkitdirectory: '' } as any)}
           {...({ directory: '' } as any)}
-          multiple
           onChange={handleFolderSelect}
           style={{ display: 'none' }}
         />
