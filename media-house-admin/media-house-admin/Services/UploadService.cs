@@ -728,7 +728,7 @@ public class UploadService(
         }
 
         // 创建一条 stagingMedia 记录（包含所有文件：视频 + NFO + 图片）
-        return await CreateStagingMediaForFolderAsync(folder, videoTask, uploadDir);
+        return await CreateStagingMediaForFolderAsync(folder, videoTask);
     }
 
     /// <summary>
@@ -856,7 +856,7 @@ public class UploadService(
     /// <summary>
     /// 为文件夹上传创建 stagingMedia 记录（包含视频 + NFO + 图片）
     /// </summary>
-    private async Task<StagingMediaResult> CreateStagingMediaForFolderAsync(UploadFolder folder, UploadTask videoTask, string videoUploadDir)
+    private async Task<StagingMediaResult> CreateStagingMediaForFolderAsync(UploadFolder folder, UploadTask videoTask)
     {
         var mediaId = Guid.NewGuid().ToString();
         var folderStagingDir = Path.Combine(_settings.StagingPath, "folders", folder.Id);
@@ -933,7 +933,10 @@ public class UploadService(
         }
 
         // 3. 创建 stagingMedia 实体
-        var stagingVideoFile = Path.Combine(folderStagingDir, videoTask.FileName);
+        var relativeDir = !string.IsNullOrEmpty(videoTask.RelativePath)
+                ? Path.GetDirectoryName(videoTask.RelativePath) ?? ""
+                : "";
+        var stagingVideoFile = Path.Combine(folderStagingDir, relativeDir, videoTask.FileName);
         var stagingMedia = new StagingMedia
         {
             Id = mediaId,
@@ -993,7 +996,7 @@ public class UploadService(
     private async Task ScanAndPopulateMetadataAsync(StagingMedia stagingMedia, string stagingDir)
     {
         // 查找 NFO 文件（在视频所在目录）
-        var nfoFiles = Directory.GetFiles(stagingDir, "*.nfo");
+        var nfoFiles = Directory.GetFiles(stagingDir, "*.nfo", SearchOption.AllDirectories);
         if (nfoFiles.Length == 0)
         {
             _logger.LogInformation("No NFO file found in {Dir}", stagingDir);
