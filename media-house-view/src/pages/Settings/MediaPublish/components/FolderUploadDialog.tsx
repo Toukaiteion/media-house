@@ -264,8 +264,14 @@ export function FolderUploadDialog({ open, onClose, onStartUpload }: FolderUploa
                     <ListItemText
                       primary={f.relativePath}
                       secondary={formatFileSize(f.file.size)}
-                      primaryTypographyProps={{ fontSize: '0.875rem' }}
-                      secondaryTypographyProps={{ fontSize: '0.75rem' }}
+                      slotProps={{
+                        primary: {
+                          fontSize: '0.875rem',
+                        },
+                        secondary: {
+                          fontSize: '0.75rem',
+                        },
+                      }}
                     />
                   </ListItem>
                 ))}
@@ -273,7 +279,11 @@ export function FolderUploadDialog({ open, onClose, onStartUpload }: FolderUploa
                   <ListItem sx={{ pl: 1 }}>
                     <ListItemText
                       primary={`... 还有 ${selectedFiles.length - 100} 个文件`}
-                      secondaryTypographyProps={{ fontSize: '0.75rem' }}
+                      slotProps={{
+                        secondary: {
+                          fontSize: '0.75rem',  
+                        }
+                      }}
                     />
                   </ListItem>
                 )}
