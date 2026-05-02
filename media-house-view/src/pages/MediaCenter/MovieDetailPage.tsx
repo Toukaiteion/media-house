@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -12,9 +12,21 @@ import {
   DialogContent,
   DialogActions,
   Avatar,
+  Menu,
+  MenuItem,
+  IconButton,
+  Divider,
 } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PlayArrow as PlayIcon, Delete as DeleteIcon, Favorite, FavoriteBorder, Upload as UploadIcon } from '@mui/icons-material';
+import {
+  PlayArrow as PlayIcon,
+  Delete as DeleteIcon,
+  Favorite,
+  FavoriteBorder,
+  MoreVert as MoreVertIcon,
+  Refresh as RefreshIcon,
+  CloudUpload as CloudUploadIcon,
+} from '@mui/icons-material';
 import { api } from '../../services/api';
 import { movieListCache } from '../../services/movieListCache';
 import type { MovieDetail } from '../../types';
@@ -32,6 +44,42 @@ export function MovieDetailPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scanDialogOpen, setScanDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuAnchorRef = useRef<HTMLButtonElement | null>(null);
+
+  // 点击页面外部或按 ESC 关闭菜单
+  const handleMenuClose = () => {
+    setMenuOpen(false);
+  };
+
+  useEffect(() => {
+    // 监听点击事件关闭菜单
+    const handleClickOutside = (event: Event) => {
+      if (menuAnchorRef.current && !menuAnchorRef.current.contains(event.target as Node)) {
+        handleMenuClose();
+      }
+    };
+
+    const handleEscapeKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        handleMenuClose();
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside, true);
+    document.addEventListener('keydown', handleEscapeKey, true);
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleEscapeKey);
+    };
+  }, []);
+
+  // 点击菜单图标打开菜单
+  const handleMenuClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    menuAnchorRef.current = event.currentTarget;
+    setMenuOpen((prev) => !prev);
+  };
   const [scanning, setScanning] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -327,7 +375,7 @@ export function MovieDetailPage() {
             </Box>
           )}
           {/* 操作按钮区 */}
-          <Box sx={{ display: 'flex', gap: 2, mb: 4 }}>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 4 }}>
             <Button
               variant="contained"
               color="primary"
@@ -346,31 +394,58 @@ export function MovieDetailPage() {
             >
               {movie.is_favorited ? '已收藏' : '收藏'}
             </Button>
-            <Button
-              variant="outlined"
-              onClick={handleScanClick}
-              size="large"
-              disabled={scanning}
-            >
-              {scanning ? '搜刮中...' : '重新搜刮'}
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<UploadIcon />}
-              onClick={handleUploadClick}
-              size="large"
-            >
-              上传元数据
-            </Button>
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<DeleteIcon />}
-              onClick={handleDeleteClick}
-              size="large"
-            >
-              删除
-            </Button>
+
+            {/* 更多操作菜单 */}
+            <Box sx={{ position: 'relative', ml: 'auto' }}>
+              <IconButton
+                ref={menuAnchorRef}
+                onClick={handleMenuClick}
+                sx={{ color: 'text.secondary' }}
+                size="small"
+              >
+                <MoreVertIcon />
+              </IconButton>
+
+              <Menu
+                anchorEl={menuAnchorRef.current}
+                open={menuOpen}
+                onClose={handleMenuClose}
+                anchorOrigin={{
+                  vertical: 'bottom',
+                  horizontal: 'right',
+                }}
+                transformOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
+                PaperProps={{
+                  sx: {
+                    mt: 1,
+                    minWidth: 120,
+                  },
+                }}
+              >
+                <MenuItem onClick={handleScanClick} disabled={scanning}>
+                  {scanning ? <CircularProgress size={16} /> : <RefreshIcon />}
+                  <Typography variant="body2" sx={{ ml: 1 }}>
+                    {scanning ? '搜刮中...' : '重新搜刮'}
+                  </Typography>
+                </MenuItem>
+                <MenuItem onClick={handleUploadClick}>
+                  <CloudUploadIcon />
+                  <Typography variant="body2" sx={{ ml: 1 }}>
+                    上传元数据
+                  </Typography>
+                </MenuItem>
+                <Divider />
+                <MenuItem onClick={handleDeleteClick} sx={{ color: 'error' }}>
+                  <DeleteIcon />
+                  <Typography variant="body2" sx={{ ml: 1 }}>
+                    删除
+                  </Typography>
+                </MenuItem>
+              </Menu>
+            </Box>
           </Box>
         </Box>
       </Box>
