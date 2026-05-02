@@ -1,13 +1,14 @@
 import { Box, Typography, IconButton, Button } from '@mui/material';
-import { Refresh as RefreshIcon, CloudUpload as UploadIcon } from '@mui/icons-material';
+import { Refresh as RefreshIcon, CloudUpload as UploadIcon, FolderOpen as FolderUploadIcon } from '@mui/icons-material';
 
 interface MediaPublishHeaderProps {
   tabValue: number;
   onRefresh: () => void;
   onOpenUploadDialog: () => void;
+  onOpenFolderUploadDialog: () => void;
 }
 
-export function MediaPublishHeader({ tabValue, onRefresh, onOpenUploadDialog }: MediaPublishHeaderProps) {
+export function MediaPublishHeader({ tabValue, onRefresh, onOpenUploadDialog, onOpenFolderUploadDialog }: MediaPublishHeaderProps) {
   return (
     <Box
       sx={{
@@ -23,9 +24,14 @@ export function MediaPublishHeader({ tabValue, onRefresh, onOpenUploadDialog }: 
           <RefreshIcon />
         </IconButton>
         {tabValue === 0 && (
-          <Button variant="contained" startIcon={<UploadIcon />} onClick={onOpenUploadDialog}>
-            上传媒体
-          </Button>
+          <>
+            <Button variant="outlined" startIcon={<FolderUploadIcon />} onClick={onOpenFolderUploadDialog}>
+              上传文件夹
+            </Button>
+            <Button variant="contained" startIcon={<UploadIcon />} onClick={onOpenUploadDialog}>
+              上传媒体
+            </Button>
+          </>
         )}
       </Box>
     </Box>

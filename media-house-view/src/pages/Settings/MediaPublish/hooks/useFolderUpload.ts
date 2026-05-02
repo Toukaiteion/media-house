@@ -1,0 +1,223 @@
+import { useState, useCallback, useRef, useEffect } from 'react';
+import type { FolderUploadTask } from '../../../../types';
+import { api } from '../../../../services/api';
+import { CHUNK_SIZE, CONCURRENCY, uploadChunkWithRetry, calculateFileMd5 } from '../constants';
+
+interface FileNode {
+  file: File;
+  relativePath: string;
+}
+
+interface UploadFileTask {
+  uploadId: string;
+  file: File;
+  md5: string;
+  totalChunks: number;
+  uploadedChunks: Set<number>;
+  abortController?: AbortController;
+}
+
+export function useFolderUpload() {
+  const [folderTasks, setFolderTasks] = useState<FolderUploadTask[]>([]);
+  const [uploadSpeeds, setUploadSpeeds] = useState<Map<string, number>>(new Map());
+
+  // 存储每个文件夹上传的文件任务
+  const fileTaskMap = useRef<Map<string, Map<string, UploadFileTask>>>(new Map());
+
+  // 组件挂载时加载文件夹上传任务
+  useEffect(() => {
+    refreshFolderTasks();
+  }, []);
+
+  // 上传单个文件
+  const uploadSingleFile = useCallback(async (
+    folderId: string,
+    task: UploadFileTask,
+    onUpdate?: (uploadId: string, progress: number) => void
+  ) => {
+    const { uploadId, file } = task;
+    const totalChunks = task.totalChunks;
+    const chunkQueue = Array.from({ length: totalChunks }, (_, i) => i);
+    const uploadedChunks = new Set<number>();
+
+    const abortController = new AbortController();
+    task.abortController = abortController;
+
+    const startTime = Date.now();
+    let lastUpdateTime = 0;
+
+    // 更新速度和进度的定时器
+    const updateInterval = setInterval(() => {
+      const now = Date.now();
+      if (now - lastUpdateTime < 300) return;
+      lastUpdateTime = now;
+
+      const uploadedSize = Math.min(uploadedChunks.size * CHUNK_SIZE, file.size);
+      const progress = file.size > 0 ? uploadedSize / file.size : 0;
+      onUpdate?.(uploadId, progress);
+
+      const elapsed = (now - startTime) / 1000;
+      const speed = elapsed > 0 ? uploadedSize / elapsed : 0;
+      setUploadSpeeds(prev => new Map(prev).set(folderId, speed));
+    }, 500);
+
+    try {
+      // 并发上传分片
+      const workers: Promise<void>[] = [];
+      const workerCount = Math.min(CONCURRENCY, chunkQueue.length);
+
+      const runWorker = async () => {
+        while (chunkQueue.length > 0) {
+          const chunkIndex = chunkQueue.shift();
+          if (chunkIndex !== undefined) {
+            await uploadChunkWithRetry(
+              uploadId,
+              file,
+              chunkIndex,
+              () => uploadedChunks.add(chunkIndex),
+              3,
+              abortController.signal
+            );
+          }
+        }
+      };
+
+      for (let i = 0; i < workerCount; i++) {
+        workers.push(runWorker());
+      }
+
+      await Promise.all(workers);
+
+      // 合并文件
+      await api.mergeUpload({ upload_id: uploadId });
+    } finally {
+      clearInterval(updateInterval);
+    }
+  }, []);
+
+  // 开始文件夹上传
+  const startFolderUpload = useCallback(async (
+    files: FileNode[],
+    onMessage?: (type: 'success' | 'error', text: string) => void
+  ): Promise<string | null> => {
+    try {
+      // 1. 验证文件列表
+      if (files.length === 0) {
+        onMessage?.('error', '未找到可上传的文件');
+        return null;
+      }
+
+      const totalSize = files.reduce((sum, f) => sum + f.file.size, 0);
+      const folderName = files[0]?.relativePath.split('/')[0] || 'Uploaded Folder';
+
+      // 2. 创建文件夹上传任务
+      const folderTask = await api.createFolderUploadTask({
+        folder_name: folderName,
+        total_files: files.length,
+        total_size: totalSize,
+      });
+
+      setFolderTasks(prev => [...prev, folderTask]);
+      onMessage?.('success', `已创建文件夹上传任务: ${folderName}`);
+
+      // 3. 为每个文件创建上传任务
+      const fileTasksMap = new Map<string, UploadFileTask>();
+
+      for (const fileNode of files) {
+        const md5 = await calculateFileMd5(fileNode.file);
+        const uploadTask = await api.addFileToFolder(folderTask.folder_id, {
+          file_name: fileNode.file.name,
+          relative_path: fileNode.relativePath,
+          file_size: fileNode.file.size,
+          file_md5: md5,
+          chunk_size: CHUNK_SIZE,
+        });
+
+        const uploadFileTask: UploadFileTask = {
+          uploadId: uploadTask.upload_id,
+          file: fileNode.file,
+          md5,
+          totalChunks: uploadTask.total_chunks,
+          uploadedChunks: new Set(),
+        };
+
+        fileTasksMap.set(uploadTask.upload_id, uploadFileTask);
+      }
+
+      fileTaskMap.current.set(folderTask.folder_id, fileTasksMap);
+
+      // 4. 并发上传文件
+      const fileTaskEntries = Array.from(fileTasksMap.entries());
+      let completedCount = 0;
+
+      for (const [_uploadId, fileTask] of fileTaskEntries) {
+        uploadSingleFile(folderTask.folder_id, fileTask, () => {
+          completedCount++;
+          setFolderTasks(prev =>
+            prev.map(t =>
+              t.folder_id === folderTask.folder_id
+                ? {
+                    ...t,
+                    completed_files: completedCount,
+                    uploaded_size: Math.min(completedCount * CHUNK_SIZE, totalSize),
+                    progress: completedCount / fileTaskEntries.length,
+                  }
+                : t
+            )
+          );
+        });
+      }
+
+      return folderTask.folder_id;
+    } catch (err) {
+      onMessage?.('error', err instanceof Error ? err.message : '文件夹上传失败');
+      return null;
+    }
+  }, [uploadSingleFile]);
+
+  // 删除文件夹上传任务
+  const deleteFolderUploadTask = useCallback(async (
+    folderId: string,
+    onMessage?: (type: 'success' | 'error', text: string) => void
+  ) => {
+    try {
+      // 取消所有文件的上传
+      const fileTasks = fileTaskMap.current.get(folderId);
+      if (fileTasks) {
+        fileTasks.forEach(task => task.abortController?.abort());
+      }
+
+      await api.deleteFolderUploadTask(folderId);
+
+      fileTaskMap.current.delete(folderId);
+      setFolderTasks(prev => prev.filter(t => t.folder_id !== folderId));
+      setUploadSpeeds(prev => {
+        const next = new Map(prev);
+        next.delete(folderId);
+        return next;
+      });
+
+      onMessage?.('success', '文件夹上传任务已删除');
+    } catch (err) {
+      onMessage?.('error', err instanceof Error ? err.message : '删除失败');
+    }
+  }, []);
+
+  // 刷新文件夹上传任务列表
+  const refreshFolderTasks = useCallback(async () => {
+    try {
+      const tasks = await api.getFolderUploadTasks();
+      setFolderTasks(tasks);
+    } catch (err) {
+      console.error('获取文件夹上传任务失败:', err);
+    }
+  }, []);
+
+  return {
+    folderTasks,
+    uploadSpeeds,
+    startFolderUpload,
+    deleteFolderUploadTask,
+    refreshFolderTasks,
+  };
+}

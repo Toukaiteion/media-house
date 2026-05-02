@@ -845,3 +845,78 @@ export interface PluginGrouped {
   homepage: string | null;
   versions: PluginVersion[];
 }
+
+/**
+ * ===== 文件夹上传模块类型定义 =====
+ */
+
+/**
+ * 文件夹上传任务状态
+ */
+export type FolderUploadStatus = 'pending' | 'uploading' | 'completed' | 'cancelled' | 'failed';
+
+/**
+ * 文件上传信息
+ */
+export interface FileUploadInfo {
+  upload_id: string;
+  file_name: string;
+  relative_path?: string;
+  file_size: number;
+  uploaded_size: number;
+  progress: number;
+  status: UploadStatus;
+}
+
+/**
+ * 文件夹上传任务
+ */
+export interface FolderUploadTask {
+  folder_id: string;
+  folder_name: string;
+  total_files: number;
+  completed_files: number;
+  total_size: number;
+  uploaded_size: number;
+  progress: number;
+  status: FolderUploadStatus;
+  files: FileUploadInfo[];
+  created_at: string;
+  updated_at?: string;
+}
+
+/**
+ * 创建文件夹上传请求
+ */
+export interface CreateFolderUploadRequest {
+  folder_name: string;
+  total_files: number;
+  total_size: number;
+  root_path?: string;
+}
+
+/**
+ * 添加文件到文件夹请求
+ */
+export interface AddFileToFolderRequest {
+  file_name: string;
+  relative_path: string;
+  file_size: number;
+  file_md5: string;
+  chunk_size?: number;
+}
+
+/**
+ * 合并响应（文件夹上传使用）
+ */
+export interface MergeResponse {
+  success: boolean;
+  error?: string;
+  message?: string;
+  data?: {
+    media_id: string;
+    status: string;
+  };
+  missing_chunks?: number[];
+  uploaded_chunksNum?: number;
+}

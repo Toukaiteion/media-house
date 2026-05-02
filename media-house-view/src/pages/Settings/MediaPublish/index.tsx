@@ -15,10 +15,12 @@ import { StagingMediaTab } from './components/StagingMediaTab';
 import { UploadTaskTab } from './components/UploadTaskTab';
 import { UploadDialog } from './components/UploadDialog';
 import { DeleteConfirmDialog } from './components/DeleteConfirmDialog';
+import { FolderUploadDialog, type FileNode } from './components/FolderUploadDialog';
 import { useStagingMedias } from './hooks/useStagingMedias';
 import { useUploadTasks } from './hooks/useUploadTasks';
 import { useLibraries } from './hooks/useLibraries';
 import { usePlugins } from './hooks/usePlugins';
+import { useFolderUpload } from './hooks/useFolderUpload';
 import { api } from '../../../services/api';
 
 interface TabPanelProps {
@@ -52,6 +54,13 @@ export function MediaPublishPage() {
     handleResumeUpload,
     handleDeleteUploadTask,
   } = useUploadTasks();
+  const {
+    folderTasks,
+    uploadSpeeds: folderUploadSpeeds,
+    startFolderUpload,
+    deleteFolderUploadTask,
+    refreshFolderTasks,
+  } = useFolderUpload();
   const { libraries } = useLibraries();
   const { plugins, pluginsConfig } = usePlugins();
 
@@ -72,6 +81,9 @@ export function MediaPublishPage() {
   // 删除对话框状态
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [mediaToDelete, setMediaToDelete] = useState<StagingMedia | null>(null);
+
+  // 文件夹上传对话框状态
+  const [folderUploadDialogOpen, setFolderUploadDialogOpen] = useState(false);
 
   // 处理消息
   const handleMessage = (type: 'success' | 'error', text: string) => {
@@ -175,7 +187,31 @@ export function MediaPublishPage() {
     setMediaToDelete(null);
   };
 
+  // 打开文件夹上传对话框
+  const handleOpenFolderUploadDialog = () => {
+    setFolderUploadDialogOpen(true);
+  };
+
+  // 关闭文件夹上传对话框
+  const handleCloseFolderUploadDialog = () => {
+    setFolderUploadDialogOpen(false);
+  };
+
+  // 开始文件夹上传
+  const handleFolderUploadStart = async (files: FileNode[]) => {
+    setTabValue(1); // 切换到上传任务标签页
+    await startFolderUpload(files, handleMessage);
+    refreshFolderTasks();
+  };
+
+  // 删除文件夹上传任务
+  const handleDeleteFolderTask = async (folderId: string) => {
+    await deleteFolderUploadTask(folderId, handleMessage);
+    refreshFolderTasks();
+  };
+
   const uploadingCount = uploadTasks.filter(task => task.status === 'uploading').length;
+  const uploadingFolderCount = folderTasks.filter(t => t.status === 'uploading').length;
 
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
@@ -184,6 +220,7 @@ export function MediaPublishPage() {
         tabValue={tabValue}
         onRefresh={refreshStagingMedias}
         onOpenUploadDialog={handleOpenUploadDialog}
+        onOpenFolderUploadDialog={handleOpenFolderUploadDialog}
       />
 
       {/* 消息提示 */}
@@ -201,12 +238,14 @@ export function MediaPublishPage() {
       >
         <Tab label={`待发布媒体 (${stagingMedias.length})`} />
         <Tab label={
-          uploadingCount > 0 ? (
-            <Badge badgeContent={uploadingCount} color="error">
+          uploadingCount > 0 || uploadingFolderCount > 0 ? (
+            <Badge badgeContent={uploadingCount + uploadingFolderCount} color="error">
               上传任务
             </Badge>
           ) : (
-            uploadTasks.length > 0 ? `上传任务 (${uploadTasks.length})` : '上传任务'
+            uploadTasks.length + folderTasks.length > 0
+              ? `上传任务 (${uploadTasks.length + folderTasks.length})`
+              : '上传任务'
           )
         } />
       </Tabs>
@@ -228,10 +267,13 @@ export function MediaPublishPage() {
       <TabPanel value={tabValue} index={1}>
         <UploadTaskTab
           tasks={uploadTasks}
+          folderTasks={folderTasks}
           uploadSpeeds={uploadSpeeds}
+          folderUploadSpeeds={folderUploadSpeeds}
           onPause={handlePauseUpload}
           onResume={handleResumeUpload}
-          onDelete={handleDeleteUploadTask}
+          onDeleteUpload={handleDeleteUploadTask}
+          onDeleteFolder={handleDeleteFolderTask}
         />
       </TabPanel>
 
@@ -240,6 +282,13 @@ export function MediaPublishPage() {
         open={uploadDialogOpen}
         onClose={handleCloseUploadDialog}
         onStartUpload={handleUploadStart}
+      />
+
+      {/* 文件夹上传对话框 */}
+      <FolderUploadDialog
+        open={folderUploadDialogOpen}
+        onClose={handleCloseFolderUploadDialog}
+        onStartUpload={handleFolderUploadStart}
       />
 
       {/* 编辑媒体对话框 */}

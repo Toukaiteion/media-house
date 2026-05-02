@@ -52,6 +52,10 @@ import type {
   PublishResponse,
   MergeUploadRequest,
   MergeUploadResponse,
+  // 文件夹上传相关类型
+  FolderUploadTask,
+  CreateFolderUploadRequest,
+  AddFileToFolderRequest,
   LogsPageResponse,
   LogsStats,
   DeleteLogsResponse,
@@ -922,6 +926,53 @@ class ApiClient {
    */
   async getLibrariesForPublish(): Promise<MediaLibrary[]> {
     return this.request<MediaLibrary[]>('/libraries');
+  }
+
+  /**
+   * ===== 文件夹上传 API =====
+   */
+
+  /**
+   * 创建文件夹上传任务
+   */
+  async createFolderUploadTask(dto: CreateFolderUploadRequest): Promise<FolderUploadTask> {
+    return this.request<FolderUploadTask>('/media/upload-tasks/folders', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  /**
+   * 获取所有文件夹上传任务
+   */
+  async getFolderUploadTasks(): Promise<FolderUploadTask[]> {
+    return this.request<FolderUploadTask[]>('/media/upload-tasks/folders');
+  }
+
+  /**
+   * 获取文件夹上传进度
+   */
+  async getFolderUploadTask(folderId: string): Promise<FolderUploadTask> {
+    return this.request<FolderUploadTask>(`/media/upload-tasks/folders/${folderId}`);
+  }
+
+  /**
+   * 添加文件到文件夹
+   */
+  async addFileToFolder(folderId: string, dto: AddFileToFolderRequest): Promise<UploadTask> {
+    return this.request<UploadTask>(`/media/upload-tasks/folders/${folderId}/files`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  /**
+   * 删除文件夹上传任务
+   */
+  async deleteFolderUploadTask(folderId: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/media/upload-tasks/folders/${folderId}`, {
+      method: 'DELETE',
+    });
   }
 
   /**
