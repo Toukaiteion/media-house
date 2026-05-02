@@ -59,7 +59,6 @@ export function MediaPublishPage() {
     uploadSpeeds: folderUploadSpeeds,
     startFolderUpload,
     deleteFolderUploadTask,
-    refreshFolderTasks,
   } = useFolderUpload();
   const { libraries } = useLibraries();
   const { plugins, pluginsConfig } = usePlugins();
@@ -201,13 +200,11 @@ export function MediaPublishPage() {
   const handleFolderUploadStart = async (files: FileNode[]) => {
     setTabValue(1); // 切换到上传任务标签页
     startFolderUpload(files, handleMessage);
-    refreshFolderTasks();
   };
 
   // 删除文件夹上传任务
   const handleDeleteFolderTask = async (folderId: string) => {
     await deleteFolderUploadTask(folderId, handleMessage);
-    refreshFolderTasks();
   };
 
   const uploadingCount = uploadTasks.filter(task => task.status === 'uploading').length;

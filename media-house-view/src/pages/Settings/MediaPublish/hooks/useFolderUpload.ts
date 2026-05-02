@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { FolderUploadTask, FileUploadInfo, UploadStatus } from '../../../../types';
 import { api } from '../../../../services/api';
 import { CHUNK_SIZE, CONCURRENCY, uploadChunkWithRetry, calculateFileMd5 } from '../constants';
@@ -23,11 +23,6 @@ export function useFolderUpload() {
 
   // 存储每个文件夹上传的文件任务
   const fileTaskMap = useRef<Map<string, Map<string, UploadFileTask>>>(new Map());
-
-  // 组件挂载时加载文件夹上传任务
-  useEffect(() => {
-    refreshFolderTasks();
-  }, []);
 
   // 上传单个文件
   const uploadSingleFile = useCallback(async (
@@ -251,21 +246,10 @@ export function useFolderUpload() {
     }
   }, []);
 
-  // 刷新文件夹上传任务列表
-  const refreshFolderTasks = useCallback(async () => {
-    try {
-      const tasks = await api.getFolderUploadTasks();
-      setFolderTasks(tasks);
-    } catch (err) {
-      console.error('获取文件夹上传任务失败:', err);
-    }
-  }, []);
-
   return {
     folderTasks,
     uploadSpeeds,
     startFolderUpload,
     deleteFolderUploadTask,
-    refreshFolderTasks,
   };
 }
