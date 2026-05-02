@@ -200,7 +200,7 @@ export function MediaPublishPage() {
   // 开始文件夹上传
   const handleFolderUploadStart = async (files: FileNode[]) => {
     setTabValue(1); // 切换到上传任务标签页
-    await startFolderUpload(files, handleMessage);
+    startFolderUpload(files, handleMessage);
     refreshFolderTasks();
   };
 

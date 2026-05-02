@@ -34,7 +34,7 @@ export function useFolderUpload() {
     folderId: string,
     task: UploadFileTask,
     onUpdate?: (uploadId: string, uploadedSize: number, progress: number) => void
-  ) => {
+  ): Promise<void> => {
     const { uploadId, file } = task;
     const totalChunks = task.totalChunks;
     const chunkQueue = Array.from({ length: totalChunks }, (_, i) => i);
@@ -150,11 +150,11 @@ export function useFolderUpload() {
 
       fileTaskMap.current.set(folderTask.folder_id, fileTasksMap);
 
-      // 4. 并发上传文件
+      // 4. 并发上传所有文件
       const fileTaskEntries = Array.from(fileTasksMap.entries());
 
-      for (const [_uploadId, fileTask] of fileTaskEntries) {
-        uploadSingleFile(folderTask.folder_id, fileTask, (upload_id, uploadedSize, progress) => {
+      await Promise.all(fileTaskEntries.map(async ([_uploadId, fileTask]) => {
+        await uploadSingleFile(folderTask.folder_id, fileTask, (upload_id, uploadedSize, progress) => {
           setFolderTasks(prev =>
             prev.map(t =>{
               console.log(`Updating folder task ${t.folder_id} for file ${upload_id}: uploaded ${uploadedSize} bytes, progress ${(progress * 100).toFixed(2)}%`);
@@ -174,7 +174,19 @@ export function useFolderUpload() {
             })
           );
         });
-      }
+      }));
+
+      // 5. 所有文件上传完成后，调用 create-staging 生成待发布媒体
+      await api.createStagingFromFolder(folderTask.folder_id);
+
+      // 6. 更新任务状态为已完成
+      setFolderTasks(prev =>
+        prev.map(t =>
+          t.folder_id === folderTask.folder_id
+            ? { ...t, status: 'completed', completed_files: files.length }
+            : t
+        )
+      );
 
       return folderTask.folder_id;
     } catch (err) {

@@ -4,9 +4,9 @@ using MediaHouse.Interfaces;
 using MediaHouse.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Hosting;
 using MediaHouse.DTOs.Upload;
 using MediaHouse.Config;
+using System.Text.Json;
 
 namespace MediaHouse.Services;
 
@@ -14,12 +14,14 @@ public class UploadService(
     MediaHouseDbContext context,
     IOptions<UploadSettings> uploadSettings,
     IHostEnvironment environment,
-    ILogger<UploadService> logger) : IUploadService
+    ILogger<UploadService> logger,
+    IMetadataService metadataService) : IUploadService
 {
     private readonly MediaHouseDbContext _context = context;
     private readonly UploadSettings _settings = uploadSettings.Value;
     private readonly IHostEnvironment _environment = environment;
     private readonly ILogger<UploadService> _logger = logger;
+    private readonly IMetadataService _metadataService = metadataService;
 
     private string GetAbsolutePath(string path)
     {
@@ -223,11 +225,10 @@ public class UploadService(
             };
         }
 
-        // 合并分片
+        // 合并分片并验证文件大小
         var mergedFile = Path.Combine(uploadDir, task.FileName);
 
         var outputStream = new FileStream(mergedFile, FileMode.Create, FileAccess.Write);
-
         for (int i = 0; i < task.TotalChunks; i++)
         {
             var chunkFile = Path.Combine(chunkDir, $"{i}.chunk");
@@ -243,71 +244,8 @@ public class UploadService(
             return new MergeResponse
             {
                 Success = false,
-                Error = "File size mismatch after merge - expected: " + task.FileSize + ", actual: " + fileInfo.Length
+                Error = $"File size mismatch after merge - expected: {task.FileSize}, actual: {fileInfo.Length}"
             };
-        }
-
-        // 创建 staging_media 记录
-        var mediaId = Guid.NewGuid().ToString();
-        string stagingDir;
-        string stagingFile;
-
-        if (!string.IsNullOrEmpty(task.FolderId))
-        {
-            // 文件夹上传：staging/folders/{folder_id}/{relative_path}/
-            var folderStagingDir = Path.Combine(_settings.StagingPath, "folders", task.FolderId);
-            var relativeDir = !string.IsNullOrEmpty(task.RelativePath)
-                ? Path.GetDirectoryName(task.RelativePath) ?? ""
-                : "";
-
-            // 保持原始目录结构
-            stagingDir = Path.Combine(folderStagingDir, relativeDir);
-            Directory.CreateDirectory(stagingDir);
-
-            stagingFile = Path.Combine(stagingDir, task.FileName);
-        }
-        else
-        {
-            // 单文件上传：staging/{media_id}/
-            stagingDir = Path.Combine(_settings.StagingPath, mediaId);
-            Directory.CreateDirectory(stagingDir);
-
-            stagingFile = Path.Combine(stagingDir, task.FileName);
-        }
-
-        var stagingMedia = new StagingMedia
-        {
-            Id = mediaId,
-            UploadTaskId = uploadId,
-            FolderId = task.FolderId,
-            RelativePath = task.RelativePath,
-            Type = "movie",
-            Title = Path.GetFileNameWithoutExtension(task.FileName),
-            VideoPath = GetAbsolutePath(stagingFile),
-            VideoSize = task.FileSize,
-            Status = 0, // 待编辑
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-
-        _context.StagingMedias.Add(stagingMedia);
-
-        // 更新任务状态
-        task.Status = 2; // 已完成
-        task.UpdatedAt = DateTime.UtcNow;
-        task.CompletedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        _logger.LogInformation("Merged upload task {UploadId} and created staging media {MediaId}", uploadId, mediaId);
-
-        // 移动合并后的文件到 staging 目录
-        File.Move(mergedFile, stagingFile);
-
-        // 删除上传目录（包含 chunks 子目录）
-        if (Directory.Exists(uploadDir))
-        {
-            Directory.Delete(uploadDir, true);
         }
 
         return new MergeResponse
@@ -315,7 +253,7 @@ public class UploadService(
             Success = true,
             Data = new MergeData
             {
-                MediaId = mediaId,
+                MediaId = string.Empty,
                 Status = "completed"
             }
         };
@@ -684,6 +622,464 @@ public class UploadService(
             CreatedAt = folder.CreatedAt.ToString("o"),
             UpdatedAt = folder.UpdatedAt.ToString("o")
         };
+    }
+
+    #endregion
+
+    #region StagingMedia 生成
+
+    public async Task<StagingMediaResult> CreateStagingMediaFromTaskAsync(string uploadTaskId)
+    {
+        var task = await _context.UploadTasks.FindAsync(uploadTaskId);
+        if (task == null)
+        {
+            return new StagingMediaResult
+            {
+                Success = false,
+                Error = "Upload task not found"
+            };
+        }
+
+        // 验证所有分片是否完整
+        var uploadDir = !string.IsNullOrEmpty(task.UploadDir)
+            ? task.UploadDir
+            : Path.Combine(_settings.UploadPath, task.Id);
+
+        var chunkDir = Path.Combine(uploadDir, "chunks");
+        var missingChunks = new List<int>();
+
+        for (int i = 0; i < task.TotalChunks; i++)
+        {
+            var chunkFile = Path.Combine(chunkDir, $"{i}.chunk");
+            if (!File.Exists(chunkFile))
+            {
+                missingChunks.Add(i);
+            }
+        }
+
+        if (missingChunks.Count > 0)
+        {
+            return new StagingMediaResult
+            {
+                Success = false,
+                Error = $"Missing chunks: {string.Join(", ", missingChunks)}"
+            };
+        }
+
+        // 创建 stagingMedia（不扫描 NFO）
+        return await CreateStagingMediaInternalAsync(task, scanNfo: false);
+    }
+
+    public async Task<StagingMediaResult> CreateStagingMediaFromFolderAsync(string uploadFolderId)
+    {
+        var folder = await _context.UploadFolders
+            .Include(f => f.Files)
+            .FirstOrDefaultAsync(f => f.Id == uploadFolderId);
+
+        if (folder == null)
+        {
+            return new StagingMediaResult
+            {
+                Success = false,
+                Error = "Folder upload task not found"
+            };
+        }
+
+        // 查找主视频文件（扩展名为视频格式）
+        var videoTask = folder.Files.FirstOrDefault(t =>
+        {
+            var ext = Path.GetExtension(t.FileName).ToLower();
+            return new[] { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm" }.Contains(ext);
+        });
+
+        if (videoTask == null)
+        {
+            return new StagingMediaResult
+            {
+                Success = false,
+                Error = "No video file found in folder"
+            };
+        }
+
+        // 验证视频文件的所有分片是否完整
+        var uploadDir = !string.IsNullOrEmpty(videoTask.UploadDir)
+            ? videoTask.UploadDir
+            : Path.Combine(_settings.UploadPath, "folders", folder.Id, videoTask.Id);
+
+        var chunkDir = Path.Combine(uploadDir, "chunks");
+        var missingChunks = new List<int>();
+
+        for (int i = 0; i < videoTask.TotalChunks; i++)
+        {
+            var chunkFile = Path.Combine(chunkDir, $"{i}.chunk");
+            if (!File.Exists(chunkFile))
+            {
+                missingChunks.Add(i);
+            }
+        }
+
+        if (missingChunks.Count > 0)
+        {
+            return new StagingMediaResult
+            {
+                Success = false,
+                Error = $"Video file missing chunks: {string.Join(", ", missingChunks)}"
+            };
+        }
+
+        // 创建一条 stagingMedia 记录（包含所有文件：视频 + NFO + 图片）
+        return await CreateStagingMediaForFolderAsync(folder, videoTask, uploadDir);
+    }
+
+    /// <summary>
+    /// 合并分片文件
+    /// </summary>
+    private async Task MergeChunksAsync(string uploadDir, UploadTask task)
+    {
+        var chunkDir = Path.Combine(uploadDir, "chunks");
+        var mergedFile = Path.Combine(uploadDir, task.FileName);
+
+        using var outputStream = new FileStream(mergedFile, FileMode.Create, FileAccess.Write);
+
+        for (int i = 0; i < task.TotalChunks; i++)
+        {
+            var chunkFile = Path.Combine(chunkDir, $"{i}.chunk");
+            using var inputStream = new FileStream(chunkFile, FileMode.Open, FileAccess.Read);
+            await inputStream.CopyToAsync(outputStream);
+        }
+    }
+
+    /// <summary>
+    /// 创建 stagingMedia 记录的内部方法
+    /// </summary>
+    /// <param name="task">上传任务</param>
+    /// <param name="scanNfo">是否扫描 NFO 文件</param>
+    /// <returns>StagingMedia 结果</returns>
+    private async Task<StagingMediaResult> CreateStagingMediaInternalAsync(UploadTask task, bool scanNfo = false)
+    {
+        var mediaId = Guid.NewGuid().ToString();
+        string stagingDir;
+        string stagingFile;
+        var uploadDir = !string.IsNullOrEmpty(task.UploadDir)
+            ? task.UploadDir
+            : Path.Combine(_settings.UploadPath, task.Id);
+
+        // 合并文件（如果尚未合并）
+        var mergedFile = Path.Combine(uploadDir, task.FileName);
+        if (!File.Exists(mergedFile))
+        {
+            await MergeChunksAsync(uploadDir, task);
+        }
+
+        // 确定目标路径
+        if (!string.IsNullOrEmpty(task.FolderId))
+        {
+            // 文件夹上传：staging/folders/{folder_id}/{relative_path}/
+            var folderStagingDir = Path.Combine(_settings.StagingPath, "folders", task.FolderId);
+            var relativeDir = !string.IsNullOrEmpty(task.RelativePath)
+                ? Path.GetDirectoryName(task.RelativePath) ?? ""
+                : "";
+
+            stagingDir = Path.Combine(folderStagingDir, relativeDir);
+            Directory.CreateDirectory(stagingDir);
+            stagingFile = Path.Combine(stagingDir, task.FileName);
+        }
+        else
+        {
+            // 单文件上传：staging/{media_id}/
+            stagingDir = Path.Combine(_settings.StagingPath, mediaId);
+            Directory.CreateDirectory(stagingDir);
+            stagingFile = Path.Combine(stagingDir, task.FileName);
+        }
+
+        // 移动文件
+        if (File.Exists(mergedFile))
+        {
+            File.Move(mergedFile, stagingFile);
+        }
+        else
+        {
+            return new StagingMediaResult
+            {
+                Success = false,
+                Error = "Merged file not found"
+            };
+        }
+
+        // 创建 stagingMedia 实体
+        var stagingMedia = new StagingMedia
+        {
+            Id = mediaId,
+            UploadTaskId = task.Id,
+            FolderId = task.FolderId,
+            RelativePath = task.RelativePath,
+            Type = "movie",
+            Title = Path.GetFileNameWithoutExtension(task.FileName),
+            VideoPath = GetAbsolutePath(stagingFile),
+            VideoSize = task.FileSize,
+            Status = 0, // 待编辑
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        // 扫描 NFO（如果需要）
+        if (scanNfo)
+        {
+            await ScanAndPopulateMetadataAsync(stagingMedia, stagingDir);
+        }
+
+        _context.StagingMedias.Add(stagingMedia);
+        await _context.SaveChangesAsync();
+
+        // 更新任务状态
+        task.Status = 2; // 已完成
+        task.UpdatedAt = DateTime.UtcNow;
+        task.CompletedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        // 删除上传目录（包含 chunks）
+        if (Directory.Exists(uploadDir))
+        {
+            Directory.Delete(uploadDir, true);
+        }
+
+        _logger.LogInformation("Created staging media {StagingId} from upload task {UploadId}", mediaId, task.Id);
+
+        return new StagingMediaResult
+        {
+            Success = true,
+            StagingMediaId = mediaId,
+            Message = "Staging media created successfully"
+        };
+    }
+
+    /// <summary>
+    /// 为文件夹上传创建 stagingMedia 记录（包含视频 + NFO + 图片）
+    /// </summary>
+    private async Task<StagingMediaResult> CreateStagingMediaForFolderAsync(UploadFolder folder, UploadTask videoTask, string uploadDir)
+    {
+        var mediaId = Guid.NewGuid().ToString();
+        var folderStagingDir = Path.Combine(_settings.StagingPath, "folders", folder.Id);
+        Directory.CreateDirectory(folderStagingDir);
+
+        // 合并视频文件
+        var mergedVideoFile = Path.Combine(uploadDir, videoTask.FileName);
+        if (!File.Exists(mergedVideoFile))
+        {
+            await MergeChunksAsync(uploadDir, videoTask);
+        }
+
+        // 移动视频文件到 staging 目录
+        var stagingVideoFile = Path.Combine(folderStagingDir, videoTask.FileName);
+        File.Move(mergedVideoFile, stagingVideoFile);
+
+        // 移动其他文件（NFO、图片等）到 staging 目录
+        var allFiles = Directory.GetFiles(uploadDir, "*.*", SearchOption.AllDirectories)
+            .Where(f => !f.Contains("chunks") && !Path.GetExtension(f).Equals(".chunk", StringComparison.OrdinalIgnoreCase));
+
+        foreach (var file in allFiles)
+        {
+            var fileName = Path.GetFileName(file);
+            var destFile = Path.Combine(folderStagingDir, fileName);
+
+            // 如果是图片目录（如 extrafanart），保持目录结构
+            var relativePath = Path.GetRelativePath(uploadDir, file);
+            var destPath = Path.Combine(folderStagingDir, relativePath);
+            var destDir = Path.GetDirectoryName(destPath);
+            if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
+            {
+                Directory.CreateDirectory(destDir);
+            }
+
+            if (file != mergedVideoFile && File.Exists(file))
+            {
+                File.Move(file, destPath);
+            }
+        }
+
+        // 创建 stagingMedia 实体
+        var stagingMedia = new StagingMedia
+        {
+            Id = mediaId,
+            UploadTaskId = videoTask.Id,
+            FolderId = folder.Id,
+            Type = "movie",
+            Title = folder.FolderName, // 使用文件夹名称作为默认标题
+            VideoPath = GetAbsolutePath(stagingVideoFile),
+            VideoSize = videoTask.FileSize,
+            Status = 0, // 待编辑
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        // 扫描 NFO 并填充元数据
+        await ScanAndPopulateMetadataAsync(stagingMedia, folderStagingDir);
+
+        _context.StagingMedias.Add(stagingMedia);
+        await _context.SaveChangesAsync();
+
+        // 更新所有文件任务的状态为已完成
+        foreach (var task in folder.Files)
+        {
+            task.Status = 2; // 已完成
+            task.UpdatedAt = DateTime.UtcNow;
+            task.CompletedAt = DateTime.UtcNow;
+        }
+        await _context.SaveChangesAsync();
+
+        // 删除所有上传目录
+        foreach (var task in folder.Files)
+        {
+            var taskUploadDir = !string.IsNullOrEmpty(task.UploadDir)
+                ? task.UploadDir
+                : Path.Combine(_settings.UploadPath, "folders", folder.Id, task.Id);
+
+            if (Directory.Exists(taskUploadDir))
+            {
+                Directory.Delete(taskUploadDir, true);
+            }
+        }
+
+        _logger.LogInformation("Created staging media {StagingId} from folder {FolderId} with {FileCount} files",
+            mediaId, folder.Id, folder.Files.Count);
+
+        return new StagingMediaResult
+        {
+            Success = true,
+            StagingMediaId = mediaId,
+            Message = $"Staging media created from folder with {folder.Files.Count} files"
+        };
+    }
+
+    /// <summary>
+    /// 扫描 NFO 文件并填充元数据到 stagingMedia
+    /// </summary>
+    private async Task ScanAndPopulateMetadataAsync(StagingMedia stagingMedia, string stagingDir)
+    {
+        // 查找 NFO 文件（在视频所在目录）
+        var nfoFiles = Directory.GetFiles(stagingDir, "*.nfo");
+        if (nfoFiles.Length == 0)
+        {
+            _logger.LogInformation("No NFO file found in {Dir}", stagingDir);
+            return;
+        }
+
+        var nfoFile = nfoFiles[0];
+        var parseResult = await _metadataService.ParseNfoFileFullAsync(nfoFile);
+
+        if (parseResult == null)
+        {
+            _logger.LogWarning("Failed to parse NFO file: {File}", nfoFile);
+            return;
+        }
+
+        // 填充 stagingMedia 字段
+        stagingMedia.Title = parseResult.Title;
+        stagingMedia.OriginalTitle = parseResult.Title;
+        stagingMedia.Year = parseResult.Year;
+        stagingMedia.ReleaseDate = parseResult.Premiered;
+        stagingMedia.Studio = parseResult.Studios;
+        stagingMedia.Runtime = parseResult.Runtime;
+        stagingMedia.Description = parseResult.Summary;
+
+        // 处理标签
+        if (parseResult.Tags != null)
+        {
+            var tags = parseResult.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(t => t.Trim()).ToList();
+            stagingMedia.Tags = JsonSerializer.Serialize(tags);
+        }
+
+        // 处理演员
+        if (parseResult.Actors != null && parseResult.Actors.Count > 0)
+        {
+            var staff = parseResult.Actors.Select(a => new StaffItemDto { Name = a, Type = "actor" }).ToList();
+            stagingMedia.Staff = JsonSerializer.Serialize(staff);
+        }
+
+        // 处理图片（如果存在则创建 media_imgs 记录）
+        var imageTypes = new[] { "poster", "thumb", "fanart" };
+        foreach (var imageType in imageTypes)
+        {
+            if (parseResult.ImagePaths.TryGetValue(imageType, out var imagePath) && !string.IsNullOrEmpty(imagePath))
+            {
+                var fullPath = Path.Combine(stagingDir, imagePath);
+                if (File.Exists(fullPath))
+                {
+                    var urlName = await CreateMediaImgRecordAsync(fullPath, imageType);
+                    switch (imageType)
+                    {
+                        case "poster":
+                            stagingMedia.PosterPath = urlName;
+                            break;
+                        case "thumb":
+                            stagingMedia.ThumbPath = urlName;
+                            break;
+                        case "fanart":
+                            stagingMedia.FanartPath = urlName;
+                            break;
+                    }
+                }
+            }
+        }
+
+        // 处理截图（extrafanart 目录）
+        var extrafanartDir = Path.Combine(stagingDir, "extrafanart");
+        if (Directory.Exists(extrafanartDir))
+        {
+            var screenshotFiles = Directory.GetFiles(extrafanartDir)
+                .Where(f => new[] { ".jpg", ".jpeg", ".png", ".webp" }.Contains(Path.GetExtension(f).ToLower()));
+
+            var screenshotUrlNames = new List<string>();
+            foreach (var screenshotFile in screenshotFiles)
+            {
+                var urlName = await CreateMediaImgRecordAsync(screenshotFile, "screenshot");
+                screenshotUrlNames.Add(urlName);
+            }
+
+            if (screenshotUrlNames.Count > 0)
+            {
+                stagingMedia.ScreenshotsPath = string.Join(",", screenshotUrlNames);
+            }
+        }
+
+        stagingMedia.Status = 1; // 待发布
+        stagingMedia.UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// 创建 media_imgs 记录并返回 url_name
+    /// </summary>
+    private async Task<string> CreateMediaImgRecordAsync(string filePath, string type)
+    {
+        var urlName = MediaUtils.GenerateUrlNameFromPath(filePath);
+        var fileInfo = new FileInfo(filePath);
+
+        var mediaImg = new MediaImgs
+        {
+            MediaId = 0, // 暂存媒体
+            UrlName = urlName,
+            Name = Path.GetFileNameWithoutExtension(filePath),
+            Path = filePath,
+            FileName = Path.GetFileName(filePath),
+            Extension = Path.GetExtension(filePath).TrimStart('.'),
+            Type = type,
+            SizeBytes = fileInfo.Length,
+            CreateTime = DateTime.UtcNow,
+            UpdateTime = DateTime.UtcNow
+        };
+
+        var existing = await _context.MediaImgs.FirstOrDefaultAsync(m => m.Path == filePath);
+        if (existing == null)
+        {
+            _context.MediaImgs.Add(mediaImg);
+            await _context.SaveChangesAsync();
+        }
+        else
+        {
+            urlName = existing.UrlName;
+        }
+
+        return urlName;
     }
 
     #endregion

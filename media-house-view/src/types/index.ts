@@ -639,6 +639,14 @@ export interface MergeUploadFailureResponse {
 export type MergeUploadResponse = MergeUploadSuccessResponse | MergeUploadFailureResponse;
 
 /**
+ * 创建待发布媒体响应
+ */
+export interface CreateStagingResponse {
+  staging_media_id: string;
+  message: string;
+}
+
+/**
  * 上传分片响应
  */
 export interface UploadChunkResponse {

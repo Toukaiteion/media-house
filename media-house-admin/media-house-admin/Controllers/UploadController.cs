@@ -218,4 +218,38 @@ public class UploadController(
     }
 
     #endregion
+
+    #region StagingMedia 生成
+
+    [HttpPost("{upload_id}/create-staging")]
+    public async Task<ActionResult<StagingMediaResult>> CreateStagingMediaFromTask(string upload_id)
+    {
+        try
+        {
+            var result = await _uploadService.CreateStagingMediaFromTaskAsync(upload_id);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating staging media from task {UploadId}", upload_id);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("folders/{folder_id}/create-staging")]
+    public async Task<ActionResult<StagingMediaResult>> CreateStagingMediaFromFolder(string folder_id)
+    {
+        try
+        {
+            var result = await _uploadService.CreateStagingMediaFromFolderAsync(folder_id);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating staging media from folder {FolderId}", folder_id);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    #endregion
 }

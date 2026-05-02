@@ -56,6 +56,7 @@ import type {
   FolderUploadTask,
   CreateFolderUploadRequest,
   AddFileToFolderRequest,
+  CreateStagingResponse,
   LogsPageResponse,
   LogsStats,
   DeleteLogsResponse,
@@ -781,6 +782,24 @@ class ApiClient {
     return this.request<MergeUploadResponse>(`/media/upload-tasks/${upload_id}/merge`, {
       method: 'POST',
       body: JSON.stringify(requestData),
+    });
+  }
+
+  /**
+   * 根据上传任务 ID 生成待发布媒体
+   */
+  async createStagingFromUpload(uploadId: string): Promise<CreateStagingResponse> {
+    return this.request<CreateStagingResponse>(`/media/upload-tasks/${uploadId}/create-staging`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * 根据文件夹 ID 生成待发布媒体
+   */
+  async createStagingFromFolder(folderId: string): Promise<CreateStagingResponse> {
+    return this.request<CreateStagingResponse>(`/media/upload-tasks/folders/${folderId}/create-staging`, {
+      method: 'POST',
     });
   }
 

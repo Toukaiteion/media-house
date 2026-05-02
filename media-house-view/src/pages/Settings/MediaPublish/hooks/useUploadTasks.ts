@@ -37,6 +37,8 @@ export function useUploadTasks() {
       });
 
       if (result.success) {
+        // 调用 create-staging 接口生成待发布媒体
+        await api.createStagingFromUpload(uploadId);
         onMessage?.('success', '上传完成');
         setUploadTasks(prev => prev.map(task => task.upload_id === uploadId ? { ...task, status: 'completed' } : task));
         onRefreshStagingMedias?.();

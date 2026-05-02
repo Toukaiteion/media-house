@@ -16,4 +16,15 @@ public interface IUploadService
     Task<List<FolderUploadTaskDto>> GetAllFolderUploadTasksAsync();
     Task<bool> DeleteFolderUploadTaskAsync(string folderId);
     Task<UploadTaskDto> AddFileToFolderAsync(string folderId, AddFileToFolderRequest request);
+
+    // StagingMedia 生成相关方法
+    /// <summary>
+    /// 根据 uploadTaskId 创建 stagingMedia 记录
+    /// </summary>
+    Task<StagingMediaResult> CreateStagingMediaFromTaskAsync(string uploadTaskId);
+
+    /// <summary>
+    /// 根据 uploadFolderId 创建 stagingMedia 记录（folderId 代表一部作品，包含视频、NFO、图片等）
+    /// </summary>
+    Task<StagingMediaResult> CreateStagingMediaFromFolderAsync(string uploadFolderId);
 }
