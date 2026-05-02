@@ -74,12 +74,6 @@ export function FolderUploadTaskCard({ task, speed, onDelete }: FolderUploadTask
           </Typography>
         </Box>
 
-        <Box sx={{ mb: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            文件: {task.completed_files} / {task.total_files}
-          </Typography>
-        </Box>
-
         <Box sx={{ mt: 2 }}>
           <LinearProgress
             variant="determinate"

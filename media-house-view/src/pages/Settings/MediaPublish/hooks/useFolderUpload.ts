@@ -33,7 +33,7 @@ export function useFolderUpload() {
   const uploadSingleFile = useCallback(async (
     folderId: string,
     task: UploadFileTask,
-    onUpdate?: (uploadId: string, progress: number) => void
+    onUpdate?: (uploadId: string, uploadedSize: number, progress: number) => void
   ) => {
     const { uploadId, file } = task;
     const totalChunks = task.totalChunks;
@@ -54,7 +54,8 @@ export function useFolderUpload() {
 
       const uploadedSize = Math.min(uploadedChunks.size * CHUNK_SIZE, file.size);
       const progress = file.size > 0 ? uploadedSize / file.size : 0;
-      onUpdate?.(uploadId, progress);
+      console.log(`Upload ${uploadId}: ${uploadedSize} / ${file.size} bytes (${(progress * 100).toFixed(2)}%)`);
+      onUpdate?.(uploadId, uploadedSize, progress);
 
       const elapsed = (now - startTime) / 1000;
       const speed = elapsed > 0 ? uploadedSize / elapsed : 0;
@@ -148,22 +149,25 @@ export function useFolderUpload() {
 
       // 4. 并发上传文件
       const fileTaskEntries = Array.from(fileTasksMap.entries());
-      let completedCount = 0;
 
       for (const [_uploadId, fileTask] of fileTaskEntries) {
-        uploadSingleFile(folderTask.folder_id, fileTask, () => {
-          completedCount++;
+        uploadSingleFile(folderTask.folder_id, fileTask, (upload_id, uploadedSize, progress) => {
           setFolderTasks(prev =>
-            prev.map(t =>
-              t.folder_id === folderTask.folder_id
-                ? {
-                    ...t,
-                    completed_files: completedCount,
-                    uploaded_size: Math.min(completedCount * CHUNK_SIZE, totalSize),
-                    progress: completedCount / fileTaskEntries.length,
+            prev.map(t =>{
+              if (t.folder_id === folderTask.folder_id) {
+                let folderUploadedSize = 0;
+                t.files.forEach(f => {
+                  if (f.upload_id === upload_id) {
+                    f.uploaded_size = uploadedSize;
+                    f.progress = progress;
                   }
-                : t
-            )
+                  folderUploadedSize += f.uploaded_size;
+                })
+                t.uploaded_size = folderUploadedSize;
+                t.progress = folderUploadedSize / totalSize || 0;
+              }
+              return t;
+            })
           );
         });
       }
