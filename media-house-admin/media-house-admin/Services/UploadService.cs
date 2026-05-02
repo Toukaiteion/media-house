@@ -952,7 +952,7 @@ public class UploadService(
         };
 
         // 4. 扫描 NFO 并填充元数据
-        await ScanAndPopulateMetadataAsync(stagingMedia, folderStagingDir);
+        await ScanAndPopulateMetadataAsync(stagingMedia, Path.Combine(folderStagingDir, relativeDir));
 
         _context.StagingMedias.Add(stagingMedia);
         await _context.SaveChangesAsync();
