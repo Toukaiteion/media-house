@@ -25,7 +25,7 @@ export const LogsList = forwardRef<LogsListRef, LogsListProps>((props, ref) => {
   const [hasMore, setHasMore] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  let refreshTimerRef: number = 0;
+  let refreshTimerRef: any = null;
 
   const scrollToBottom = () => {
     if (scrollContainerRef.current) {
