@@ -103,7 +103,8 @@ export function useFolderUpload() {
   // 开始文件夹上传
   const startFolderUpload = useCallback(async (
     files: FileNode[],
-    onMessage?: (type: 'success' | 'error', text: string) => void
+    onMessage?: (type: 'success' | 'error', text: string) => void,
+    onComplate?: () => void,
   ): Promise<string | null> => {
     try {
       // 1. 验证文件列表
@@ -180,7 +181,6 @@ export function useFolderUpload() {
         await uploadSingleFile(folderTask.folder_id, fileTask, (upload_id, uploadedSize, progress) => {
           setFolderTasks(prev =>
             prev.map(t =>{
-              console.log(`Updating folder task ${t.folder_id} for file ${upload_id}: uploaded ${uploadedSize} bytes, progress ${(progress * 100).toFixed(2)}%`);
               if (t.folder_id === folderTask.folder_id) {
                 let folderUploadedSize = 0;
                 t.files.forEach(f => {
@@ -210,6 +210,7 @@ export function useFolderUpload() {
             : t
         )
       );
+      onComplate?.();
 
       return folderTask.folder_id;
     } catch (err) {
