@@ -192,9 +192,11 @@ export function FolderUploadDialog({ open, onClose, onStartUpload }: FolderUploa
       onClose={handleClose}
       maxWidth="md"
       fullWidth
-      TransitionProps={{
-        onEntered: bindDragEvents,
-        onExiting: unbindDragEvents,
+      slotProps={{
+        transition: {
+          onEntered: bindDragEvents,
+          onExiting: unbindDragEvents,
+        },
       }}
     >
       <DialogTitle>上传文件夹</DialogTitle>
