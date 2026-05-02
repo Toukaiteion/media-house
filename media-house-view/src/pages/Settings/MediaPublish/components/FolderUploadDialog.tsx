@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -166,25 +166,37 @@ export function FolderUploadDialog({ open, onClose, onStartUpload }: FolderUploa
     }
   };
 
-  // 注册拖拽事件监听器
-  useEffect(() => {
+  // 绑定拖拽事件
+  const bindDragEvents = useCallback(() => {
     const dropZone = dropZoneRef.current;
     if (!dropZone) return;
 
-    // 直接传递回调函数，避免闭包问题
     dropZone.addEventListener('dragover', handleDragOver);
     dropZone.addEventListener('dragleave', handleDragLeave);
     dropZone.addEventListener('drop', handleDrop);
+  }, [handleDragOver, handleDragLeave, handleDrop]);
 
-    return () => {
-      dropZone.removeEventListener('dragover', handleDragOver);
-      dropZone.removeEventListener('dragleave', handleDragLeave);
-      dropZone.removeEventListener('drop', handleDrop);
-    };
+  // 解绑拖拽事件
+  const unbindDragEvents = useCallback(() => {
+    const dropZone = dropZoneRef.current;
+    if (!dropZone) return;
+
+    dropZone.removeEventListener('dragover', handleDragOver);
+    dropZone.removeEventListener('dragleave', handleDragLeave);
+    dropZone.removeEventListener('drop', handleDrop);
   }, [handleDragOver, handleDragLeave, handleDrop]);
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      maxWidth="md"
+      fullWidth
+      TransitionProps={{
+        onEntered: bindDragEvents,
+        onExiting: unbindDragEvents,
+      }}
+    >
       <DialogTitle>上传文件夹</DialogTitle>
       <DialogContent>
         <Alert severity="info" sx={{ mb: 2 }}>
