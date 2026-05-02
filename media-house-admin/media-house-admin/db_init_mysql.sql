@@ -362,3 +362,33 @@ CREATE TABLE staging_medias (
     INDEX idx_status (status),
     INDEX idx_upload_task_id (upload_task_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='待发布媒体表';
+
+-- ==============================
+-- 19. 文件夹上传任务表
+-- ==============================
+DROP TABLE IF EXISTS upload_folders;
+CREATE TABLE upload_folders (
+    id VARCHAR(36) PRIMARY KEY COMMENT 'UUID',
+    folder_name VARCHAR(255) NOT NULL COMMENT '文件夹名称',
+    total_files INT NOT NULL COMMENT '总文件数',
+    completed_files INT DEFAULT 0 COMMENT '已完成文件数',
+    total_size BIGINT NOT NULL COMMENT '总大小(字节)',
+    uploaded_size BIGINT DEFAULT 0 COMMENT '已上传大小(字节)',
+    status INT DEFAULT 0 COMMENT '0=待上传,1=上传中,2=已完成,3=已取消,4=失败',
+    root_path VARCHAR(500) DEFAULT NULL COMMENT '文件夹根路径',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NULL DEFAULT NULL,
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件夹上传任务表';
+
+-- 添加文件夹上传相关字段到现有表（如果表已存在，需要手动执行 ALTER TABLE）
+-- ALTER TABLE upload_tasks ADD COLUMN folder_id VARCHAR(36) DEFAULT NULL COMMENT '所属文件夹ID';
+-- ALTER TABLE upload_tasks ADD COLUMN relative_path VARCHAR(500) DEFAULT NULL COMMENT '文件在文件夹中的相对路径';
+-- ALTER TABLE staging_medias ADD COLUMN folder_id VARCHAR(36) DEFAULT NULL COMMENT '所属文件夹上传任务ID';
+-- ALTER TABLE staging_medias ADD COLUMN relative_path VARCHAR(500) DEFAULT NULL COMMENT '原始相对路径';
+
+-- 添加外键约束（如果表已存在，需要手动执行）
+-- ALTER TABLE upload_tasks ADD CONSTRAINT fk_upload_tasks_folder_id FOREIGN KEY (folder_id) REFERENCES upload_folders(id) ON DELETE CASCADE;
+-- ALTER TABLE upload_tasks ADD INDEX idx_folder_id (folder_id);

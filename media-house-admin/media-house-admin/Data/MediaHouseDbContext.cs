@@ -22,6 +22,7 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
     public DbSet<PluginConfig> PluginConfigs { get; set; }
     public DbSet<PluginExecutionLog> PluginExecutionLogs { get; set; }
     public DbSet<UploadTask> UploadTasks { get; set; }
+    public DbSet<UploadFolder> UploadFolders { get; set; }
     public DbSet<StagingMedia> StagingMedias { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -216,6 +217,20 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
             .HasOne(sm => sm.UploadTask)
             .WithMany()
             .HasForeignKey(sm => sm.UploadTaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // UploadFolder configurations
+        modelBuilder.Entity<UploadFolder>()
+            .HasIndex(uf => uf.Status);
+
+        modelBuilder.Entity<UploadFolder>()
+            .HasIndex(uf => uf.CreatedAt);
+
+        // UploadTask -> UploadFolder relationship
+        modelBuilder.Entity<UploadTask>()
+            .HasOne<UploadFolder>()
+            .WithMany(uf => uf.Files)
+            .HasForeignKey(ut => ut.FolderId)
             .OnDelete(DeleteBehavior.Cascade);
 
     }

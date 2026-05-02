@@ -134,4 +134,88 @@ public class UploadController(
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    #region 文件夹上传
+
+    [HttpGet("folders")]
+    public async Task<ActionResult<List<FolderUploadTaskDto>>> GetFolderUploadTasks()
+    {
+        try
+        {
+            var result = await _uploadService.GetAllFolderUploadTasksAsync();
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all folder upload tasks");
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("folders")]
+    public async Task<ActionResult<FolderUploadTaskDto>> CreateFolderUploadTask([FromBody] CreateFolderUploadRequest request)
+    {
+        try
+        {
+            var result = await _uploadService.CreateFolderUploadTaskAsync(request);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating folder upload task");
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("folders/{folder_id}")]
+    public async Task<ActionResult<FolderUploadTaskDto>> GetFolderUploadTask(string folder_id)
+    {
+        try
+        {
+            var result = await _uploadService.GetFolderUploadProgressAsync(folder_id);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting folder upload task {FolderId}", folder_id);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("folders/{folder_id}/files")]
+    public async Task<ActionResult<UploadTaskDto>> AddFileToFolder(string folder_id, [FromBody] AddFileToFolderRequest request)
+    {
+        try
+        {
+            var result = await _uploadService.AddFileToFolderAsync(folder_id, request);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding file to folder {FolderId}", folder_id);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("folders/{folder_id}")]
+    public async Task<ActionResult> DeleteFolderUploadTask(string folder_id)
+    {
+        try
+        {
+            var success = await _uploadService.DeleteFolderUploadTaskAsync(folder_id);
+            if (!success)
+            {
+                return NotFound(new { error = "Folder upload task not found" });
+            }
+
+            return Ok(new { message = "Folder upload task deleted" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting folder upload task {FolderId}", folder_id);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    #endregion
 }

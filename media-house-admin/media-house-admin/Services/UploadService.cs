@@ -172,8 +172,21 @@ public class UploadService(
             };
         }
 
+        // 支持文件夹上传 - 确定上传目录
+        string uploadDir;
+        if (!string.IsNullOrEmpty(task.FolderId))
+        {
+            // 文件夹上传：uploads/folders/{folder_id}/{upload_id}/
+            uploadDir = Path.Combine(_settings.UploadPath, "folders", task.FolderId, uploadId);
+        }
+        else
+        {
+            // 单文件上传：uploads/{upload_id}/
+            uploadDir = Path.Combine(_settings.UploadPath, uploadId);
+        }
+
         // 检查所有分片是否完整
-        var chunkDir = Path.Combine(_settings.UploadPath, uploadId, "chunks");
+        var chunkDir = Path.Combine(uploadDir, "chunks");
         var missingChunks = new List<int>();
 
         for (int i = 0; i < task.TotalChunks; i++)
@@ -218,7 +231,6 @@ public class UploadService(
         }
 
         // 合并分片
-        var uploadDir = Path.Combine(_settings.UploadPath, uploadId);
         var mergedFile = Path.Combine(uploadDir, task.FileName);
 
         var outputStream = new FileStream(mergedFile, FileMode.Create, FileAccess.Write);
@@ -244,13 +256,41 @@ public class UploadService(
 
         // 创建 staging_media 记录
         var mediaId = Guid.NewGuid().ToString();
+        string stagingDir;
+        string stagingFile;
+
+        if (!string.IsNullOrEmpty(task.FolderId))
+        {
+            // 文件夹上传：staging/folders/{folder_id}/{relative_path}/
+            var folderStagingDir = Path.Combine(_settings.StagingPath, "folders", task.FolderId);
+            var relativeDir = !string.IsNullOrEmpty(task.RelativePath)
+                ? Path.GetDirectoryName(task.RelativePath) ?? ""
+                : "";
+
+            // 保持原始目录结构
+            stagingDir = Path.Combine(folderStagingDir, relativeDir);
+            Directory.CreateDirectory(stagingDir);
+
+            stagingFile = Path.Combine(stagingDir, task.FileName);
+        }
+        else
+        {
+            // 单文件上传：staging/{media_id}/
+            stagingDir = Path.Combine(_settings.StagingPath, mediaId);
+            Directory.CreateDirectory(stagingDir);
+
+            stagingFile = Path.Combine(stagingDir, task.FileName);
+        }
+
         var stagingMedia = new StagingMedia
         {
             Id = mediaId,
             UploadTaskId = uploadId,
+            FolderId = task.FolderId,
+            RelativePath = task.RelativePath,
             Type = "movie",
             Title = Path.GetFileNameWithoutExtension(task.FileName),
-            VideoPath = GetAbsolutePath(Path.Combine(_settings.StagingPath, mediaId, task.FileName)),
+            VideoPath = GetAbsolutePath(stagingFile),
             VideoSize = task.FileSize,
             Status = 0, // 待编辑
             CreatedAt = DateTime.UtcNow,
@@ -268,11 +308,7 @@ public class UploadService(
 
         _logger.LogInformation("Merged upload task {UploadId} and created staging media {MediaId}", uploadId, mediaId);
 
-        // 创建 staging 目录并移动文件
-        var stagingDir = Path.Combine(_settings.StagingPath, mediaId);
-        Directory.CreateDirectory(stagingDir);
-
-        var stagingFile = Path.Combine(stagingDir, task.FileName);
+        // 移动合并后的文件到 staging 目录
         File.Move(mergedFile, stagingFile);
 
         // 删除上传目录（包含 chunks 子目录）
@@ -292,7 +328,7 @@ public class UploadService(
         };
     }
 
-    private UploadedChunkInfo CalculateUploadedChunk(string uploadId, int totalChunks, int chunkSize, long fileSize)
+    private UploadedChunkInfo CalculateUploadedChunk(string uploadId, int totalChunks, int chunkSize, long fileSize, string? folderId = null)
     {
         var uploadedInfo = new UploadedChunkInfo
         {
@@ -300,7 +336,17 @@ public class UploadService(
             UploadedChunks = 0,
             UploadedSize = 0
         };
-        var chunkDir = Path.Combine(_settings.UploadPath, uploadId, "chunks");
+
+        // 支持文件夹上传路径
+        string chunkDir;
+        if (!string.IsNullOrEmpty(folderId))
+        {
+            chunkDir = Path.Combine(_settings.UploadPath, "folders", folderId, uploadId, "chunks");
+        }
+        else
+        {
+            chunkDir = Path.Combine(_settings.UploadPath, uploadId, "chunks");
+        }
 
         var MissingChunksInUploadedRange = new List<int>();
         
@@ -403,4 +449,254 @@ public class UploadService(
         4 => "failed",
         _ => "unknown"
     };
+
+    #region 文件夹上传
+
+    public async Task<FolderUploadTaskDto> CreateFolderUploadTaskAsync(CreateFolderUploadRequest request)
+    {
+        var folderId = Guid.NewGuid().ToString();
+        var uploadFolder = new UploadFolder
+        {
+            Id = folderId,
+            FolderName = request.folder_name,
+            TotalFiles = request.total_files,
+            CompletedFiles = 0,
+            TotalSize = request.total_size,
+            UploadedSize = 0,
+            Status = 0, // 待上传
+            RootPath = request.root_path,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.UploadFolders.Add(uploadFolder);
+        await _context.SaveChangesAsync();
+
+        // 创建文件夹上传目录
+        var folderUploadDir = Path.Combine(_settings.UploadPath, "folders", folderId);
+        Directory.CreateDirectory(folderUploadDir);
+
+        _logger.LogInformation("Created folder upload task {FolderId} for folder {FolderName} with {FileCount} files",
+            folderId, request.folder_name, request.total_files);
+
+        return MapFolderToDto(uploadFolder);
+    }
+
+    public async Task<FolderUploadTaskDto> GetFolderUploadProgressAsync(string folderId)
+    {
+        var folder = await _context.UploadFolders
+            .Include(f => f.Files)
+            .FirstOrDefaultAsync(f => f.Id == folderId)
+            ?? throw new InvalidOperationException($"Folder upload task not found: {folderId}");
+
+        // 计算当前进度
+        await UpdateFolderProgressAsync(folder);
+
+        return MapFolderToDto(folder);
+    }
+
+    public async Task<List<FolderUploadTaskDto>> GetAllFolderUploadTasksAsync()
+    {
+        var folders = await _context.UploadFolders
+            .Include(f => f.Files)
+            .OrderByDescending(f => f.CreatedAt)
+            .ToListAsync();
+
+        foreach (var folder in folders)
+        {
+            await UpdateFolderProgressAsync(folder);
+        }
+
+        return [.. folders.Select(MapFolderToDto)];
+    }
+
+    public async Task<bool> DeleteFolderUploadTaskAsync(string folderId)
+    {
+        var folder = await _context.UploadFolders
+            .Include(f => f.Files)
+            .FirstOrDefaultAsync(f => f.Id == folderId);
+
+        if (folder == null) return false;
+
+        // 删除所有关联的上传任务
+        foreach (var task in folder.Files)
+        {
+            _context.UploadTasks.Remove(task);
+        }
+
+        _context.UploadFolders.Remove(folder);
+        await _context.SaveChangesAsync();
+
+        // 删除文件夹上传目录
+        var folderUploadDir = Path.Combine(_settings.UploadPath, "folders", folderId);
+        if (Directory.Exists(folderUploadDir))
+        {
+            Directory.Delete(folderUploadDir, true);
+        }
+
+        // 删除 staging 中的文件夹（如果存在）
+        var stagingFolderDir = Path.Combine(_settings.StagingPath, "folders", folderId);
+        if (Directory.Exists(stagingFolderDir))
+        {
+            Directory.Delete(stagingFolderDir, true);
+        }
+
+        _logger.LogInformation("Deleted folder upload task {FolderId}", folderId);
+        return true;
+    }
+
+    public async Task<UploadTaskDto> AddFileToFolderAsync(string folderId, AddFileToFolderRequest request)
+    {
+        // 验证文件夹任务存在
+        var folder = await _context.UploadFolders.FindAsync(folderId)
+            ?? throw new InvalidOperationException($"Folder upload task not found: {folderId}");
+
+        // 验证文件大小
+        if (request.file_size > _settings.MaxFileSize)
+        {
+            throw new InvalidOperationException($"File size exceeds maximum allowed size of {_settings.MaxFileSize} bytes");
+        }
+
+        // 根据 MD5 查找已有任务
+        var existingTask = await _context.UploadTasks
+            .Where(t => t.FileMd5 == request.file_md5 && t.FolderId == folderId && t.Status != 2)
+            .FirstOrDefaultAsync();
+
+        if (existingTask == null)
+        {
+            // 创建新任务
+            var uploadId = Guid.NewGuid().ToString();
+            var totalChunks = (int)Math.Ceiling((double)request.file_size / request.chunk_size);
+
+            var uploadTask = new UploadTask
+            {
+                Id = uploadId,
+                FileName = request.file_name,
+                FileSize = request.file_size,
+                FileMd5 = request.file_md5,
+                ChunkSize = request.chunk_size,
+                TotalChunks = totalChunks,
+                UploadedChunksNum = 0,
+                UploadedSize = 0,
+                Status = 0, // 待上传
+                FolderId = folderId,
+                RelativePath = request.relative_path,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.UploadTasks.Add(uploadTask);
+            await _context.SaveChangesAsync();
+
+            // 创建上传目录
+            var uploadDir = Path.Combine(_settings.UploadPath, "folders", folderId, uploadId);
+            Directory.CreateDirectory(uploadDir);
+            Directory.CreateDirectory(Path.Combine(uploadDir, "chunks"));
+
+            _logger.LogInformation("Added file {FileName} to folder upload task {FolderId} with upload task {UploadId}",
+                request.file_name, folderId, uploadId);
+
+            return new UploadTaskDto
+            {
+                UploadId = uploadId,
+                FileName = request.file_name,
+                FileSize = request.file_size,
+                FileMd5 = request.file_md5,
+                ChunkSize = request.chunk_size,
+                TotalChunks = totalChunks,
+                UploadedChunksNum = 0,
+                UploadedSize = 0,
+                MaxUploadedChunkIndex = -1,
+                MissingChunksInUploadedRange = [],
+                Progress = 0,
+                Status = "pending",
+                CreatedAt = DateTime.UtcNow.ToString("o"),
+                IsNew = true
+            };
+        }
+        else
+        {
+            // 返回已有任务信息
+            _logger.LogInformation("Found existing upload task {UploadId} for file {FileName} in folder {FolderId}",
+                existingTask.Id, request.file_name, folderId);
+            var uploadedChunkInfo = CalculateUploadedChunk(existingTask.Id, existingTask.TotalChunks, existingTask.ChunkSize, existingTask.FileSize);
+
+            return new UploadTaskDto
+            {
+                UploadId = existingTask.Id,
+                FileName = existingTask.FileName,
+                FileSize = existingTask.FileSize,
+                FileMd5 = existingTask.FileMd5 ?? string.Empty!,
+                ChunkSize = existingTask.ChunkSize,
+                TotalChunks = existingTask.TotalChunks,
+                UploadedChunksNum = uploadedChunkInfo.UploadedChunks,
+                UploadedSize = uploadedChunkInfo.UploadedSize,
+                MaxUploadedChunkIndex = uploadedChunkInfo.MaxUploadedIndex,
+                MissingChunksInUploadedRange = uploadedChunkInfo.MissingChunksInUploadedRange,
+                Progress = existingTask.FileSize > 0 ? (double)uploadedChunkInfo.UploadedSize / existingTask.FileSize : 0,
+                Status = GetStatusString(existingTask.Status),
+                CreatedAt = existingTask.CreatedAt.ToString("o"),
+                UpdatedAt = existingTask.UpdatedAt.ToString("o"),
+                IsNew = false
+            };
+        }
+    }
+
+    private async Task UpdateFolderProgressAsync(UploadFolder folder)
+    {
+        // 计算已完成文件数和已上传大小
+        folder.UploadedSize = folder.Files.Sum(f => f.UploadedSize);
+        folder.CompletedFiles = folder.Files.Count(f => f.Status == 2);
+
+        // 更新文件夹状态
+        if (folder.CompletedFiles == folder.TotalFiles)
+        {
+            folder.Status = 2; // 已完成
+            folder.CompletedAt = DateTime.UtcNow;
+        }
+        else if (folder.CompletedFiles > 0 || folder.UploadedSize > 0)
+        {
+            folder.Status = 1; // 上传中
+        }
+        folder.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+    }
+
+    private FolderUploadTaskDto MapFolderToDto(UploadFolder folder)
+    {
+        var progress = folder.TotalSize > 0 ? (double)folder.UploadedSize / folder.TotalSize : 0;
+
+        var files = folder.Files.Select(f =>
+        {
+            var uploadedChunkInfo = CalculateUploadedChunk(f.Id, f.TotalChunks, f.ChunkSize, f.FileSize, folder.Id);
+            return new FileUploadInfo
+            {
+                UploadId = f.Id,
+                FileName = f.FileName,
+                RelativePath = f.RelativePath,
+                FileSize = f.FileSize,
+                UploadedSize = uploadedChunkInfo.UploadedSize,
+                Progress = f.FileSize > 0 ? (double)uploadedChunkInfo.UploadedSize / f.FileSize : 0,
+                Status = GetStatusString(f.Status)
+            };
+        }).ToList();
+
+        return new FolderUploadTaskDto
+        {
+            FolderId = folder.Id,
+            FolderName = folder.FolderName,
+            TotalFiles = folder.TotalFiles,
+            CompletedFiles = folder.CompletedFiles,
+            TotalSize = folder.TotalSize,
+            UploadedSize = folder.UploadedSize,
+            Progress = progress,
+            Status = GetStatusString(folder.Status),
+            Files = files,
+            CreatedAt = folder.CreatedAt.ToString("o"),
+            UpdatedAt = folder.UpdatedAt.ToString("o")
+        };
+    }
+
+    #endregion
 }

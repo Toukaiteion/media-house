@@ -348,3 +348,34 @@ CREATE INDEX IF NOT EXISTS idx_upload_tasks_file_md5 ON upload_tasks(file_md5);
 CREATE INDEX IF NOT EXISTS idx_upload_tasks_created_at ON upload_tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_staging_medias_status ON staging_medias(status);
 CREATE INDEX IF NOT EXISTS idx_staging_medias_upload_task_id ON staging_medias(upload_task_id);
+
+-- ==============================
+-- 18. 文件夹上传任务表
+-- ==============================
+DROP TABLE IF EXISTS upload_folders;
+CREATE TABLE upload_folders (
+    id VARCHAR(36) PRIMARY KEY,         -- UUID
+    folder_name VARCHAR(255) NOT NULL,   -- 文件夹名称
+    total_files INTEGER NOT NULL,        -- 总文件数
+    completed_files INTEGER DEFAULT 0,   -- 已完成文件数
+    total_size BIGINT NOT NULL,          -- 总大小（字节）
+    uploaded_size BIGINT DEFAULT 0,      -- 已上传大小（字节）
+    status INTEGER DEFAULT 0,            -- 状态：0=待上传，1=上传中，2=已完成，3=已取消，4=失败
+    root_path VARCHAR(500),              -- 文件夹根路径
+    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    completed_at TIMESTAMP
+);
+
+-- 添加文件夹上传相关字段到现有表（如果表已存在，需要手动执行 ALTER TABLE）
+-- ALTER TABLE upload_tasks ADD COLUMN folder_id VARCHAR(36);
+-- ALTER TABLE upload_tasks ADD COLUMN relative_path VARCHAR(500);
+-- ALTER TABLE staging_medias ADD COLUMN folder_id VARCHAR(36);
+-- ALTER TABLE staging_medias ADD COLUMN relative_path VARCHAR(500);
+
+-- 文件夹上传模块索引
+CREATE INDEX IF NOT EXISTS idx_upload_folders_status ON upload_folders(status);
+CREATE INDEX IF NOT EXISTS idx_upload_folders_created_at ON upload_folders(created_at);
+
+-- 添加外键约束（如果表已存在，需要手动执行）
+-- CREATE INDEX IF NOT EXISTS idx_upload_tasks_folder_id ON upload_tasks(folder_id);

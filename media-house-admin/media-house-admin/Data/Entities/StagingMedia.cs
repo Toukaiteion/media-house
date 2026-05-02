@@ -21,6 +21,8 @@ public class StagingMedia
     public string? ScreenshotsPath { get; set; }
     public string? Tags { get; set; } // JSON array
     public string? Staff { get; set; } // JSON array
+    public string? FolderId { get; set; } // 所属文件夹上传任务ID
+    public string? RelativePath { get; set; } // 原始相对路径
     public int Status { get; set; } // 0=待编辑，1=待发布，2=已发布
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
