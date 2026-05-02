@@ -872,13 +872,14 @@ public class UploadService(
         // 移动视频文件到 staging 目录
         var stagingVideoFile = Path.Combine(folderStagingDir, videoTask.FileName);
         File.Move(mergedVideoFile, stagingVideoFile);
-
+        _logger.LogInformation("Moved video file {FileName} to staging directory for folder {FolderId}", videoTask.FileName, folder.Id);
         // 移动其他文件（NFO、图片等）到 staging 目录
         var allFiles = Directory.GetFiles(uploadDir, "*.*", SearchOption.AllDirectories)
             .Where(f => !f.Contains("chunks") && !Path.GetExtension(f).Equals(".chunk", StringComparison.OrdinalIgnoreCase));
 
         foreach (var file in allFiles)
         {
+            _logger.LogInformation("Processing file {File} for staging media creation from folder", file);
             var fileName = Path.GetFileName(file);
             var destFile = Path.Combine(folderStagingDir, fileName);
 

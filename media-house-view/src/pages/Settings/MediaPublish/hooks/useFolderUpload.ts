@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { FolderUploadTask } from '../../../../types';
+import type { FolderUploadTask, FileUploadInfo, UploadStatus } from '../../../../types';
 import { api } from '../../../../services/api';
 import { CHUNK_SIZE, CONCURRENCY, uploadChunkWithRetry, calculateFileMd5 } from '../constants';
 
@@ -45,6 +45,7 @@ export function useFolderUpload() {
 
     const startTime = Date.now();
     let lastUpdateTime = 0;
+    let actualUploadedSize = 0;
 
     // 更新速度和进度的定时器
     const updateInterval = setInterval(() => {
@@ -52,12 +53,11 @@ export function useFolderUpload() {
       if (now - lastUpdateTime < 300) return;
       lastUpdateTime = now;
 
-      const uploadedSize = Math.min(uploadedChunks.size * CHUNK_SIZE, file.size);
-      const progress = file.size > 0 ? uploadedSize / file.size : 0;
-      onUpdate?.(uploadId, uploadedSize, progress);
+      const progress = file.size > 0 ? actualUploadedSize / file.size : 0;
+      onUpdate?.(uploadId, actualUploadedSize, progress);
 
       const elapsed = (now - startTime) / 1000;
-      const speed = elapsed > 0 ? uploadedSize / elapsed : 0;
+      const speed = elapsed > 0 ? actualUploadedSize / elapsed : 0;
       setUploadSpeeds(prev => new Map(prev).set(folderId, speed));
     }, 500);
 
@@ -74,7 +74,14 @@ export function useFolderUpload() {
               uploadId,
               file,
               chunkIndex,
-              () => uploadedChunks.add(chunkIndex),
+              () => {
+                uploadedChunks.add(chunkIndex);
+                // 计算这个 chunk 的实际大小
+                const chunkStart = chunkIndex * CHUNK_SIZE;
+                const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, file.size);
+                const chunkSize = chunkEnd - chunkStart;
+                actualUploadedSize += chunkSize;
+              },
               3,
               abortController.signal
             );
@@ -88,9 +95,8 @@ export function useFolderUpload() {
 
       await Promise.all(workers);
 
-      const uploadedSize = Math.min(uploadedChunks.size * CHUNK_SIZE, file.size);
-      const progress = file.size > 0 ? uploadedSize / file.size : 0;
-      onUpdate?.(uploadId, uploadedSize, progress);
+      const progress = file.size > 0 ? actualUploadedSize / file.size : 0;
+      onUpdate?.(uploadId, actualUploadedSize, progress);
 
       // 合并文件
       await api.mergeUpload({ upload_id: uploadId });
@@ -149,6 +155,28 @@ export function useFolderUpload() {
       }
 
       fileTaskMap.current.set(folderTask.folder_id, fileTasksMap);
+
+      // 构建文件信息列表并更新状态
+      const fileInfos: FileUploadInfo[] = Array.from(fileTasksMap.entries()).map(([uploadId, task]) => {
+        const fileNode = files.find(f => f.file === task.file);
+        return {
+          upload_id: uploadId,
+          file_name: task.file.name,
+          relative_path: fileNode?.relativePath,
+          file_size: task.file.size,
+          uploaded_size: 0,
+          progress: 0,
+          status: 'pending' as UploadStatus,
+        };
+      });
+
+      setFolderTasks(prev =>
+        prev.map(t =>
+          t.folder_id === folderTask.folder_id
+            ? { ...t, files: fileInfos }
+            : t
+        )
+      );
 
       // 4. 并发上传所有文件
       const fileTaskEntries = Array.from(fileTasksMap.entries());
