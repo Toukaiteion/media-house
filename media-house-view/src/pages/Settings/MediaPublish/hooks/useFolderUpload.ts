@@ -54,7 +54,6 @@ export function useFolderUpload() {
 
       const uploadedSize = Math.min(uploadedChunks.size * CHUNK_SIZE, file.size);
       const progress = file.size > 0 ? uploadedSize / file.size : 0;
-      console.log(`Upload ${uploadId}: ${uploadedSize} / ${file.size} bytes (${(progress * 100).toFixed(2)}%)`);
       onUpdate?.(uploadId, uploadedSize, progress);
 
       const elapsed = (now - startTime) / 1000;
@@ -88,6 +87,10 @@ export function useFolderUpload() {
       }
 
       await Promise.all(workers);
+
+      const uploadedSize = Math.min(uploadedChunks.size * CHUNK_SIZE, file.size);
+      const progress = file.size > 0 ? uploadedSize / file.size : 0;
+      onUpdate?.(uploadId, uploadedSize, progress);
 
       // 合并文件
       await api.mergeUpload({ upload_id: uploadId });
@@ -154,6 +157,7 @@ export function useFolderUpload() {
         uploadSingleFile(folderTask.folder_id, fileTask, (upload_id, uploadedSize, progress) => {
           setFolderTasks(prev =>
             prev.map(t =>{
+              console.log(`Updating folder task ${t.folder_id} for file ${upload_id}: uploaded ${uploadedSize} bytes, progress ${(progress * 100).toFixed(2)}%`);
               if (t.folder_id === folderTask.folder_id) {
                 let folderUploadedSize = 0;
                 t.files.forEach(f => {
