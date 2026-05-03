@@ -485,6 +485,9 @@ export function MoviesPage() {
                 flexWrap: 'wrap',
               }}
             >
+              <Typography variant="body2" color="text.secondary">
+                共 {total} 条
+              </Typography>
               <Pagination
                 count={Math.ceil(total / pageSize)}
                 page={page}
