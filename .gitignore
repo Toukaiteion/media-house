@@ -18,6 +18,7 @@ media-house-admin/media-house-admin/out/
 media-house-admin/media-house-admin/plugins/
 media-house-admin/media-house-admin/uploads
 media-house-admin/media-house-admin/workspace/
+media-house-admin/media-house-admin/publish/
 
 # Dependencies
 media-house-view/node_modules/
