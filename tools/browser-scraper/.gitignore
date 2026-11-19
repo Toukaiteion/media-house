@@ -1,0 +1,9 @@
+host/bin/
+host/obj/
+dist/
+scraper/_selftest_output/
+scraper/_output/
+scraper/out.json
+scraper/err.txt
+__pycache__/
+*.pyc

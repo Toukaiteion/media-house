@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "MediaHouse 本地搜刮",
+  "version": "0.1.0",
+  "description": "在 MediaHouse 影片详情页调用本机 Python 搜刮元数据，并自动上传回服务器。",
+  "permissions": ["nativeMessaging", "storage"],
+  "background": { "service_worker": "background.js" },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
