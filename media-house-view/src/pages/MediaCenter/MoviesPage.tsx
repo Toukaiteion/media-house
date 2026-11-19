@@ -70,8 +70,9 @@ export function MoviesPage() {
       setLoadingTags(true);
       setLoadingActors(true);
       const [tagsData, actorsData] = await Promise.all([
-        api.getTags(1, 100),
-        api.getActors(1, 100),
+        // 筛选栏需要尽量全的候选，后端分页上限 500
+        api.getTags(1, 500),
+        api.getActors(1, 500),
       ]);
       setTags(tagsData.tags);
       setActors(actorsData.actors);

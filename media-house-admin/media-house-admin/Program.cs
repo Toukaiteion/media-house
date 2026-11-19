@@ -87,6 +87,9 @@ builder.Services.Configure<UploadSettings>(
 builder.Services.Configure<PluginSettings>(
     builder.Configuration.GetSection("PluginSettings"));
 
+builder.Services.Configure<ScanOptions>(
+    builder.Configuration.GetSection("Scan"));
+
 // Register repositories
 builder.Services.AddScoped<IMediaLibraryRepository, MediaLibraryRepository>();
 builder.Services.AddScoped<IMovieRepository, MovieRepository>();

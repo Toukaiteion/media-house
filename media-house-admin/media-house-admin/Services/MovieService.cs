@@ -213,6 +213,13 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
             directoryToDelete = System.IO.Path.GetDirectoryName(firstMediaFile.Path);
         }
 
+        // 关联表在 MediaId 上没有可靠外键（老库可能是早期 EnsureCreated 建的，根本没有 FK），
+        // 不能只指望级联，显式清一遍，否则标签页/演员页会一直保留这部片的数据。
+        await _context.MediaTags.Where(mt => mt.MediaId == mediaId).ExecuteDeleteAsync();
+        await _context.MediaStaffs.Where(ms => ms.MediaId == mediaId).ExecuteDeleteAsync();
+        await _context.PlayRecords.Where(pr => pr.MediaId == mediaId).ExecuteDeleteAsync();
+        await _context.MyFavors.Where(mf => mf.MediaId == mediaId).ExecuteDeleteAsync();
+
         // Remove media from database (cascade delete will handle related records)
         _context.Medias.Remove(media);
         await _context.SaveChangesAsync();

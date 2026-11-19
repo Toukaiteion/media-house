@@ -1,17 +1,25 @@
+using MediaHouse.Config;
 using MediaHouse.Data.Entities;
 using MediaHouse.Interfaces;
 using MediaHouse.Data;
 using MediaHouse.DTOs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace MediaHouse.Services;
 
-public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService> logger, IMetadataService metadataService, MediaHouseDbContext context) : IScanService
+public class ScanService(
+    IServiceScopeFactory scopeFactory,
+    ILogger<ScanService> logger,
+    IMetadataService metadataService,
+    MediaHouseDbContext context,
+    IOptions<ScanOptions> scanOptions) : IScanService
 {
     private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
     private readonly ILogger<ScanService> _logger = logger;
     private readonly IMetadataService _metadataService = metadataService;
     private readonly MediaHouseDbContext _context = context;
+    private readonly ScanOptions _scanOptions = scanOptions.Value;
 
     private static readonly string[] VideoExtensions = [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm"];
     private static readonly string[] ScreenshotExtensions = [".jpg", ".jpeg", ".png", ".webp"];
@@ -130,6 +138,9 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                 await context.SaveChangesAsync();
             }
 
+            // 清理磁盘上已经不存在的媒体（这一步必须在遍历完所有目录之后做）
+            var deletedCount = await PruneMissingMediaAsync(context, libraryId, movieDirectories, log);
+
             log.Status = SyncStatus.Completed;
             log.EndTime = DateTime.UtcNow;
 
@@ -137,8 +148,9 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             library.UpdateTime = DateTime.UtcNow;
 
             await context.SaveChangesAsync();
-            _logger.LogInformation("Full scan completed for library {LibraryId}. Added: {Added}, Updated: {Updated}",
-                libraryId, log.AddedCount, log.UpdatedCount);
+            _logger.LogInformation(
+                "Full scan completed for library {LibraryId}. Added: {Added}, Updated: {Updated}, Deleted: {Deleted}",
+                libraryId, log.AddedCount, log.UpdatedCount, deletedCount);
         }
         catch (Exception ex)
         {
@@ -205,15 +217,29 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             var movieDirectories = GetMovieDirectories(libraryPath);
             _logger.LogInformation("Found {Count} movie directories total", movieDirectories.Count);
 
-            // 查询数据库中已存在的电影名称列表
-            var existingMediaNames = await context.Medias
-                .Where(m => m.LibraryId == libraryId)
-                .Select(m => m.Name)
+            // 判断“哪些目录已经入库”必须按磁盘目录比对，不能拿 Media.Name 比目录名：
+            // Name 存的是 NFO 里的 Num，和目录名经常不一致，会导致同一个目录每次增量扫描都被当成新目录重复处理。
+            var existingFilePaths = await context.MediaFiles
+                .Where(mf => mf.Media != null && mf.Media.LibraryId == libraryId)
+                .Select(mf => mf.Path)
                 .ToListAsync();
+
+            var scannedDirs = new HashSet<string>(PathComparer);
+            foreach (var path in existingFilePaths)
+            {
+                var dir = NormalizePath(Path.GetDirectoryName(path));
+                if (dir == null) continue;
+
+                // 文件已经不在磁盘上（被改名/换片），这个目录也要重新处理一次，
+                // 否则旧路径会一直留在库里，表现为“文件明明在但播放 404”。
+                if (!File.Exists(path)) continue;
+
+                scannedDirs.Add(dir);
+            }
 
             // 过滤出新增的电影目录
             var newMovieDirs = movieDirectories
-                .Where(dir => !existingMediaNames.Contains(dir[0]))
+                .Where(dir => NormalizePath(dir[1]) is not { } normalized || !scannedDirs.Contains(normalized))
                 .ToList();
 
             _logger.LogInformation("Found {Count} new movie directories to scan", newMovieDirs.Count);
@@ -224,6 +250,8 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                 await context.SaveChangesAsync();
             }
 
+            var deletedCount = await PruneMissingMediaAsync(context, libraryId, movieDirectories, log);
+
             log.Status = SyncStatus.Completed;
             log.EndTime = DateTime.UtcNow;
 
@@ -231,8 +259,9 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             library.UpdateTime = DateTime.UtcNow;
 
             await context.SaveChangesAsync();
-            _logger.LogInformation("Incremental scan completed for library {LibraryId}. Added: {Added}",
-                libraryId, log.AddedCount);
+            _logger.LogInformation(
+                "Incremental scan completed for library {LibraryId}. Added: {Added}, Deleted: {Deleted}",
+                libraryId, log.AddedCount, deletedCount);
         }
         catch (Exception ex)
         {
@@ -449,7 +478,8 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             var mediaItem = await UpsertMediaItemAsync(context, libraryId, movieIdentifier, movieDirName, parseResult, imageUrlNames, log);
 
             // 2. 创建或更新 Movie 并关联到 MediaItem (movies 表)
-            var movie = await UpsertMovieAsync(context, libraryId, mediaItem.Id, movieIdentifier, parseResult, screenshotsPath, log);
+            //    新增/更新计数只在 UpsertMediaItemAsync 里加一次，这里不再重复计数（否则一部片算两次）
+            var movie = await UpsertMovieAsync(context, libraryId, mediaItem.Id, movieIdentifier, parseResult, screenshotsPath);
 
             // 3. 创建或更新 MediaFile (media_files 表) - 关联到 MediaItem.Id
             var mediaFile = await UpsertMediaFileAsync(context, movieDirPath, mediaItem.Id, parseResult);
@@ -457,15 +487,25 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             // 4. 创建或更新 MediaImgs (media_imgs 表) - 关联到 MediaItem.Id
             var mediaImages = await UpsertMediaImagesAsync(context, movieDirName, movieDirPath, mediaItem.Id, parseResult, imageUrlNames, screenshotPaths);
 
-            // 5. 创建或更新 Tags (tags + media_tags 表) - 关联到 MediaItem.Id
+            // 5. 标签关系以 NFO 为准：先清空再按 NFO 重建。
+            //    只加不删的话，改过 NFO 的影片会继续挂着旧标签 —— 标签页计数虚高，
+            //    点进去还能看到已经不属于这个标签的影片。
             if (parseResult?.Tags != null)
             {
+                await context.MediaTags
+                    .Where(mt => mt.MediaId == mediaItem.Id)
+                    .ExecuteDeleteAsync();
+
                 await UpsertMediaTagsAsync(context, libraryId, mediaItem.Id, parseResult.Tags);
             }
 
-            // 6. 创建或更新 Actors (staff + media_staff 表) - 关联到 MediaItem.Id
-            if (parseResult?.Actors != null && parseResult.Actors.Count > 0)
+            // 6. 演员关系同理：NFO 里没有的人不该继续挂着
+            if (parseResult?.Actors != null)
             {
+                await context.MediaStaffs
+                    .Where(ms => ms.MediaId == mediaItem.Id)
+                    .ExecuteDeleteAsync();
+
                 await UpsertMediaStaffAsync(context, mediaItem.Id, parseResult.Actors);
             }
 
@@ -615,11 +655,11 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         int mediaItemId,
         string movieIdentifier,
         NfoParseResult? parseResult,
-        string? screenshotsPath,
-        SystemSyncLog? log)
-    {
+        string? screenshotsPath)
+    {        // 注意：必须带 LibraryId 过滤。只按 Num 找会把别的媒体库里的同番号影片“抢”过来，
+        // 两个库有同一部片时，后扫描的库会直接把前一个库的记录改挂到自己身上。
         var existingMovie = await context.Movies
-            .FirstOrDefaultAsync(m => m.Num == movieIdentifier);
+            .FirstOrDefaultAsync(m => m.Num == movieIdentifier && m.LibraryId == libraryId);
 
         Movie movie;
         if (existingMovie == null)
@@ -639,7 +679,6 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                 UpdateTime = DateTime.UtcNow
             };
             context.Movies.Add(movie);
-            if (log != null) log.AddedCount++;
         }
         else
         {
@@ -652,7 +691,6 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             }
             existingMovie.UpdateTime = DateTime.UtcNow;
             movie = existingMovie;
-            if (log != null) log.UpdatedCount++;
         }
 
         await context.SaveChangesAsync();
@@ -728,6 +766,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
             };
 
             context.MediaFiles.Add(mediaFile);
+            await RemoveStaleMediaFilesAsync(context, mediaItemId, videoFile);
             return mediaFile;
         }
         else
@@ -754,6 +793,7 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
                 existingFile.UpdateTime = DateTime.UtcNow;
                 context.MediaFiles.Update(existingFile);
             }
+            await RemoveStaleMediaFilesAsync(context, mediaItemId, videoFile);
             return existingFile;
         }
     }
@@ -1099,6 +1139,155 @@ public class ScanService(IServiceScopeFactory scopeFactory, ILogger<ScanService>
         }
 
         return staff;
+    }
+
+    /// <summary>
+    /// 路径比较器：Windows 文件系统不区分大小写，Linux 区分。
+    /// </summary>
+    private static StringComparer PathComparer =>
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    /// <summary>
+    /// 归一化目录路径，用于比对（去掉末尾分隔符、解析相对路径）。
+    /// </summary>
+    private static string? NormalizePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+
+        try
+        {
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 判断该媒体是否还有“目录在扫描范围里、且文件真实存在”的视频。
+    /// 只看目录是不够的：用户可能只删了 mp4 而留下了 nfo/封面，那种记录也该清掉。
+    /// </summary>
+    private static bool IsDirectoryStillPresent(Media media, HashSet<string> scannedDirs)
+    {
+        if (media.MediaFiles.Count == 0) return false;
+
+        foreach (var file in media.MediaFiles)
+        {
+            var dir = NormalizePath(Path.GetDirectoryName(file.Path));
+            if (dir == null || !scannedDirs.Contains(dir)) continue;
+            if (File.Exists(file.Path)) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 删除磁盘上已经不存在的媒体记录。
+    /// 必须在遍历完所有目录之后调用，否则会把还没扫到的目录误判成“已删除”。
+    /// </summary>
+    private async Task<int> PruneMissingMediaAsync(
+        MediaHouseDbContext context,
+        int libraryId,
+        List<string[]> existingMovieDirs,
+        SystemSyncLog log)
+    {
+        if (!_scanOptions.DeleteMissingMedia) return 0;
+
+        // 一个目录都没枚举到，通常是挂载点掉线或者路径配错了，这时候绝不能按“全都不存在”清库
+        if (existingMovieDirs.Count == 0)
+        {
+            _logger.LogWarning(
+                "跳过清理：媒体库 {LibraryId} 没有枚举到任何电影目录，可能是存储不可用", libraryId);
+            return 0;
+        }
+
+        try
+        {
+            var scannedDirs = new HashSet<string>(PathComparer);
+            foreach (var dir in existingMovieDirs)
+            {
+                var normalized = NormalizePath(dir[1]);
+                if (normalized != null) scannedDirs.Add(normalized);
+            }
+
+            var medias = await context.Medias
+                .Where(m => m.LibraryId == libraryId && m.Type == "movie")
+                .Include(m => m.MediaFiles)
+                .ToListAsync();
+
+            if (medias.Count == 0) return 0;
+
+            var missing = medias.Where(m => !IsDirectoryStillPresent(m, scannedDirs)).ToList();
+            if (missing.Count == 0) return 0;
+
+            // 一次要删掉大半个库，多半是存储出了问题，这次先不删
+            if (medias.Count >= 5 &&
+                _scanOptions.PruneSafetyRatio > 0 &&
+                _scanOptions.PruneSafetyRatio < 1 &&
+                missing.Count > medias.Count * _scanOptions.PruneSafetyRatio)
+            {
+                _logger.LogError(
+                    "跳过清理：媒体库 {LibraryId} 有 {Missing}/{Total} 条记录找不到目录，超过安全阈值 {Ratio:P0}。" +
+                    "请确认存储挂载正常；确实要清理就把 Scan:PruneSafetyRatio 调到 1",
+                    libraryId, missing.Count, medias.Count, _scanOptions.PruneSafetyRatio);
+                return 0;
+            }
+
+            var missingIds = missing.Select(m => m.Id).ToList();
+
+            // media_tags / media_staffs 与 medias 的级联只靠 EF 约定推断，显式删一遍更保险
+            await context.MediaTags.Where(mt => missingIds.Contains(mt.MediaId)).ExecuteDeleteAsync();
+            await context.MediaStaffs.Where(ms => missingIds.Contains(ms.MediaId)).ExecuteDeleteAsync();
+
+            // play_records / my_favors 在 MediaId 上没有外键，删除 Media 不会级联，
+            // 不手动清就会留下“幽灵记录”——首页的最近播放/收藏还能看到已经不存在的片子。
+            var removedPlayRecords = await context.PlayRecords
+                .Where(p => missingIds.Contains(p.MediaId))
+                .ExecuteDeleteAsync();
+            var removedFavors = await context.MyFavors
+                .Where(f => missingIds.Contains(f.MediaId))
+                .ExecuteDeleteAsync();
+
+            context.Medias.RemoveRange(missing);
+            await context.SaveChangesAsync();
+
+            log.DeletedCount = (log.DeletedCount ?? 0) + missing.Count;
+
+            _logger.LogInformation(
+                "清理媒体库 {LibraryId}: 媒体 {MediaCount} 条、播放记录 {PlayCount} 条、收藏 {FavorCount} 条",
+                libraryId, missing.Count, removedPlayRecords, removedFavors);
+
+            return missing.Count;
+        }
+        catch (Exception ex)
+        {
+            // 清理失败不影响本次扫描结果，记录下来下次再说
+            _logger.LogError(ex, "清理媒体库 {LibraryId} 的失效媒体时出错", libraryId);
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// 清理同一个媒体下指向已不存在文件的旧记录（视频改名 / 换片留下的残留）。
+    /// 不清理的话，播放接口可能挑到那条失效路径，出现“文件明明在却播不了”。
+    /// </summary>
+    private static async Task RemoveStaleMediaFilesAsync(
+        MediaHouseDbContext context,
+        int mediaItemId,
+        string currentVideoPath)
+    {
+        var others = await context.MediaFiles
+            .Where(mf => mf.MediaId == mediaItemId && mf.Path != currentVideoPath)
+            .ToListAsync();
+
+        foreach (var stale in others)
+        {
+            if (!File.Exists(stale.Path))
+            {
+                context.MediaFiles.Remove(stale);
+            }
+        }
     }
 
     /// <summary>

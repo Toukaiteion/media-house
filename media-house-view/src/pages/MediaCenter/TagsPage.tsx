@@ -24,7 +24,7 @@ export function TagsPage() {
       while (hasMore) {
         const data = await api.getTags(page, pageSize);
         allTags = [...allTags, ...data.tags];
-        hasMore = allTags.length < data.total_count;
+        hasMore = data.tags.length > 0 && allTags.length < data.total_count;
         page++;
       }
 

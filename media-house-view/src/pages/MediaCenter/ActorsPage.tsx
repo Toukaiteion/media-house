@@ -24,7 +24,7 @@ export function ActorsPage() {
       while (hasMore) {
         const data = await api.getActors(page, pageSize);
         allActors = [...allActors, ...data.actors];
-        hasMore = allActors.length < data.total_count;
+        hasMore = data.actors.length > 0 && allActors.length < data.total_count;
         page++;
       }
 
