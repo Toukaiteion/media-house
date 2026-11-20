@@ -24,6 +24,9 @@ public class DatabaseService(
             // Seed default admin user if no users exist
             await SeedDefaultAdminUserAsync();
 
+            // 上次进程异常退出时可能残留「扫描中」状态，启动时复位
+            await ResetStuckScanStatesAsync();
+
             _logger.LogInformation("Database initialized successfully");
         }
         catch (Exception ex)
@@ -70,8 +73,43 @@ public class DatabaseService(
         }
     }
 
-    public async Task<bool> DatabaseExistsAsync()
+    /// <summary>
+    /// 上次进程异常退出（容器重启、进程被杀）时，媒体库状态可能停在 Scanning、扫描日志停在
+    /// Started / InProgress，前端会永远显示「扫描中」，也没有任何任务能再触发。启动时统一复位。
+    /// </summary>
+    private async Task ResetStuckScanStatesAsync()
     {
+        var stuckLibraries = await _context.MediaLibraries
+            .Where(l => l.Status == ScanStatus.Scanning)
+            .ToListAsync();
+
+        var stuckLogs = await _context.SystemSyncLogs
+            .Where(l => l.Status == SyncStatus.Started || l.Status == SyncStatus.InProgress)
+            .ToListAsync();
+
+        if (stuckLibraries.Count == 0 && stuckLogs.Count == 0) return;
+
+        foreach (var library in stuckLibraries)
+        {
+            library.Status = ScanStatus.Idle;
+            library.UpdateTime = DateTime.UtcNow;
+        }
+
+        foreach (var log in stuckLogs)
+        {
+            log.Status = SyncStatus.Failed;
+            log.ErrorMessage = "服务重启，扫描被中断";
+            log.EndTime = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogWarning(
+            "已复位 {LibraryCount} 个卡住的媒体库状态、{LogCount} 条未完成的扫描日志",
+            stuckLibraries.Count, stuckLogs.Count);
+    }
+
+    public async Task<bool> DatabaseExistsAsync()    {
         return await _context.Database.CanConnectAsync();
     }
 

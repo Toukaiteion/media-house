@@ -48,6 +48,14 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
             .Property(m => m.Status)
             .HasConversion<string>();
 
+        // medias 的自引用层级（parent_id）目前只是留了字段，没有任何地方真正使用。
+        // 不显式忽略的话，EF 会按约定补一条 parent_id -> medias.id 的外键；而 parent_id 默认值
+        // 是 0，库里并不存在 id=0 的行 —— 全新数据库上插入任何媒体都会 FOREIGN KEY constraint failed。
+        // 另外 db_init.sql 里的 parent_id 也只是 NOT NULL DEFAULT 0，没有外键，这里保持一致。
+        modelBuilder.Entity<Media>()
+            .Ignore(m => m.Parent)
+            .Ignore(m => m.Children);
+
         // Media -> Movie (1:1)
         modelBuilder.Entity<Movie>()
             .HasOne(m => m.Media)

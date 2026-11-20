@@ -40,6 +40,10 @@ public class ScanService(
             MediaLibraryId = libraryId,
             SyncType = SyncType.FullScan,
             Status = SyncStatus.Started,
+            // 必须显式置 0：这几个字段是 int?，null 上做 ++ 仍然是 null，计数会一直是空
+            AddedCount = 0,
+            UpdatedCount = 0,
+            DeletedCount = 0,
             StartTime = DateTime.UtcNow
         };
 
@@ -67,6 +71,10 @@ public class ScanService(
             MediaLibraryId = libraryId,
             SyncType = SyncType.IncrementalScan,
             Status = SyncStatus.Started,
+            // 同 StartFullScanAsync：int? 上做 ++ 不会从 null 变成数字
+            AddedCount = 0,
+            UpdatedCount = 0,
+            DeletedCount = 0,
             StartTime = DateTime.UtcNow
         };
 
@@ -95,7 +103,14 @@ public class ScanService(
             .ToListAsync();
     }
 
-    private async Task ExecuteFullScanAsync(int libraryId, string libraryPath)
+    private Task ExecuteFullScanAsync(int libraryId, string libraryPath) =>
+        ExecuteScanAsync(libraryId, libraryPath, SyncType.FullScan, skipAlreadyScanned: false);
+
+    /// <summary>
+    /// 全量扫描和增量扫描的公共实现。两者唯一的差别是增量只重新处理「还没入库」的目录，
+    /// 其余流程（遍历、落库、清理磁盘上已不存在的媒体）完全一致。
+    /// </summary>
+    private async Task ExecuteScanAsync(int libraryId, string libraryPath, SyncType syncType, bool skipAlreadyScanned)
     {
         using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<MediaHouseDbContext>();
@@ -103,13 +118,13 @@ public class ScanService(
         try
         {
             var log = await context.SystemSyncLogs
-                .Where(sl => sl.MediaLibraryId == libraryId && sl.SyncType == SyncType.FullScan && sl.Status == SyncStatus.Started)
+                .Where(sl => sl.MediaLibraryId == libraryId && sl.SyncType == syncType && sl.Status == SyncStatus.Started)
                 .OrderByDescending(sl => sl.StartTime)
                 .FirstOrDefaultAsync();
 
             if (log == null)
             {
-                _logger.LogWarning("No pending scan log found for {LibraryId}", libraryId);
+                _logger.LogWarning("No pending {SyncType} log found for library {LibraryId}", syncType, libraryId);
                 return;
             }
 
@@ -127,14 +142,27 @@ public class ScanService(
             log.Status = SyncStatus.InProgress;
             await context.SaveChangesAsync();
 
-            _logger.LogInformation("Starting full scan for library {LibraryId} at {Path}", libraryId, libraryPath);
+            _logger.LogInformation("Starting {SyncType} for library {LibraryId} at {Path}", syncType, libraryId, libraryPath);
 
             var movieDirectories = GetMovieDirectories(libraryPath);
-            _logger.LogInformation("Found {Count} movie directories to scan", movieDirectories.Count);
+            _logger.LogInformation("Found {Count} movie directories in {Path}", movieDirectories.Count, libraryPath);
 
-            foreach (var movieDir in movieDirectories)
+            var directoriesToProcess = skipAlreadyScanned
+                ? await FilterAlreadyScannedDirectoriesAsync(context, libraryId, movieDirectories)
+                : movieDirectories;
+
+            if (skipAlreadyScanned)
             {
-                await ProcessMovieDirectoryAsync(context, libraryId, libraryPath, movieDir[0], movieDir[1], log);
+                _logger.LogInformation("Incremental scan: {New} new directories out of {Total}",
+                    directoriesToProcess.Count, movieDirectories.Count);
+            }
+
+            // 整次扫描共用一份标签/演员缓存，避免每部影片都去查一遍 tags / staffs（N+1）
+            var lookup = await ScanLookupCache.CreateAsync(context);
+
+            foreach (var movieDir in directoriesToProcess)
+            {
+                await ProcessMovieDirectoryAsync(context, libraryId, movieDir, log, lookup);
                 await context.SaveChangesAsync();
             }
 
@@ -149,126 +177,16 @@ public class ScanService(
 
             await context.SaveChangesAsync();
             _logger.LogInformation(
-                "Full scan completed for library {LibraryId}. Added: {Added}, Updated: {Updated}, Deleted: {Deleted}",
-                libraryId, log.AddedCount, log.UpdatedCount, deletedCount);
+                "{SyncType} completed for library {LibraryId}. Added: {Added}, Updated: {Updated}, Deleted: {Deleted}",
+                syncType, libraryId, log.AddedCount, log.UpdatedCount, deletedCount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Full scan failed for library {LibraryId}", libraryId);
+            _logger.LogError(ex, "{SyncType} failed for library {LibraryId}", syncType, libraryId);
 
             var log = await context.SystemSyncLogs
-                .Where(sl => sl.MediaLibraryId == libraryId && sl.SyncType == SyncType.FullScan && (sl.Status == SyncStatus.Started || sl.Status == SyncStatus.InProgress))
-                .OrderByDescending(sl => sl.StartTime)
-                .FirstOrDefaultAsync();
-
-            if (log != null)
-            {
-                log.Status = SyncStatus.Failed;
-                log.ErrorMessage = ex.Message;
-                log.EndTime = DateTime.UtcNow;
-                await context.SaveChangesAsync();
-            }
-
-            var library = await context.MediaLibraries.FindAsync(libraryId);
-            if (library != null)
-            {
-                library.Status = ScanStatus.Error;
-                library.UpdateTime = DateTime.UtcNow;
-                await context.SaveChangesAsync();
-            }
-        }
-    }
-
-    private async Task ExecuteIncrementalScanAsync(int libraryId, string libraryPath)
-    {
-        using var scope = _scopeFactory.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<MediaHouseDbContext>();
-
-        try
-        {
-            var log = await context.SystemSyncLogs
-                .Where(sl => sl.MediaLibraryId == libraryId && sl.SyncType == SyncType.IncrementalScan && sl.Status == SyncStatus.Started)
-                .OrderByDescending(sl => sl.StartTime)
-                .FirstOrDefaultAsync();
-
-            if (log == null)
-            {
-                _logger.LogWarning("No pending incremental scan log found for {LibraryId}", libraryId);
-                return;
-            }
-
-            var library = await context.MediaLibraries.FindAsync(libraryId);
-            if (library == null)
-            {
-                _logger.LogWarning("Library not found: {LibraryId}", libraryId);
-                log.Status = SyncStatus.Failed;
-                log.ErrorMessage = "Library not found";
-                log.EndTime = DateTime.UtcNow;
-                await context.SaveChangesAsync();
-                return;
-            }
-
-            log.Status = SyncStatus.InProgress;
-            await context.SaveChangesAsync();
-
-            _logger.LogInformation("Starting incremental scan for library {LibraryId} at {Path}", libraryId, libraryPath);
-
-            // 获取所有电影目录
-            var movieDirectories = GetMovieDirectories(libraryPath);
-            _logger.LogInformation("Found {Count} movie directories total", movieDirectories.Count);
-
-            // 判断“哪些目录已经入库”必须按磁盘目录比对，不能拿 Media.Name 比目录名：
-            // Name 存的是 NFO 里的 Num，和目录名经常不一致，会导致同一个目录每次增量扫描都被当成新目录重复处理。
-            var existingFilePaths = await context.MediaFiles
-                .Where(mf => mf.Media != null && mf.Media.LibraryId == libraryId)
-                .Select(mf => mf.Path)
-                .ToListAsync();
-
-            var scannedDirs = new HashSet<string>(PathComparer);
-            foreach (var path in existingFilePaths)
-            {
-                var dir = NormalizePath(Path.GetDirectoryName(path));
-                if (dir == null) continue;
-
-                // 文件已经不在磁盘上（被改名/换片），这个目录也要重新处理一次，
-                // 否则旧路径会一直留在库里，表现为“文件明明在但播放 404”。
-                if (!File.Exists(path)) continue;
-
-                scannedDirs.Add(dir);
-            }
-
-            // 过滤出新增的电影目录
-            var newMovieDirs = movieDirectories
-                .Where(dir => NormalizePath(dir[1]) is not { } normalized || !scannedDirs.Contains(normalized))
-                .ToList();
-
-            _logger.LogInformation("Found {Count} new movie directories to scan", newMovieDirs.Count);
-
-            foreach (var movieDir in newMovieDirs)
-            {
-                await ProcessMovieDirectoryAsync(context, libraryId, libraryPath, movieDir[0], movieDir[1], log);
-                await context.SaveChangesAsync();
-            }
-
-            var deletedCount = await PruneMissingMediaAsync(context, libraryId, movieDirectories, log);
-
-            log.Status = SyncStatus.Completed;
-            log.EndTime = DateTime.UtcNow;
-
-            library.Status = ScanStatus.Idle;
-            library.UpdateTime = DateTime.UtcNow;
-
-            await context.SaveChangesAsync();
-            _logger.LogInformation(
-                "Incremental scan completed for library {LibraryId}. Added: {Added}, Deleted: {Deleted}",
-                libraryId, log.AddedCount, deletedCount);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Incremental scan failed for library {LibraryId}", libraryId);
-
-            var log = await context.SystemSyncLogs
-                .Where(sl => sl.MediaLibraryId == libraryId && sl.SyncType == SyncType.IncrementalScan && (sl.Status == SyncStatus.Started || sl.Status == SyncStatus.InProgress))
+                .Where(sl => sl.MediaLibraryId == libraryId && sl.SyncType == syncType &&
+                             (sl.Status == SyncStatus.Started || sl.Status == SyncStatus.InProgress))
                 .OrderByDescending(sl => sl.StartTime)
                 .FirstOrDefaultAsync();
 
@@ -291,11 +209,53 @@ public class ScanService(
     }
 
     /// <summary>
+    /// 增量扫描用：筛掉「已经入库、且视频文件仍然存在」的目录。
+    /// 必须按磁盘目录比对，不能拿 Media.Name 比目录名 —— Name 存的是 NFO 里的 Num，
+    /// 和目录名经常不一致，会让同一个目录每次都被当成新目录重复处理。
+    /// </summary>
+    private async Task<List<MovieDirectory>> FilterAlreadyScannedDirectoriesAsync(
+        MediaHouseDbContext context,
+        int libraryId,
+        List<MovieDirectory> movieDirectories)
+    {
+        var existingFilePaths = await context.MediaFiles
+            .Where(mf => mf.Media != null && mf.Media.LibraryId == libraryId)
+            .Select(mf => mf.Path)
+            .ToListAsync();
+
+        var scannedDirs = new HashSet<string>(PathComparer);
+        foreach (var path in existingFilePaths)
+        {
+            var dir = NormalizePath(Path.GetDirectoryName(path));
+            if (dir == null) continue;
+
+            // 文件已经不在磁盘上（改名/换片），这个目录要重新处理，
+            // 否则旧路径会一直留在库里，表现为「文件明明在但播放 404」。
+            if (!File.Exists(path)) continue;
+
+            scannedDirs.Add(dir);
+        }
+
+        return movieDirectories
+            .Where(dir => NormalizePath(dir.FullPath) is not { } normalized || !scannedDirs.Contains(normalized))
+            .ToList();
+    }
+
+    private Task ExecuteIncrementalScanAsync(int libraryId, string libraryPath) =>
+        ExecuteScanAsync(libraryId, libraryPath, SyncType.IncrementalScan, skipAlreadyScanned: true);
+
+    /// <summary>
+    /// 一个电影目录：名字、完整路径，以及目录下的文件列表。
+    /// 文件列表在遍历时只读一次、随后一路传递复用，避免同一目录被反复枚举（NAS 上开销明显）。
+    /// </summary>
+    private sealed record MovieDirectory(string Name, string FullPath, string[] Files);
+
+    /// <summary>
     /// 获取所有电影目录（递归扫描）
     /// </summary>
-    private List<string[]> GetMovieDirectories(string libraryPath)
+    private List<MovieDirectory> GetMovieDirectories(string libraryPath)
     {
-        var movieDirs = new List<string[]>();
+        var movieDirs = new List<MovieDirectory>();
 
         if (!Directory.Exists(libraryPath))
         {
@@ -303,67 +263,74 @@ public class ScanService(
             return movieDirs;
         }
 
-        foreach (var dir in Directory.GetDirectories(libraryPath))
-        {
-            if (IsMovieDirectory(dir))
-            {
-                // 找到电影目录，添加到结果，不再递归扫描其子目录
-                var dirName = Path.GetFileName(dir);
-                movieDirs.Add([dirName, dir]);
-            }
-            else
-            {
-                // 不是电影目录，递归扫描子目录
-                var subDirs = GetMovieDirectories(dir);
-                movieDirs.AddRange(subDirs);
-            }
-        }
-
+        CollectMovieDirectories(libraryPath, movieDirs);
         return movieDirs;
     }
 
-    /// <summary>
-    /// 判断是否为电影目录（包含视频文件或NFO文件）
-    /// </summary>
-    private bool IsMovieDirectory(string directoryPath)
+    private void CollectMovieDirectories(string directoryPath, List<MovieDirectory> result)
     {
-        if (!Directory.Exists(directoryPath))
-            return false;
+        string[] subDirectories;
+        try
+        {
+            subDirectories = Directory.GetDirectories(directoryPath);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            // NAS 上个别目录读不了很常见，跳过即可，不要让整次扫描失败
+            _logger.LogWarning(ex, "跳过无法读取的目录: {Path}", directoryPath);
+            return;
+        }
 
-        var files = Directory.GetFiles(directoryPath);
-        var hasVideoFile = files.Any(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower()));
+        foreach (var dir in subDirectories)
+        {
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(dir);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                _logger.LogWarning(ex, "跳过无法读取的目录: {Path}", dir);
+                continue;
+            }
 
-        if (hasVideoFile)
-            return true;
+            if (HasVideoOrNfo(files))
+            {
+                // 找到电影目录，加入结果，不再递归它的子目录
+                result.Add(new MovieDirectory(Path.GetFileName(dir), dir, files));
+            }
+            else
+            {
+                CollectMovieDirectories(dir, result);
+            }
+        }
+    }
 
-        var hasNfoFile = files.Any(f => f.EndsWith(".nfo", StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// 判断目录下是否有视频文件或 NFO 文件（有其一即视为电影目录）
+    /// </summary>
+    private static bool HasVideoOrNfo(string[] files)
+    {
+        foreach (var file in files)
+        {
+            if (VideoExtensions.Contains(Path.GetExtension(file).ToLower())) return true;
+            if (file.EndsWith(".nfo", StringComparison.OrdinalIgnoreCase)) return true;
+        }
 
-        return hasNfoFile;
+        return false;
     }
 
     /// <summary>
     /// 查找视频文件
     /// </summary>
-    private string? FindVideoFile(string directoryPath)
-    {
-        if (!Directory.Exists(directoryPath))
-            return null;
-
-        var files = Directory.GetFiles(directoryPath);
-        return files.FirstOrDefault(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower()));
-    }
+    private static string? FindVideoFile(string[] files) =>
+        files.FirstOrDefault(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower()));
 
     /// <summary>
     /// 查找NFO文件
     /// </summary>
-    private string? FindNfoFile(string directoryPath)
-    {
-        if (!Directory.Exists(directoryPath))
-            return null;
-
-        var files = Directory.GetFiles(directoryPath);
-        return files.FirstOrDefault(f => f.EndsWith(".nfo", StringComparison.OrdinalIgnoreCase));
-    }
+    private static string? FindNfoFile(string[] files) =>
+        files.FirstOrDefault(f => f.EndsWith(".nfo", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// 查找 extrafanart 子目录
@@ -375,99 +342,64 @@ public class ScanService(
     }
 
     /// <summary>
-    /// 处理截图文件，返回用逗号分隔的 url_name 列表
+    /// 列出 extrafanart 目录下的截图文件（只枚举一次，url_name 交给调用方生成）
     /// </summary>
-    /// <param name="extrafanartDir">extrafanart 目录路径</param>
-    /// <returns>用逗号分隔的 url_name 列表</returns>
-    private string ProcessScreenshots(string extrafanartDir)
+    private static List<string> GetScreenshotFiles(string extrafanartDir)
     {
-        var screenshotUrlNames = new List<string>();
+        if (!Directory.Exists(extrafanartDir)) return [];
 
-        if (!Directory.Exists(extrafanartDir))
-            return string.Join(",", screenshotUrlNames);
-
-        var files = Directory.GetFiles(extrafanartDir);
-
-        foreach (var file in files)
-        {
-            var extension = Path.GetExtension(file).ToLower();
-            if (!ScreenshotExtensions.Contains(extension))
-                continue;
-
-            var urlName = MediaUtils.GenerateUrlNameFromPath(file);
-            screenshotUrlNames.Add(urlName);
-        }
-
-        return string.Join(",", screenshotUrlNames);
+        return [.. Directory.GetFiles(extrafanartDir)
+            .Where(f => ScreenshotExtensions.Contains(Path.GetExtension(f).ToLower()))];
     }
 
     /// <summary>
     /// 处理电影目录，解析NFO并处理所有相关实体
     /// </summary>
-    private async Task ProcessMovieDirectoryAsync(
+    private async Task<MediaScanResult?> ProcessMovieDirectoryAsync(
         MediaHouseDbContext context,
         int libraryId,
-        string libraryPath,
-        string movieDirName,
-        string movieDirPath,
-        SystemSyncLog log)
+        MovieDirectory movieDir,
+        SystemSyncLog? log,
+        ScanLookupCache lookup)
     {
-        _logger.LogInformation("Processing movie directory: {DirName}", movieDirName);
+        _logger.LogInformation("Processing movie directory: {DirName}", movieDir.Name);
 
-        var videoFile = FindVideoFile(movieDirPath);
-        var nfoFile = FindNfoFile(movieDirPath);
-
-        if (videoFile == null)
+        if (FindVideoFile(movieDir.Files) == null)
         {
-            _logger.LogWarning("No video file found in {DirPath}", movieDirPath);
-            return;
+            _logger.LogWarning("No video file found in {DirPath}", movieDir.FullPath);
+            return null;
         }
 
         // 解析 NFO 文件
+        var nfoFile = FindNfoFile(movieDir.Files);
         var parseResult = nfoFile != null ? await _metadataService.ParseNfoFileFullAsync(nfoFile) : null;
 
         // 使用解析结果中的 Num 作为唯一标识符，如果没有则使用目录名
-        var movieIdentifier = parseResult?.Num ?? movieDirName;
+        var movieIdentifier = parseResult?.Num ?? movieDir.Name;
 
         // 处理所有相关实体
-        await ProcessMediaItemAsync(context, libraryId, movieDirName, movieDirPath, movieIdentifier, parseResult, log);
+        return await ProcessMediaItemAsync(context, libraryId, movieDir, movieIdentifier, parseResult, log, lookup);
     }
 
     /// <summary>
     /// 处理媒体项目及其所有相关实体（使用数据库事务确保原子性）
     /// </summary>
-    /// <param name="libraryId">媒体库ID</param>
-    /// <param name="libraryPath">媒体库路径</param>
-    /// <param name="movieDirName">电影目录名</param>
-    /// <param name="movieDirPath">电影目录完整路径</param>
-    /// <param name="movieIdentifier">电影唯一标识符</param>
-    /// <param name="parseResult">NFO解析结果</param>
-    /// <param name="log">扫描日志（可为null）</param>
-    /// <returns>MediaScanResult 包含所有处理的实体</returns>
     private async Task<MediaScanResult> ProcessMediaItemAsync(
         MediaHouseDbContext context,
         int libraryId,
-        string movieDirName,
-        string movieDirPath,
+        MovieDirectory movieDir,
         string movieIdentifier,
         NfoParseResult? parseResult,
-        SystemSyncLog? log)
+        SystemSyncLog? log,
+        ScanLookupCache lookup)
     {
         // 预先生成图片 url_name 映射（格式：uuid前7位 + "_" + 图片后缀）
-        var imageUrlNames = GenerateImageUrlNames(movieDirPath, parseResult);
+        var imageUrlNames = GenerateImageUrlNames(movieDir.FullPath, parseResult);
 
-        // 处理 extrafanart 子目录中的截图
-        var extrafanartDir = FindExtrafanartDirectory(movieDirPath);
-        var screenshotPaths = new List<string>();
-        string screenshotsPath = string.Empty;
-        if (extrafanartDir != null)
-        {
-            screenshotsPath = ProcessScreenshots(extrafanartDir);
-            if (!string.IsNullOrEmpty(screenshotsPath))
-            {
-                screenshotPaths = [.. Directory.GetFiles(extrafanartDir).Where(f => ScreenshotExtensions.Contains(Path.GetExtension(f).ToLower()))];
-            }
-        }
+        // 处理 extrafanart 子目录中的截图（只枚举一次，映射和入库共用同一份列表）
+        var extrafanartDir = FindExtrafanartDirectory(movieDir.FullPath);
+        var screenshotPaths = extrafanartDir != null ? GetScreenshotFiles(extrafanartDir) : [];
+        var screenshotsPath = string.Join(",", screenshotPaths.Select(MediaUtils.GenerateUrlNameFromPath));
 
         // 使用数据库事务确保所有操作的原子性
         await using var transaction = await context.Database.BeginTransactionAsync();
@@ -475,17 +407,17 @@ public class ScanService(
         try
         {
             // 1. 创建或更新 MediaItem (medias 表)
-            var mediaItem = await UpsertMediaItemAsync(context, libraryId, movieIdentifier, movieDirName, parseResult, imageUrlNames, log);
+            var mediaItem = await UpsertMediaItemAsync(context, libraryId, movieIdentifier, movieDir.Name, parseResult, imageUrlNames, log);
 
             // 2. 创建或更新 Movie 并关联到 MediaItem (movies 表)
             //    新增/更新计数只在 UpsertMediaItemAsync 里加一次，这里不再重复计数（否则一部片算两次）
             var movie = await UpsertMovieAsync(context, libraryId, mediaItem.Id, movieIdentifier, parseResult, screenshotsPath);
 
             // 3. 创建或更新 MediaFile (media_files 表) - 关联到 MediaItem.Id
-            var mediaFile = await UpsertMediaFileAsync(context, movieDirPath, mediaItem.Id, parseResult);
+            var mediaFile = await UpsertMediaFileAsync(context, movieDir, mediaItem.Id);
 
             // 4. 创建或更新 MediaImgs (media_imgs 表) - 关联到 MediaItem.Id
-            var mediaImages = await UpsertMediaImagesAsync(context, movieDirName, movieDirPath, mediaItem.Id, parseResult, imageUrlNames, screenshotPaths);
+            var mediaImages = await UpsertMediaImagesAsync(context, movieDir, mediaItem.Id, parseResult, imageUrlNames, screenshotPaths);
 
             // 5. 标签关系以 NFO 为准：先清空再按 NFO 重建。
             //    只加不删的话，改过 NFO 的影片会继续挂着旧标签 —— 标签页计数虚高，
@@ -496,7 +428,7 @@ public class ScanService(
                     .Where(mt => mt.MediaId == mediaItem.Id)
                     .ExecuteDeleteAsync();
 
-                await UpsertMediaTagsAsync(context, libraryId, mediaItem.Id, parseResult.Tags);
+                await UpsertMediaTagsAsync(context, libraryId, mediaItem.Id, parseResult.Tags, lookup);
             }
 
             // 6. 演员关系同理：NFO 里没有的人不该继续挂着
@@ -506,7 +438,7 @@ public class ScanService(
                     .Where(ms => ms.MediaId == mediaItem.Id)
                     .ExecuteDeleteAsync();
 
-                await UpsertMediaStaffAsync(context, mediaItem.Id, parseResult.Actors);
+                await UpsertMediaStaffAsync(context, mediaItem.Id, parseResult.Actors, lookup);
             }
 
             // 提事务
@@ -724,21 +656,15 @@ public class ScanService(
     /// 表: media_files
     /// 唯一标识: path (文件完整路径)
     /// </summary>
-    /// <param name="context">数据库上下文</param>
-    /// <param name="movieDirPath">电影目录路径</param>
-    /// <param name="mediaItemId">MediaItem.ID (media_files.media_id)</param>
-    /// <param name="parseResult">NFO解析结果</param>
-    /// <returns>MediaFile 实体</returns>
     private async Task<MediaFile?> UpsertMediaFileAsync(
         MediaHouseDbContext context,
-        string movieDirPath,
-        int mediaItemId,
-        NfoParseResult? parseResult)
+        MovieDirectory movieDir,
+        int mediaItemId)
     {
-        var videoFile = FindVideoFile(movieDirPath);
+        var videoFile = FindVideoFile(movieDir.Files);
         if (videoFile == null)
         {
-            _logger.LogWarning("No video file found in {DirPath}", movieDirPath);
+            _logger.LogWarning("No video file found in {DirPath}", movieDir.FullPath);
             return null;
         }
 
@@ -803,18 +729,9 @@ public class ScanService(
     /// 表: media_imgs
     /// 唯一标识: path (图片文件完整路径)
     /// </summary>
-    /// <param name="context">数据库上下文</param>
-    /// <param name="movieDirName">电影目录名</param>
-    /// <param name="movieDirPath">电影目录路径</param>
-    /// <param name="mediaItemId">MediaItem.ID (media_imgs.media_id)</param>
-    /// <param name="parseResult">NFO解析结果</param>
-    /// <param name="imageUrlNames">预先生成的 url_name 映射</param>
-    /// <param name="screenshotPaths">截图文件路径列表</param>
-    /// <returns>处理过的 MediaImgs 列表</returns>
     private async Task<List<MediaImgs>> UpsertMediaImagesAsync(
         MediaHouseDbContext context,
-        string movieDirName,
-        string movieDirPath,
+        MovieDirectory movieDir,
         int mediaItemId,
         NfoParseResult? parseResult,
         Dictionary<string, string> imageUrlNames,
@@ -825,7 +742,7 @@ public class ScanService(
         if (parseResult?.ImagePaths == null)
             return result;
 
-        // 支要的图片类型：poster, thumb, fanart
+        // 支持的图片类型：poster, thumb, fanart
         var imageTypes = new[] { "poster", "thumb", "fanart" };
 
         foreach (var imageType in imageTypes)
@@ -833,7 +750,7 @@ public class ScanService(
             if (!parseResult.ImagePaths.TryGetValue(imageType, out var imagePath) || string.IsNullOrEmpty(imagePath))
                 continue;
 
-            var fullPath = Path.Combine(movieDirPath, imagePath);
+            var fullPath = Path.Combine(movieDir.FullPath, imagePath);
             if (!File.Exists(fullPath))
             {
                 _logger.LogWarning("Image file not found: {FilePath}", fullPath);
@@ -970,174 +887,140 @@ public class ScanService(
                 }
             }
         }
+
+        // 清掉指向已不存在文件的旧图片记录（换封面、删截图后留下的残留）。
+        // 不清理的话，图片接口会先查到记录、再因为文件不存在返回 404。
+        var allImages = await context.MediaImgs
+            .Where(mi => mi.MediaId == mediaItemId)
+            .ToListAsync();
+
+        foreach (var image in allImages)
+        {
+            if (!File.Exists(image.Path))
+            {
+                context.MediaImgs.Remove(image);
+            }
+        }
+
         return result;
     }
 
     /// <summary>
-    /// 创建或更新媒体标签关系
-    /// 表: tags (查找或创建) + media_tags (创建关联)
-    /// media_tags 组合主键: lib_id + media_id + tag_id
+    /// 重建媒体标签关系。
+    /// 调用方（ProcessMediaItemAsync）已经清空过该媒体的旧关系，这里只负责按 NFO 重新插入。
     /// </summary>
-    /// <param name="context">数据库上下文</param>
-    /// <param name="libraryId">媒体库ID</param>
-    /// <param name="mediaItemId">MediaItem.ID (media_tags.media_id)</param>
-    /// <param name="tagsString">标签字符串，逗号分隔</param>
     private async Task UpsertMediaTagsAsync(
         MediaHouseDbContext context,
         int libraryId,
         int mediaItemId,
-        string tagsString)
+        string tagsString,
+        ScanLookupCache lookup)
     {
-        var tagNames = tagsString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var tagNames = tagsString
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.Ordinal);
 
-        foreach (var tagName in tagNames.Distinct())
+        foreach (var tagName in tagNames)
         {
             if (string.IsNullOrWhiteSpace(tagName))
                 continue;
 
-            var trimmedTagName = tagName.Trim();
+            var tag = await GetOrCreateTagAsync(context, tagName, lookup);
 
-            // 1. 获取或创建 Tag 实体 (tags 表)
-            var tag = await GetOrCreateTagAsync(context, trimmedTagName);
-
-            // 2. 检查 MediaTag 关联是否已存在 (media_tags 表)
-            var existingMediaTag = await context.MediaTags
-                .FirstOrDefaultAsync(mt => mt.MediaLibraryId == libraryId
-                    && mt.MediaType == "movie"
-                    && mt.MediaId == mediaItemId
-                    && mt.TagId == tag.Id);
-
-            if (existingMediaTag == null)
+            context.MediaTags.Add(new MediaTag
             {
-                // 3. 创建新的 MediaTag 关联
-                var mediaTag = new MediaTag
-                {
-                    MediaLibraryId = libraryId,
-                    MediaType = "movie",
-                    MediaId = mediaItemId,  // 关联到 MediaItem.Id
-                    TagId = tag.Id,
-                    CreateTime = DateTime.UtcNow
-                };
-
-                context.MediaTags.Add(mediaTag);
-            }
+                MediaLibraryId = libraryId,
+                MediaType = "movie",
+                MediaId = mediaItemId,
+                TagId = tag.Id,
+                CreateTime = DateTime.UtcNow
+            });
         }
     }
 
     /// <summary>
-    /// 获取或创建 Tag 实体
-    /// 表: tags
-    /// 唯一标识: tag_name
+    /// 获取或创建 Tag 实体。命中缓存时零查询，只有首次出现的新标签才写库。
     /// </summary>
-    /// <param name="context">数据库上下文</param>
-    /// <param name="tagName">标签名称</param>
-    /// <returns>Tag 实体</returns>
-    private async Task<Tag> GetOrCreateTagAsync(MediaHouseDbContext context, string tagName)
+    private async Task<Tag> GetOrCreateTagAsync(MediaHouseDbContext context, string tagName, ScanLookupCache lookup)
     {
-        var tag = await context.Tags
-            .FirstOrDefaultAsync(t => t.TagName == tagName);
+        if (lookup.Tags.TryGetValue(tagName, out var cached))
+            return cached;
 
-        if (tag == null)
+        _logger.LogInformation("Creating new tag: {TagName}", tagName);
+
+        var tag = new Tag
         {
-            _logger.LogInformation("Creating new tag: {TagName}", tagName);
-            tag = new Tag
-            {
-                TagName = tagName,
-                CreateTime = DateTime.UtcNow
-            };
-            context.Tags.Add(tag);
-            await context.SaveChangesAsync();
-        }
+            TagName = tagName,
+            CreateTime = DateTime.UtcNow
+        };
 
+        context.Tags.Add(tag);
+        await context.SaveChangesAsync(); // 需要拿到自增 Id 才能建关联
+
+        lookup.Tags[tagName] = tag;
         return tag;
     }
 
     /// <summary>
-    /// 创建或更新媒体人员（演员）关系
-    /// 表: staff (查找或创建) + media_staff (创建关联)
+    /// 重建媒体人员（演员）关系。
+    /// 调用方已经清空过该媒体的旧关系，这里只负责按 NFO 重新插入。
     /// </summary>
-    /// <param name="context">数据库上下文</param>
-    /// <param name="mediaItemId">MediaItem.ID (media_staff.media_id)</param>
-    /// <param name="actorNames">演员名称列表</param>
     private async Task UpsertMediaStaffAsync(
         MediaHouseDbContext context,
         int mediaItemId,
-        List<string> actorNames)
+        List<string> actorNames,
+        ScanLookupCache lookup)
     {
-        for (int sortOrder = 0; sortOrder < actorNames.Count; sortOrder++)
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        for (var sortOrder = 0; sortOrder < actorNames.Count; sortOrder++)
         {
             var actorName = actorNames[sortOrder];
             if (string.IsNullOrWhiteSpace(actorName))
                 continue;
 
-            var trimmedName = actorName.Trim();
+            var name = actorName.Trim();
 
-            // 1. 获取或创建 Staff 实体 (staff 表)
-            var staff = await GetOrCreateStaffAsync(context, trimmedName);
+            // 同一个 NFO 里重复出现的演员只建一条关系
+            if (!seen.Add(name)) continue;
 
-            // 2. 检查 MediaStaff 关联是否已存在 (media_staff 表)
-            var existingMediaStaff = await context.MediaStaffs
-                .FirstOrDefaultAsync(ms => ms.MediaType == "movie"
-                    && ms.MediaId == mediaItemId
-                    && ms.StaffId == staff.Id
-                    && ms.RoleType == "actor");
+            var staff = await GetOrCreateStaffAsync(context, name, lookup);
 
-            if (existingMediaStaff == null)
+            context.MediaStaffs.Add(new MediaStaff
             {
-                // 3. 创建新的 MediaStaff 关联
-                var mediaStaff = new MediaStaff
-                {
-                    MediaType = "movie",
-                    MediaId = mediaItemId,  // 关联到 MediaItem.Id
-                    StaffId = staff.Id,
-                    RoleType = "actor",
-                    RoleName = null,
-                    SortOrder = sortOrder,
-                    CreateTime = DateTime.UtcNow,
-                    UpdateTime = DateTime.UtcNow
-                };
-
-                context.MediaStaffs.Add(mediaStaff);
-            }
-            else
-            {
-                // 更新排序顺序
-                if (existingMediaStaff.SortOrder != sortOrder)
-                {
-                    existingMediaStaff.SortOrder = sortOrder;
-                    existingMediaStaff.UpdateTime = DateTime.UtcNow;
-                    context.MediaStaffs.Update(existingMediaStaff);
-                }
-            }
+                MediaType = "movie",
+                MediaId = mediaItemId,
+                StaffId = staff.Id,
+                RoleType = "actor",
+                RoleName = null,
+                SortOrder = sortOrder,
+                CreateTime = DateTime.UtcNow,
+                UpdateTime = DateTime.UtcNow
+            });
         }
     }
 
     /// <summary>
-    /// 获取或创建 Staff 实体
-    /// 表: staff
-    /// 唯一标识: name
+    /// 获取或创建 Staff 实体。命中缓存时零查询。
     /// </summary>
-    /// <param name="context">数据库上下文</param>
-    /// <param name="staffName">人员名称</param>
-    /// <returns>Staff 实体</returns>
-    private async Task<Staff> GetOrCreateStaffAsync(MediaHouseDbContext context, string staffName)
+    private async Task<Staff> GetOrCreateStaffAsync(MediaHouseDbContext context, string staffName, ScanLookupCache lookup)
     {
-        var staff = await context.Staffs
-            .FirstOrDefaultAsync(s => s.Name == staffName);
+        if (lookup.Staffs.TryGetValue(staffName, out var cached))
+            return cached;
 
-        if (staff == null)
+        _logger.LogInformation("Creating new staff: {StaffName}", staffName);
+
+        var staff = new Staff
         {
-            _logger.LogInformation("Creating new staff: {StaffName}", staffName);
-            staff = new Staff
-            {
-                Name = staffName,
-                CreateTime = DateTime.UtcNow,
-                UpdateTime = DateTime.UtcNow
-            };
-            context.Staffs.Add(staff);
-            await context.SaveChangesAsync();
-        }
+            Name = staffName,
+            CreateTime = DateTime.UtcNow,
+            UpdateTime = DateTime.UtcNow
+        };
 
+        context.Staffs.Add(staff);
+        await context.SaveChangesAsync(); // 需要拿到自增 Id 才能建关联
+
+        lookup.Staffs[staffName] = staff;
         return staff;
     }
 
@@ -1189,7 +1072,7 @@ public class ScanService(
     private async Task<int> PruneMissingMediaAsync(
         MediaHouseDbContext context,
         int libraryId,
-        List<string[]> existingMovieDirs,
+        List<MovieDirectory> existingMovieDirs,
         SystemSyncLog log)
     {
         if (!_scanOptions.DeleteMissingMedia) return 0;
@@ -1207,7 +1090,7 @@ public class ScanService(
             var scannedDirs = new HashSet<string>(PathComparer);
             foreach (var dir in existingMovieDirs)
             {
-                var normalized = NormalizePath(dir[1]);
+                var normalized = NormalizePath(dir.FullPath);
                 if (normalized != null) scannedDirs.Add(normalized);
             }
 
@@ -1291,12 +1174,9 @@ public class ScanService(
     }
 
     /// <summary>
-    /// 扫描单个电影目录并返回元数据
+    /// 扫描单个电影目录并返回元数据。
+    /// 供「上传元数据后重扫」「手动搜刮」等场景使用，复用与批量扫描完全相同的处理流程。
     /// </summary>
-    /// <param name="libraryId">媒体库ID</param>
-    /// <param name="movieDirName">电影目录名</param>
-    /// <param name="movieDirPath">电影目录完整路径</param>
-    /// <returns>MediaScanResult 包含所有处理的实体</returns>
     public async Task<MediaScanResult> ScanSingleMovieAsync(int libraryId, string movieDirName, string movieDirPath)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -1307,22 +1187,23 @@ public class ScanService(
 
         _logger.LogInformation("Scanning single movie directory: {DirName}", movieDirName);
 
-        var videoFile = FindVideoFile(movieDirPath);
-        var nfoFile = FindNfoFile(movieDirPath);
-
-        if (videoFile == null)
+        string[] files;
+        try
         {
-            _logger.LogWarning("No video file found in {DirPath}", movieDirPath);
-            throw new InvalidOperationException($"No video file found in {movieDirPath}");
+            files = Directory.GetFiles(movieDirPath);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            throw new InvalidOperationException($"无法读取目录 {movieDirPath}", ex);
         }
 
-        // 解析 NFO 文件
-        var parseResult = nfoFile != null ? await _metadataService.ParseNfoFileFullAsync(nfoFile) : null;
+        var movieDir = new MovieDirectory(movieDirName, movieDirPath, files);
+        var lookup = await ScanLookupCache.CreateAsync(context);
 
-        // 使用解析结果中的 Num 作为唯一标识符，如果没有则使用目录名
-        var movieIdentifier = parseResult?.Num ?? movieDirName;
+        var result = await ProcessMovieDirectoryAsync(context, libraryId, movieDir, null, lookup)
+            ?? throw new InvalidOperationException($"No video file found in {movieDirPath}");
 
-        // 处理所有相关实体并返回结果
-        return await ProcessMediaItemAsync(context, libraryId, movieDirName, movieDirPath, movieIdentifier, parseResult, null);
+        await context.SaveChangesAsync();
+        return result;
     }
 }
