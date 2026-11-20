@@ -13,8 +13,9 @@ import { MediaLibrarySettingsPage } from './pages/Settings/MediaLibrarySettingsP
 import { MetadataSettingsPage } from './pages/Settings/MetadataSettingsPage';
 import { AccountSettingsPage } from './pages/Settings/AccountSettingsPage';
 import { LogsManagerPage } from './pages/Settings/LogsManager';
-import { PluginSettingsPage } from './pages/Settings/PluginSettingsPage';
-import { MediaPublishPage } from './pages/Settings/MediaPublish';
+// 「媒体发布」「插件管理」暂时下线；页面文件保留，恢复时取消注释下面两行导入和对应的 Route
+// import { PluginSettingsPage } from './pages/Settings/PluginSettingsPage';
+// import { MediaPublishPage } from './pages/Settings/MediaPublish';
 import { PlayerLayout } from './layouts/PlayerLayout';
 import { PlayerPage } from './pages/Player/PlayerPage';
 import { LoginPage } from './pages/Login/LoginPage';
@@ -45,8 +46,9 @@ function App({ toggleTheme }: AppProps) {
             <Route path="/settings" element={<Settings />} >
               <Route index element={<MediaLibrarySettingsPage />} />
               <Route path="media-library" element={<MediaLibrarySettingsPage />} />
-              <Route path="media-publish" element={<MediaPublishPage />} />
-              <Route path="plugins" element={<PluginSettingsPage />} />
+              {/* 「媒体发布」「插件管理」暂时下线：旧链接直接回媒体库，避免落到 /login */}
+              <Route path="media-publish" element={<Navigate to="/settings/media-library" replace />} />
+              <Route path="plugins" element={<Navigate to="/settings/media-library" replace />} />
               <Route path="metadata" element={<MetadataSettingsPage />} />
               <Route path="account" element={<AccountSettingsPage />} />
               <Route path="logs" element={<LogsManagerPage />} />

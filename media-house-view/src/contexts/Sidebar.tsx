@@ -10,8 +10,6 @@ import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import PeopleIcon from '@mui/icons-material/People';
 import FavoriteIcon from '@mui/icons-material/Favorite';
-import ExtensionIcon from '@mui/icons-material/Extension';
-import PublishIcon from '@mui/icons-material/Publish';
 
 const DRAWER_WIDTH = 240;
 const MINI_DRAWER_WIDTH = 60;
@@ -59,8 +57,9 @@ export function Sidebar({ open }: SidebarProps) {
     const settingsItems = [
       { title: '首页', path: '/media-center/home', icon: <HomeIcon /> },
       { title: '媒体库', path: '/settings/media-library', icon: <MovieIcon /> },
-      { title: '媒体发布', path: '/settings/media-publish', icon: <PublishIcon /> },
-      { title: '插件管理', path: '/settings/plugins', icon: <ExtensionIcon /> },
+      // 「媒体发布」「插件管理」暂时下线，功能恢复时把下面两行取消注释即可
+      // { title: '媒体发布', path: '/settings/media-publish', icon: <PublishIcon /> },
+      // { title: '插件管理', path: '/settings/plugins', icon: <ExtensionIcon /> },
       { title: '元数据管理', path: '/settings/metadata', icon: <SourceIcon /> },
       { title: '账号管理', path: '/settings/account', icon: <PersonOutlineIcon /> },
       { title: '日志', path: '/settings/logs', icon: <EventNoteIcon /> },
