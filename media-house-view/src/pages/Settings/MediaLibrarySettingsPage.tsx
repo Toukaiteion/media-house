@@ -22,7 +22,7 @@ import {
 import { Add as AddIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { api } from '../../services/api';
 import { LibraryCard } from '../../components/LibraryCard';
-import type { MediaLibrary, UpdateMediaLibraryDto, PluginGrouped, PluginConfig } from '../../types';
+import type { MediaLibrary, UpdateMediaLibraryDto } from '../../types';
 
 export function MediaLibrarySettingsPage() {
   // 库列表状态
@@ -53,19 +53,19 @@ export function MediaLibrarySettingsPage() {
   // 扫描状态提示
   const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // 插件相关状态
-  const [_, setPluginsGrouped] = useState<PluginGrouped[]>([]);
-  const [pluginConfigs, setPluginConfigs] = useState<PluginConfig[]>([]);
-  const [loadingPlugins, setLoadingPlugins] = useState(false);
-
-  // 展平后的插件选项（用于下拉菜单）
-  interface PluginOption {
-    id: number;
-    pluginKey: string;
-    version: string;
-    name: string;
-  }
-  const [pluginOptions, setPluginOptions] = useState<PluginOption[]>([]);
+  // 插件功能暂时下线（媒体发布 / 插件管理），库表单里的插件选择一并隐藏。
+  // 恢复时把这段状态、loadPluginsGrouped、下面两个 effect、以及表单里的插件控件一起取消注释即可。
+  // const [_, setPluginsGrouped] = useState<PluginGrouped[]>([]);
+  // const [pluginConfigs, setPluginConfigs] = useState<PluginConfig[]>([]);
+  // const [loadingPlugins, setLoadingPlugins] = useState(false);
+  //
+  // interface PluginOption {
+  //   id: number;
+  //   pluginKey: string;
+  //   version: string;
+  //   name: string;
+  // }
+  // const [pluginOptions, setPluginOptions] = useState<PluginOption[]>([]);
 
   // 刷新库列表
   const refreshLibraries = async () => {
@@ -84,54 +84,54 @@ export function MediaLibrarySettingsPage() {
   // 组件挂载时加载数据
   useEffect(() => {
     refreshLibraries();
-    loadPluginsGrouped();
+    // loadPluginsGrouped();  // 插件功能暂时下线
   }, []);
 
-  // 加载插件分组列表
-  const loadPluginsGrouped = async () => {
-    try {
-      setLoadingPlugins(true);
-      const data = await api.getPluginsGrouped();
-      setPluginsGrouped(data);
+  // 加载插件分组列表（暂时下线，恢复时连同上面的调用一起取消注释）
+  // const loadPluginsGrouped = async () => {
+  //   try {
+  //     setLoadingPlugins(true);
+  //     const data = await api.getPluginsGrouped();
+  //     setPluginsGrouped(data);
+  //
+  //     // 展平插件选项用于下拉菜单
+  //     const options: PluginOption[] = [];
+  //     data.forEach((plugin) => {
+  //       plugin.versions.forEach((version) => {
+  //         options.push({
+  //           id: version.id,
+  //           pluginKey: plugin.pluginKey,
+  //           version: version.version,
+  //           name: plugin.name,
+  //         });
+  //       });
+  //     });
+  //     setPluginOptions(options);
+  //   } catch (err) {
+  //     console.error('Failed to load plugins:', err);
+  //   } finally {
+  //     setLoadingPlugins(false);
+  //   }
+  // };
 
-      // 展平插件选项用于下拉菜单
-      const options: PluginOption[] = [];
-      data.forEach((plugin) => {
-        plugin.versions.forEach((version) => {
-          options.push({
-            id: version.id,
-            pluginKey: plugin.pluginKey,
-            version: version.version,
-            name: plugin.name,
-          });
-        });
-      });
-      setPluginOptions(options);
-    } catch (err) {
-      console.error('Failed to load plugins:', err);
-    } finally {
-      setLoadingPlugins(false);
-    }
-  };
-
-  // 当插件选择改变时，加载对应的配置
-  useEffect(() => {
-    const loadPluginConfigs = async () => {
-      if (formData.pluginKey) {
-        try {
-          const configs = await api.getPluginConfigs(formData.pluginKey);
-          setPluginConfigs(configs);
-        } catch (err) {
-          console.error('Failed to load plugin configs:', err);
-          setPluginConfigs([]);
-        }
-      } else {
-        setPluginConfigs([]);
-      }
-    };
-
-    loadPluginConfigs();
-  }, [formData.pluginKey]);
+  // 当插件选择改变时，加载对应的配置（暂时下线）
+  // useEffect(() => {
+  //   const loadPluginConfigs = async () => {
+  //     if (formData.pluginKey) {
+  //       try {
+  //         const configs = await api.getPluginConfigs(formData.pluginKey);
+  //         setPluginConfigs(configs);
+  //       } catch (err) {
+  //         console.error('Failed to load plugin configs:', err);
+  //         setPluginConfigs([]);
+  //       }
+  //     } else {
+  //       setPluginConfigs([]);
+  //     }
+  //   };
+  //
+  //   loadPluginConfigs();
+  // }, [formData.pluginKey]);
 
   // 打开添加库对话框
   const handleOpenCreateDialog = () => {
@@ -145,7 +145,7 @@ export function MediaLibrarySettingsPage() {
       pluginConfigId: undefined,
       pluginKey: undefined,
     });
-    setPluginConfigs([]);
+    // setPluginConfigs([]);  // 插件功能暂时下线
     setDialogOpen(true);
   };
 
@@ -164,21 +164,22 @@ export function MediaLibrarySettingsPage() {
     });
     setDialogOpen(true);
 
-    // 如果已选择插件，加载对应的配置
-    if (library.plugin_id) {
-      const selectedOption = pluginOptions.find(p => p.id === library.plugin_id);
-      if (selectedOption) {
-        setFormData(prev => ({ ...prev, pluginKey: selectedOption.pluginKey }));
-        api.getPluginConfigs(selectedOption.pluginKey)
-          .then(configs => setPluginConfigs(configs))
-          .catch(err => {
-            console.error('Failed to load plugin configs:', err);
-            setPluginConfigs([]);
-          });
-      }
-    } else {
-      setPluginConfigs([]);
-    }
+    // 插件功能暂时下线：不再加载插件配置
+    // // 如果已选择插件，加载对应的配置
+    // if (library.plugin_id) {
+    //   const selectedOption = pluginOptions.find(p => p.id === library.plugin_id);
+    //   if (selectedOption) {
+    //     setFormData(prev => ({ ...prev, pluginKey: selectedOption.pluginKey }));
+    //     api.getPluginConfigs(selectedOption.pluginKey)
+    //       .then(configs => setPluginConfigs(configs))
+    //       .catch(err => {
+    //         console.error('Failed to load plugin configs:', err);
+    //         setPluginConfigs([]);
+    //       });
+    //   }
+    // } else {
+    //   setPluginConfigs([]);
+    // }
   };
 
   // 关闭对话框
@@ -386,6 +387,8 @@ export function MediaLibrarySettingsPage() {
             helperText="媒体文件夹的绝对路径"
             sx={{ mb: 2 }}
           />
+          {/* 插件功能暂时下线（媒体发布 / 插件管理），库表单里的插件选择一并隐藏；
+              恢复时取消注释即可，同时把上面的 state / effect 一起恢复
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel>元数据插件</InputLabel>
             <Select
@@ -437,6 +440,7 @@ export function MediaLibrarySettingsPage() {
               </Select>
             </FormControl>
           )}
+          */}
           {dialogMode === 'edit' && (
             <FormControlLabel
               control={

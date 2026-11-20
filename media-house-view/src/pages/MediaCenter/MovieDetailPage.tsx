@@ -24,7 +24,6 @@ import {
   Favorite,
   FavoriteBorder,
   MoreVert as MoreVertIcon,
-  Refresh as RefreshIcon,
   CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { api } from '../../services/api';
@@ -42,7 +41,7 @@ export function MovieDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [scanDialogOpen, setScanDialogOpen] = useState(false);
+  // const [scanDialogOpen, setScanDialogOpen] = useState(false);  // 插件搜刮暂时下线
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuAnchorRef = useRef<HTMLButtonElement | null>(null);
@@ -80,7 +79,7 @@ export function MovieDetailPage() {
     menuAnchorRef.current = event.currentTarget;
     setMenuOpen((prev) => !prev);
   };
-  const [scanning, setScanning] = useState(false);
+  // const [scanning, setScanning] = useState(false);  // 插件搜刮暂时下线
   const [viewerOpen, setViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -129,29 +128,30 @@ export function MovieDetailPage() {
     setDeleteDialogOpen(false);
   };
 
-  const handleScanClick = () => {
-    setScanDialogOpen(true);
-  };
-
-  const handleScanConfirm = async () => {
-    if (!id) return;
-
-    try {
-      setScanning(true);
-      await api.scrapeMedia(id);
-      setScanDialogOpen(false);
-      await loadMovie();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '搜刮失败');
-      setScanDialogOpen(false);
-    } finally {
-      setScanning(false);
-    }
-  };
-
-  const handleScanCancel = () => {
-    setScanDialogOpen(false);
-  };
+  // 插件搜刮暂时下线（媒体发布 / 插件管理），恢复时取消注释这段
+  // const handleScanClick = () => {
+  //   setScanDialogOpen(true);
+  // };
+  //
+  // const handleScanConfirm = async () => {
+  //   if (!id) return;
+  //
+  //   try {
+  //     setScanning(true);
+  //     await api.scrapeMedia(id);
+  //     setScanDialogOpen(false);
+  //     await loadMovie();
+  //   } catch (err) {
+  //     setError(err instanceof Error ? err.message : '搜刮失败');
+  //     setScanDialogOpen(false);
+  //   } finally {
+  //     setScanning(false);
+  //   }
+  // };
+  //
+  // const handleScanCancel = () => {
+  //   setScanDialogOpen(false);
+  // };
 
   const handleUploadClick = () => {
     setUploadDialogOpen(true);
@@ -425,12 +425,14 @@ export function MovieDetailPage() {
                   },
                 }}
               >
+                {/* 插件搜刮暂时下线，恢复时取消注释
                 <MenuItem onClick={handleScanClick} disabled={scanning}>
                   {scanning ? <CircularProgress size={16} /> : <RefreshIcon />}
                   <Typography variant="body2" sx={{ ml: 1 }}>
                     {scanning ? '搜刮中...' : '重新搜刮'}
                   </Typography>
                 </MenuItem>
+                */}
                 <MenuItem onClick={handleUploadClick}>
                   <CloudUploadIcon />
                   <Typography variant="body2" sx={{ ml: 1 }}>
@@ -498,7 +500,7 @@ export function MovieDetailPage() {
         />
       )}
 
-      {/* 搜刮确认对话框 */}
+      {/* 插件搜刮暂时下线，恢复时取消注释
       <Dialog open={scanDialogOpen} onClose={handleScanCancel}>
         <DialogTitle>确认重新搜刮</DialogTitle>
         <DialogContent>
@@ -511,6 +513,7 @@ export function MovieDetailPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      */}
 
       {/* 删除确认对话框 */}
       <Dialog open={deleteDialogOpen} onClose={handleDeleteCancel}>
