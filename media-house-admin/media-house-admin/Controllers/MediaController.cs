@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Net.Http.Headers;
 using MediaHouse.Data;
 using MediaHouse.DTOs;
 using MediaHouse.Extensions;
 using MediaHouse.Interfaces;
 using MediaHouse.Data.Entities;
-using Microsoft.EntityFrameworkCore;
 
 namespace MediaHouse.Controllers;
 
@@ -19,6 +21,7 @@ public class MediaController(
     IPlayRecordService playRecordService,
     IPluginExecutionService pluginExecutionService,
     IMetadataUpdateService metadataUpdateService,
+    IMemoryCache cache,
     ILogger<MediaController> logger) : ControllerBase
 {
     private readonly MediaHouseDbContext _dbContext = dbContext;
@@ -27,7 +30,15 @@ public class MediaController(
     private readonly IPlayRecordService _playRecordService = playRecordService;
     private readonly IPluginExecutionService _pluginExecutionService = pluginExecutionService;
     private readonly IMetadataUpdateService _metadataUpdateService = metadataUpdateService;
+    private readonly IMemoryCache _cache = cache;
     private readonly ILogger<MediaController> _logger = logger;
+
+    /// <summary>流媒体文件信息缓存项，避免每个 range 请求都查一次库</summary>
+    private sealed record MediaStreamInfo(
+        string Path,
+        string ContentType,
+        DateTimeOffset LastModified,
+        EntityTagHeaderValue ETag);
 
     [HttpGet("file")]
     [AllowAnonymous]
@@ -90,28 +101,51 @@ public class MediaController(
                 return BadRequest(new { error = "Invalid url name" });
             }
 
-            // Find MediaImg by url_name from database
-            var mediaImg = await _dbContext.MediaImgs
-                .FirstOrDefaultAsync(mi => mi.UrlName == url_name);
-
-            if (mediaImg == null)
+            // 列表页一屏就是几十张图，每张都查一次库太浪费，缓存 url_name -> 路径
+            var cacheKey = $"media-img:{url_name}";
+            if (!_cache.TryGetValue(cacheKey, out string? imagePath) || string.IsNullOrEmpty(imagePath))
             {
-                return NotFound(new { error = "Image not found" });
+                imagePath = await _dbContext.MediaImgs
+                    .AsNoTracking()
+                    .Where(mi => mi.UrlName == url_name)
+                    .Select(mi => mi.Path)
+                    .FirstOrDefaultAsync();
+
+                if (string.IsNullOrEmpty(imagePath))
+                {
+                    return NotFound(new { error = "Image not found" });
+                }
+
+                _cache.Set(cacheKey, imagePath, TimeSpan.FromMinutes(30));
             }
 
-            if (!System.IO.File.Exists(mediaImg.Path))
+            if (!System.IO.File.Exists(imagePath))
             {
+                _cache.Remove(cacheKey);
                 return NotFound(new { error = "Image file not found" });
             }
 
-            var contentType = GetContentType(mediaImg.Extension ?? "");
-            var fileStream = new System.IO.FileStream(mediaImg.Path, System.IO.FileMode.Open, System.IO.FileAccess.Read);
+            var fileInfo = new System.IO.FileInfo(imagePath);
+            var etag = new EntityTagHeaderValue($"\"{fileInfo.Length:x}-{fileInfo.LastWriteTimeUtc.Ticks:x}\"");
 
-            // Add cache control headers
-            Response.Headers.CacheControl = "public, max-age=2592000"; // 30 days
-            Response.Headers.ETag = $"{mediaImg.UrlName}"; // Simple ETag using url_name
+            // 图片 30 天强缓存
+            Response.Headers.CacheControl = "public, max-age=2592000";
 
-            return File(fileStream, contentType, enableRangeProcessing: true);
+            // 浏览器带着同一个 ETag 回来时直接 304，不传内容也不占带宽
+            var ifNoneMatch = Request.Headers.IfNoneMatch.ToString();
+            if (!string.IsNullOrEmpty(ifNoneMatch) && ifNoneMatch.Contains(etag.Tag.ToString()))
+            {
+                return StatusCode(StatusCodes.Status304NotModified);
+            }
+
+            // 用真实扩展名：原来用的是 mediaImgs.Extension（不带点，如 "jpg"），
+            // 匹配不到 ContentType 的 switch，所有图片都退化成了 application/octet-stream
+            return PhysicalFile(
+                imagePath,
+                GetContentType(fileInfo.Extension),
+                fileInfo.LastWriteTimeUtc,
+                etag,
+                enableRangeProcessing: false);
         }
         catch (Exception ex)
         {
@@ -132,34 +166,49 @@ public class MediaController(
                 return BadRequest(new { error = "Invalid media ID" });
             }
 
-            // Get media info with file path
-            var media = await _dbContext.Medias
-                .Include(m => m.MediaFiles)
-                .FirstOrDefaultAsync(m => m.Id == mediaId);
-
-            if (media == null)
+            // 一次观看会产生多个请求（首帧 + 每次拖动 seek），文件路径查一次就缓存住，
+            // 之后所有 range 请求都是零数据库查询
+            var cacheKey = $"media-stream:{mediaId}";
+            if (!_cache.TryGetValue(cacheKey, out MediaStreamInfo? info) || info == null)
             {
-                return NotFound(new { error = "Media not found" });
+                var filePath = await _dbContext.Medias
+                    .AsNoTracking()
+                    .Where(m => m.Id == mediaId)
+                    .Select(m => m.MediaFiles
+                        .OrderBy(f => f.Id)
+                        .Select(f => f.Path)
+                        .FirstOrDefault())
+                    .FirstOrDefaultAsync();
+
+                if (string.IsNullOrEmpty(filePath))
+                {
+                    return NotFound(new { error = "Media file not found" });
+                }
+
+                var fileInfo = new System.IO.FileInfo(filePath);
+                info = new MediaStreamInfo(
+                    filePath,
+                    GetContentType(fileInfo.Extension),
+                    fileInfo.LastWriteTimeUtc,
+                    new EntityTagHeaderValue($"\"{fileInfo.Length:x}-{fileInfo.LastWriteTimeUtc.Ticks:x}\""));
+
+                _cache.Set(cacheKey, info, TimeSpan.FromMinutes(10));
             }
 
-            // Get file path from MediaFiles
-            string? filePath = null;
-            if (media.MediaFiles.Any())
+            if (!System.IO.File.Exists(info.Path))
             {
-                filePath = media.MediaFiles.First().Path;
-            }
-
-            if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
-            {
+                _cache.Remove(cacheKey);
                 return NotFound(new { error = "Media file not found" });
             }
 
-            // Get content type and return file stream
-            var fileInfo = new System.IO.FileInfo(filePath);
-            var contentType = GetContentType(fileInfo.Extension);
-            var fileStream = new System.IO.FileStream(filePath, System.IO.FileMode.Open, System.IO.FileAccess.Read);
-
-            return File(fileStream, contentType, enableRangeProcessing: true);
+            // PhysicalFileResult 走 sendfile(2)：文件数据由内核直接送到 socket，
+            // 不再经过托管内存的「读 64KB → 写 64KB」循环
+            return PhysicalFile(
+                info.Path,
+                info.ContentType,
+                info.LastModified,
+                info.ETag,
+                enableRangeProcessing: true);
         }
         catch (Exception ex)
         {

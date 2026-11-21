@@ -193,19 +193,24 @@ export function PlayerPage() {
   // ---------------- 进度上报 ----------------
 
   const reportProgress = useCallback(
-    (positionOverride?: number) => {
+    (options?: { position?: number; keepalive?: boolean }) => {
       const video = videoRef.current;
       if (!id) return;
 
-      const position = positionOverride ?? Math.floor(video ? video.currentTime : lastPositionRef.current);
+      const position = options?.position ?? Math.floor(video ? video.currentTime : lastPositionRef.current);
+
+      // 视频还没加载完（readyState === 0）时 currentTime 是 0，
+      // 这时候上报会把服务器上已有的续播位置覆盖成 0（离开页面、StrictMode 的假卸载都会走到这里）
+      if (position <= 0 && (!video || video.readyState === 0)) return;
+
       lastPositionRef.current = position;
 
       // 位置没变（或只差不到 1 秒）就不重复上报，减少无意义的写库
-      if (positionOverride === undefined && Math.abs(position - lastReportedRef.current) < 1) return;
+      if (options?.position === undefined && Math.abs(position - lastReportedRef.current) < 1) return;
 
       lastReportedRef.current = position;
       void api
-        .upsertPlayRecord(id, { user_id: userId, position_seconds: position })
+        .upsertPlayRecord(id, { user_id: userId, position_seconds: position }, options?.keepalive ?? false)
         .catch((err) => console.warn('上报播放进度失败', err));
     },
     [id, userId],
@@ -223,7 +228,8 @@ export function PlayerPage() {
   // 页面隐藏（切标签页 / 最小化）和离开页面时补一次上报，避免丢掉最后几秒
   useEffect(() => {
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') reportProgress();
+      // 页面可能马上就没了，用 keepalive 保证这个请求不会被浏览器取消
+      if (document.visibilityState === 'hidden') reportProgress({ keepalive: true });
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', onVisibilityChange);
@@ -251,31 +257,30 @@ export function PlayerPage() {
     if (resumeAppliedRef.current) return;
     resumeAppliedRef.current = true;
 
-    if (id) {
-      try {
-        const record = await api.getPlayRecord(id, userId);
-        const seconds = Math.floor((record.position_ms ?? 0) / 1000);
-        const nearEnd = video.duration > 0 && seconds >= video.duration - FINISHED_THRESHOLD_SECONDS;
-
-        // 上次已经看完（或位置异常）时从头开始
-        if (seconds > 0 && !nearEnd) {
-          video.currentTime = seconds;
-          setCurrentTime(seconds);
-        } else if (nearEnd) {
-          video.currentTime = 0;
-          setCurrentTime(0);
-          reportProgress(0);
-        }
-      } catch {
-        // 没有播放记录是正常情况，忽略
-      }
-    }
-
-    try {
-      await video.play();
-    } catch {
+    // 先开始播放，不要卡在一次 API 往返后面；续播位置等拿到记录再跳
+    void video.play().catch(() => {
       // 自动播放被浏览器拦截：停在第一帧，等用户点击
       setIsPlaying(false);
+    });
+
+    if (!id) return;
+
+    try {
+      const record = await api.getPlayRecord(id, userId);
+      const seconds = Math.floor((record.position_ms ?? 0) / 1000);
+      const nearEnd = video.duration > 0 && seconds >= video.duration - FINISHED_THRESHOLD_SECONDS;
+
+      // 上次已经看完（或位置异常）时从头开始
+      if (seconds > 0 && !nearEnd) {
+        video.currentTime = seconds;
+        setCurrentTime(seconds);
+      } else if (nearEnd) {
+        video.currentTime = 0;
+        setCurrentTime(0);
+        reportProgress({ position: 0 });
+      }
+    } catch {
+      // 没有播放记录是正常情况，忽略
     }
   }, [id, userId, volume, isMuted, playbackRate, reportProgress]);
 
@@ -418,7 +423,7 @@ export function PlayerPage() {
             setShowControls(true);
             const endedPosition = Math.floor(videoRef.current?.duration || 0);
             // 记录到片尾，下次打开按「已看完」从头开始
-            reportProgress(endedPosition);
+            reportProgress({ position: endedPosition });
 
             // 顺便让后端把这条记录标记为已完成
             if (libraryIdRef.current !== null && id) {

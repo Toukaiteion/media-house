@@ -50,6 +50,9 @@ builder.Services.AddScoped<IPublishService, PublishService>();
 // Register event bus (singleton for app-wide event handling)
 builder.Services.AddSingleton<IEventBus, EventBus>();
 
+// 流媒体 / 图片路径缓存（避免每个 range 请求、每张图片都查库）
+builder.Services.AddMemoryCache();
+
 // Register logging level switch for dynamic log level control
 var levelSwitchConfig = new LoggingLevelSwitchConfig();
 builder.Services.AddSingleton(levelSwitchConfig);

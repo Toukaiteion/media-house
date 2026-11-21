@@ -455,11 +455,13 @@ class ApiClient {
 
   /**
    * 创建或更新播放记录
+   * @param keepalive 页面卸载时（关闭标签页/刷新）传 true，否则请求可能被浏览器取消
    */
-  async upsertPlayRecord(mediaId: string | number, dto: PlayRecordDto): Promise<PlayRecord> {
+  async upsertPlayRecord(mediaId: string | number, dto: PlayRecordDto, keepalive = false): Promise<PlayRecord> {
     return this.request<PlayRecord>(`/playrecord/${mediaId}`, {
       method: 'POST',
       body: JSON.stringify(dto),
+      keepalive,
     });
   }
 
