@@ -17,7 +17,7 @@
  */
 
 import { copyFile, mkdir, readdir, rename, stat, unlink, readFile, writeFile } from 'node:fs/promises';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, extname, join, resolve, sep } from 'node:path';
@@ -386,6 +386,20 @@ async function safeMove(from, to) {
   }
 }
 
+/** 目标目录里是否已经有这个番号的视频（扩展名可能和源文件不同） */
+function findExistingVideo(dir, code) {
+  try {
+    const prefix = `${code.toLowerCase()}.`;
+    return (
+      readdirSync(dir).find(
+        (name) => name.toLowerCase().startsWith(prefix) && VIDEO_EXTENSIONS.has(extname(name).toLowerCase()),
+      ) || null
+    );
+  } catch {
+    return null;
+  }
+}
+
 function sleep(ms) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
@@ -506,11 +520,30 @@ async function main() {
     log(`同番号多版本，保留了最大的一份：${detail}`);
   }
 
-  // 已经搜刮过的（输出目录里有同名 nfo）默认跳过，方便反复跑同一批
+  // 只有「元数据」和「视频」都已就位才算完成，否则还得跑一趟
+  // （上一轮可能在写元数据之后才失败，比如移动被安全软件拒了）
+  const alreadyDone = [];
+
   if (!options.force) {
     const before = candidates.length;
-    candidates = candidates.filter((item) => !existsSync(join(outputDir, item.code, `${item.code}.nfo`)));
-    if (before !== candidates.length) log(`跳过已搜刮 ${before - candidates.length} 部（--force 可重做）`);
+    candidates = candidates.filter((item) => {
+      const dir = join(outputDir, item.code);
+      const scraped = existsSync(join(dir, `${item.code}.nfo`));
+      const moved = Boolean(findExistingVideo(dir, item.code));
+      if (scraped && moved) {
+        alreadyDone.push(item);
+        return false;
+      }
+      return true;
+    });
+
+    if (alreadyDone.length > 0) {
+      log(`跳过已完成（元数据 + 视频都已就位）${before - candidates.length} 部（--force 可重做）`);
+
+      // 这些源文件还躺在输入目录里（多半是重复下载的副本），提醒一下免得占空间
+      const leftovers = alreadyDone.slice(0, 5).map((item) => item.path);
+      log(`  对应源文件仍在原地，确认后可手动删除：${leftovers.join('、')}${alreadyDone.length > 5 ? ' …' : ''}`);
+    }
   }
 
   if (options.limit > 0) candidates = candidates.slice(0, options.limit);
@@ -558,12 +591,21 @@ async function main() {
     for (const [index, item] of candidates.entries()) {
       const { code } = item;
       const targetDir = join(outputDir, code);
-      log(`[${index + 1}/${candidates.length}] ${code}  ${item.sizeMb.toFixed(0)} MB`);
+      const scraped = existsSync(join(targetDir, `${code}.nfo`));
+      const existingVideo = findExistingVideo(targetDir, code);
+
+      log(
+        `[${index + 1}/${candidates.length}] ${code}  ${item.sizeMb.toFixed(0)} MB` +
+          `${scraped ? '｜已有元数据' : ''}`,
+      );
 
       try {
         await mkdir(targetDir, { recursive: true });
 
-        if (!options.skipScrape) {
+        // 「要不要搜刮」和「要不要移动」是两件事：
+        // 上一轮可能在写元数据之后才失败（比如移动被拒），
+        // 这时元数据已存在但视频还在原地，不能整条跳过。
+        if (!options.skipScrape && (!scraped || options.force)) {
           const { html, url } = await session.open(code);
           if (isAgeGate(html)) {
             throw Object.assign(new Error('年龄验证页无法自动通过'), { code: 'AGE_GATE' });
@@ -576,13 +618,15 @@ async function main() {
 
           await writeMetadataFiles(meta, code, targetDir, { session, withImages: true, log });
           log(`  元数据完成：${meta.title.slice(0, 40)}`);
+        } else if (scraped && !options.skipScrape) {
+          log('  元数据已存在，跳过搜刮（--force 可重做）');
         }
 
         const targetVideo = join(targetDir, `${code}${item.extension}`);
         if (resolve(item.path).toLowerCase() === targetVideo.toLowerCase()) {
           log('  视频已在目标位置');
-        } else if (existsSync(targetVideo)) {
-          log(`  目标视频已存在，保留源文件：${targetVideo}`);
+        } else if (existingVideo) {
+          log(`  目标目录已有视频 ${existingVideo}，保留源文件`);
         } else {
           let how;
           if (options.move) {
