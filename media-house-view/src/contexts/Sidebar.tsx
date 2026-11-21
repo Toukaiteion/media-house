@@ -3,7 +3,6 @@ import { styled } from "@mui/material/styles";
 import { useLocation, useNavigate } from "react-router-dom";
 import HomeIcon from '@mui/icons-material/Home';
 import MovieIcon from '@mui/icons-material/Movie';
-import TvIcon from '@mui/icons-material/Tv';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import SourceIcon from '@mui/icons-material/Source';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
@@ -48,7 +47,8 @@ export function Sidebar({ open }: SidebarProps) {
     const mediaItems = [
       { title: '首页', path: '/media-center/home', icon: <HomeIcon /> },
       { title: '电影', path: '/media-center/movies', icon: <MovieIcon /> },
-      { title: '电视剧', path: '/media-center/tvshows', icon: <TvIcon /> },
+      // 「电视剧」暂未实现，先下线；恢复时取消注释即可（路由在 App.tsx）
+      // { title: '电视剧', path: '/media-center/tvshows', icon: <TvIcon /> },
       { title: '我的喜欢', path: '/media-center/favorites', icon: <FavoriteIcon /> },
       { title: '标签', path: '/media-center/tags', icon: <LocalOfferIcon /> },
       { title: '演员', path: '/media-center/actors', icon: <PeopleIcon /> },

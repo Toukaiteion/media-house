@@ -375,7 +375,8 @@ export function MediaLibrarySettingsPage() {
               onChange={(e) => setFormData({ ...formData, type: e.target.value as 'Movie' | 'TVShow' })}
             >
               <MenuItem value="Movie">电影</MenuItem>
-              <MenuItem value="TVShow">电视剧</MenuItem>
+              {/* 电视剧暂未实现：置灰而不是删掉，避免编辑已有电视剧库时下拉显示为空 */}
+              <MenuItem value="TVShow" disabled>电视剧（暂未实现）</MenuItem>
             </Select>
           </FormControl>
           <TextField

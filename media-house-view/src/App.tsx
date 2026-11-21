@@ -4,7 +4,8 @@ import { MediaCenter } from './pages/MediaCenter';
 import { OverviewPage } from './pages/MediaCenter/OverviewPage';
 import { MoviesPage } from './pages/MediaCenter/MoviesPage';
 import { MovieDetailPage } from './pages/MediaCenter/MovieDetailPage';
-import { TvShowsPage } from './pages/MediaCenter/TvShowPage';
+// 「电视剧」暂未实现，页面先不引入
+// import { TvShowsPage } from './pages/MediaCenter/TvShowPage';
 import { TagsPage } from './pages/MediaCenter/TagsPage';
 import { ActorsPage } from './pages/MediaCenter/ActorsPage';
 import { FavoritesPage } from './pages/MediaCenter/FavoritesPage';
@@ -38,7 +39,8 @@ function App({ toggleTheme }: AppProps) {
               <Route path="home" element={<OverviewPage />} />
               <Route path="movies" element={<MoviesPage />} />
               <Route path="movies/:id" element={<MovieDetailPage />} />
-              <Route path="tvshows" element={<TvShowsPage />} />
+              {/* 电视剧暂未实现：旧链接直接回电影列表，避免落到 /login */}
+              <Route path="tvshows" element={<Navigate to="/media-center/movies" replace />} />
               <Route path="favorites" element={<FavoritesPage />} />
               <Route path="tags" element={<TagsPage />} />
               <Route path="actors" element={<ActorsPage />} />
