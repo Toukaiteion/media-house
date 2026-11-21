@@ -10,12 +10,16 @@ namespace MediaHouse.Services;
 /// 原来每部影片都要为每个标签、每个演员各查一次库（典型的 N+1），
 /// 全量扫描几千部片会多出几万次查询。这里在扫描开始时一次性载入，
 /// 之后全部走内存查找；只有扫描过程中首次出现的新标签 / 新演员才会写库。
+///
+/// 比较器必须用 OrdinalIgnoreCase：MySQL 的 utf8mb4_0900_ai_ci 唯一索引
+/// 是大小写（和重音）不敏感的，"M女" 和 "m女" 在库里是同一个标签，
+/// 但用 Ordinal 缓存会当成两个，导致第二次插入撞 uk_tag_name。
 /// </summary>
 internal sealed class ScanLookupCache
 {
-    public Dictionary<string, Tag> Tags { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, Tag> Tags { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public Dictionary<string, Staff> Staffs { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, Staff> Staffs { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public static async Task<ScanLookupCache> CreateAsync(MediaHouseDbContext context)
     {

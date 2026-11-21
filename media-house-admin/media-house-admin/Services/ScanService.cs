@@ -918,7 +918,8 @@ public class ScanService(
     {
         var tagNames = tagsString
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.Ordinal);
+            // 大小写不同也算同一个标签，否则会给同一个 Tag 建两条关系
+            .Distinct(StringComparer.OrdinalIgnoreCase);
 
         foreach (var tagName in tagNames)
         {
@@ -943,8 +944,21 @@ public class ScanService(
     /// </summary>
     private async Task<Tag> GetOrCreateTagAsync(MediaHouseDbContext context, string tagName, ScanLookupCache lookup)
     {
+        tagName = tagName.Trim();
+        if (tagName.Length == 0)
+            throw new InvalidOperationException("标签名不能为空");
+
         if (lookup.Tags.TryGetValue(tagName, out var cached))
             return cached;
+
+        // 缓存没命中不代表库里没有：MySQL 的比较是大小写/重音不敏感的，
+        // "M女" 和 "m女" 在库里是同一行。先按列排序规则查一次，避免撞唯一键。
+        var existing = await context.Tags.FirstOrDefaultAsync(t => t.TagName == tagName);
+        if (existing != null)
+        {
+            lookup.Tags[tagName] = existing;
+            return existing;
+        }
 
         _logger.LogInformation("Creating new tag: {TagName}", tagName);
 
@@ -955,7 +969,23 @@ public class ScanService(
         };
 
         context.Tags.Add(tag);
-        await context.SaveChangesAsync(); // 需要拿到自增 Id 才能建关联
+
+        try
+        {
+            await context.SaveChangesAsync(); // 需要拿到自增 Id 才能建关联
+        }
+        catch (DbUpdateException)
+        {
+            // 并发扫描或排序规则差异导致的唯一键冲突：放弃这条插入，改用库里已有的
+            context.Entry(tag).State = EntityState.Detached;
+
+            existing = await context.Tags.AsNoTracking().FirstOrDefaultAsync(t => t.TagName == tagName);
+            if (existing is null) throw;
+
+            _logger.LogWarning("Tag {TagName} 已存在，复用 Id={TagId}", tagName, existing.Id);
+            lookup.Tags[tagName] = existing;
+            return existing;
+        }
 
         lookup.Tags[tagName] = tag;
         return tag;
@@ -971,7 +1001,9 @@ public class ScanService(
         List<string> actorNames,
         ScanLookupCache lookup)
     {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        // 同一个 NFO 里重复出现的演员只建一条关系（大小写不同也算重复：
+        // 库里的唯一约束是大小写不敏感的）
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var sortOrder = 0; sortOrder < actorNames.Count; sortOrder++)
         {
@@ -1005,8 +1037,20 @@ public class ScanService(
     /// </summary>
     private async Task<Staff> GetOrCreateStaffAsync(MediaHouseDbContext context, string staffName, ScanLookupCache lookup)
     {
+        staffName = staffName.Trim();
+        if (staffName.Length == 0)
+            throw new InvalidOperationException("演员名不能为空");
+
         if (lookup.Staffs.TryGetValue(staffName, out var cached))
             return cached;
+
+        // 同标签：MySQL 的比较大小写不敏感，缓存没命中时先确认库里确实没有
+        var existing = await context.Staffs.FirstOrDefaultAsync(s => s.Name == staffName);
+        if (existing != null)
+        {
+            lookup.Staffs[staffName] = existing;
+            return existing;
+        }
 
         _logger.LogInformation("Creating new staff: {StaffName}", staffName);
 
@@ -1018,7 +1062,22 @@ public class ScanService(
         };
 
         context.Staffs.Add(staff);
-        await context.SaveChangesAsync(); // 需要拿到自增 Id 才能建关联
+
+        try
+        {
+            await context.SaveChangesAsync(); // 需要拿到自增 Id 才能建关联
+        }
+        catch (DbUpdateException)
+        {
+            context.Entry(staff).State = EntityState.Detached;
+
+            existing = await context.Staffs.AsNoTracking().FirstOrDefaultAsync(s => s.Name == staffName);
+            if (existing is null) throw;
+
+            _logger.LogWarning("Staff {StaffName} 已存在，复用 Id={StaffId}", staffName, existing.Id);
+            lookup.Staffs[staffName] = existing;
+            return existing;
+        }
 
         lookup.Staffs[staffName] = staff;
         return staff;
