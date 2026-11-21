@@ -420,6 +420,48 @@ node dist\scraper\scan-scraper.mjs G:\迅雷下载 -o F:\迅雷下载\emby_out -
 | **跳过输出目录** | 输出目录在扫描目录内时不会被自己扫到 |
 | **退出码** | 0 全部成功 / 1 有失败 / 2 需要 Cookie / 3 没找到可处理的视频 |
 
+### 报 EPERM 写不进输出目录（面板里跑批量时常见）
+
+在面板里点 jscan，可能看到：
+
+```
+[jscan] 无法写入输出目录：F:\迅雷下载\emby_out
+  (EPERM) 当前进程跑在 Low 完整性级别 —— 浏览器被安全软件"防护/沙箱"限制时就是这样
+```
+
+**这不是工具的问题，是 Windows 的强制完整性控制**：浏览器派生的进程被降到 Low
+完整性级别，而 `F:\迅雷下载\emby_out` 是资源管理器创建的（Medium），
+低级别进程不能往上写。
+
+这也解释了为什么「下载元数据、打包、上传」一直正常：那些文件写在
+`<dist>\scrape-tmp\<runId>\`，是**进程自己创建的**目录，自带 Low 标签，所以能写。
+
+三个办法（任选其一）：
+
+**① 给输出目录降级**（一次搞定居委会，需管理员）
+
+```powershell
+# 管理员 PowerShell；括号必须加引号
+icacls "F:\迅雷下载\emby_out" /setintegritylevel "(OI)(CI)L"
+```
+
+- `(OI)(CI)` = 目录本身 + 所有子目录/文件都继承
+- `L` = Low（可选 `M` / `H` / `S`），把目录标签从 Medium 降到 Low 后，Low 进程就能写
+- 还原：`icacls "F:\迅雷下载\emby_out" /setintegritylevel "(OI)(CI)M"`
+- 代价：Low 级别进程（沙箱里的浏览器）也能改这个目录，保护性略降
+
+**② 用终端跑批量任务**（不需要任何权限改动）
+
+```powershell
+cd tools\browser-scraper
+node dist\scraper\scan-scraper.mjs G:\迅雷下载 -o F:\迅雷下载\emby_out -m 1G -l 3
+```
+
+**③ 安全软件加白**：把 `node.exe` 和 `MediaHouseScraperHost.exe` 加进信任区，
+或关掉安全软件的「浏览器防护 / 文档保护」。
+
+> 单部搜刮（jrender / jfetch）不受影响，它们只写自建的 `scrape-tmp`。
+
 ---
 
 ## 实现细节
