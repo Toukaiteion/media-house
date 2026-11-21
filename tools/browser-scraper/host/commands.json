@@ -262,6 +262,96 @@
       ]
     },
     {
+      "id": "jscan",
+      "name": "jscan 扫描目录批量搜刮（Playwright）",
+      "description": "递归扫描目录，逐部用浏览器搜刮，视频和元数据一起整理进输出目录；不依赖 jcatch / chromedriver",
+      "type": "process",
+      "executable": "node",
+      "args": [
+        "${hostDir}/scraper/scan-scraper.mjs",
+        "${directory}"
+      ],
+      "timeoutSeconds": 14400,
+      "params": [
+        {
+          "key": "directory",
+          "label": "扫描目录",
+          "type": "directory",
+          "required": true,
+          "default": "G:\\迅雷下载",
+          "noArg": true
+        },
+        {
+          "key": "outputDir",
+          "label": "输出目录",
+          "type": "directory",
+          "default": "F:\\迅雷下载\\emby_out",
+          "arg": [
+            "-o",
+            "${value}"
+          ]
+        },
+        {
+          "key": "minSize",
+          "label": "最小大小",
+          "type": "text",
+          "default": "1G",
+          "placeholder": "1G / 500M / 1024(MB)",
+          "arg": [
+            "-m",
+            "${value}"
+          ]
+        },
+        {
+          "key": "limit",
+          "label": "数量上限",
+          "type": "number",
+          "default": "3",
+          "placeholder": "0 = 不限",
+          "arg": [
+            "-l",
+            "${value}"
+          ]
+        },
+        {
+          "key": "dryRun",
+          "label": "只看计划",
+          "type": "boolean",
+          "default": "false",
+          "flagTrue": "--dry-run"
+        },
+        {
+          "key": "headless",
+          "label": "无头模式",
+          "type": "boolean",
+          "default": "true",
+          "flagTrue": "--headless",
+          "flagFalse": "--no-headless"
+        },
+        {
+          "key": "cookie",
+          "label": "Cookie",
+          "type": "text",
+          "placeholder": "留空则读 scraper/cookie.txt",
+          "arg": [
+            "--cookie",
+            "${value}"
+          ]
+        },
+        {
+          "key": "origin",
+          "label": "站点",
+          "type": "text",
+          "default": "https://www.javbus.com",
+          "placeholder": "直连不通可换镜像域名",
+          "arg": [
+            "--origin",
+            "${value}"
+          ]
+        }
+      ]
+    },
+    {
       "id": "jfetch-upload",
       "name": "jfetch 搜刮当前影片并上传（不用浏览器）",
       "description": "纯 HTTP 抓取，不启动 Chrome，单部 1~2 秒。首次需要填一次 Cookie",

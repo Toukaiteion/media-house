@@ -290,8 +290,12 @@ extrafanart/extrafanart-1.jpg
 
 **建议顺序**：jrender → 失败 → jfetch → 再不行 → jcatch。
 
+> 批量整理（扫描目录 → 逐个搜刮 → 移动归档）用 `jscan`，见下面的专门章节；
+> 它是 jsearch 的 Playwright 版，但不需要 chromedriver。
+
 两个 node 脚本共用 `scraper/parse-detail.mjs`（解析 + NFO）和 `scraper/image-ops.mjs`
-（海报裁切），改一处两边生效。
+（海报裁切），改一处两边生效。`scraper/scrape-core.mjs` 是浏览器会话与落盘的共享实现，
+jrender 和 jscan 都跑它。
 
 > **poster 裁切**：javbus 的封面是横向拼图（左边封底、右边正面），所以
 > poster 取**右半**，fanart / thumb 保留整张；本来就是竖版的封面不裁。
@@ -378,6 +382,43 @@ npm install
 
 > 没装 playwright 的话，jfetch 照常能用——只有 jrender 会报
 > 「没有安装 playwright」。
+
+---
+
+## jscan：批量扫描 + 整理（jsearch 的 Playwright 版）
+
+`dist\scraper\scan-scraper.mjs` 干的是 jsearch 的活，但不依赖 jcatch / chromedriver：
+
+1. 递归扫描目录，挑出体积达标的视频（默认 ≥ 1G）
+2. 从文件名解析番号，**会学习前缀**，与 jsearch 共用 `~/.jsearch/prefixes.json`
+3. 逐部用浏览器抓元数据，写进 `<输出>/<番号>/`
+4. 视频改名成 `<番号>.mp4` 一并挪进去（跨盘自动退化成复制 + 删除）
+
+```powershell
+node dist\scraper\scan-scraper.mjs G:\迅雷下载 -o F:\迅雷下载\emby_out -m 1G -l 3
+node dist\scraper\scan-scraper.mjs G:\迅雷下载 -o F:\迅雷下载\emby_out --dry-run      # 只看计划
+node dist\scraper\scan-scraper.mjs G:\迅雷下载 -o F:\迅雷下载\emby_out --skip-scrape  # 只整理不搜刮
+```
+
+产物：
+
+```
+<输出>\SSIS-969\
+├─ SSIS-969.nfo
+├─ SSIS-969-poster.jpg     封面右半（裁过）
+├─ SSIS-969-fanart.jpg     整张
+├─ SSIS-969-thumb.jpg      整张
+├─ SSIS-969.mp4            源视频，改名后移动过来
+└─ extrafanart\extrafanart-1.jpg ...
+```
+
+| 行为 | 说明 |
+|---|---|
+| **幂等** | 输出目录里已有 `<番号>.nfo` 就跳过，同一批反复跑不会重复下载（`--force` 重做） |
+| **多版本** | 同番号只处理体积最大的那份，其余留在原处并在日志里列出 |
+| **限速** | 每部之间随机等 5~10 秒（`--delay 3-6` 可调，测试用 `--delay 0`） |
+| **跳过输出目录** | 输出目录在扫描目录内时不会被自己扫到 |
+| **退出码** | 0 全部成功 / 1 有失败 / 2 需要 Cookie / 3 没找到可处理的视频 |
 
 ---
 
