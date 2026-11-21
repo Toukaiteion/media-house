@@ -7,3 +7,6 @@ scraper/out.json
 scraper/err.txt
 __pycache__/
 *.pyc
+
+# install.ps1 生成的本机注册清单：含本机绝对路径和扩展 ID，换机器就失效
+host-manifest.json

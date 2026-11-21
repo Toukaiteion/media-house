@@ -227,6 +227,15 @@ public class MetadataUpdateService(
         {
             var relativePath = System.IO.Path.GetRelativePath(actualSourceDir, sourceFile);
             var destFile = System.IO.Path.Combine(targetDir, relativePath);
+
+            // 旧版打包工具会把剧照摊平到压缩包根（extrafanart-1.jpg 之类）。
+            // 扫描只从 extrafanart/ 子目录认剧照，这里直接归位，避免上传后剧照丢失。
+            var isRootLevel = !relativePath.Contains('/') && !relativePath.Contains('\\');
+            if (isRootLevel && IsScreenshotFileName(relativePath))
+            {
+                destFile = System.IO.Path.Combine(targetDir, "extrafanart", System.IO.Path.GetFileName(relativePath));
+            }
+
             var destDir = System.IO.Path.GetDirectoryName(destFile);
 
             if (destDir != null && !System.IO.Directory.Exists(destDir))
@@ -238,6 +247,14 @@ public class MetadataUpdateService(
 
             _logger.LogDebug("Copied {RelativePath}", relativePath);
         }
+    }
+
+    /// <summary>文件名是否像剧照（extrafanart-1.jpg、screenshot_2.png 等）</summary>
+    private static bool IsScreenshotFileName(string path)
+    {
+        var name = System.IO.Path.GetFileNameWithoutExtension(path);
+        return name.StartsWith("extrafanart", System.StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("screenshot", System.StringComparison.OrdinalIgnoreCase);
     }
 
     private void CleanUpTempFiles(string? tempZipPath, string? tempExtractDir)

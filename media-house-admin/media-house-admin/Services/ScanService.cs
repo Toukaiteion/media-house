@@ -372,14 +372,36 @@ public class ScanService(
     }
 
     /// <summary>
-    /// 列出 extrafanart 目录下的截图文件（只枚举一次，url_name 交给调用方生成）
+    /// 列出影片目录下的剧照（只枚举一次，url_name 交给调用方生成）。
+    ///
+    /// 正常情况在 extrafanart/ 子目录里；但旧版本的上传工具会把剧照摊平到影片目录根，
+    /// 那种情况也认，否则用户只能重新上传才能找回剧照。
     /// </summary>
-    private static List<string> GetScreenshotFiles(string extrafanartDir)
+    private static List<string> GetScreenshotFiles(string movieDirPath)
     {
-        if (!Directory.Exists(extrafanartDir)) return [];
+        var result = new List<string>();
 
-        return [.. Directory.GetFiles(extrafanartDir)
-            .Where(f => ScreenshotExtensions.Contains(Path.GetExtension(f).ToLower()))];
+        var extrafanartDir = Path.Combine(movieDirPath, "extrafanart");
+        if (Directory.Exists(extrafanartDir))
+        {
+            result.AddRange(Directory.GetFiles(extrafanartDir)
+                .Where(f => ScreenshotExtensions.Contains(Path.GetExtension(f).ToLower())));
+        }
+
+        // 兼容摊平到根目录的旧数据：extrafanart-1.jpg / screenshot-1.jpg 这类
+        result.AddRange(Directory.GetFiles(movieDirPath)
+            .Where(f => ScreenshotExtensions.Contains(Path.GetExtension(f).ToLower()))
+            .Where(IsScreenshotFileName));
+
+        return result;
+    }
+
+    /// <summary>文件名是否像剧照（extrafanart-1.jpg、screenshot_2.png 等）</summary>
+    private static bool IsScreenshotFileName(string path)
+    {
+        var name = Path.GetFileNameWithoutExtension(path);
+        return name.StartsWith("extrafanart", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("screenshot", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -430,8 +452,7 @@ public class ScanService(
         var imageUrlNames = GenerateImageUrlNames(movieDir.FullPath, parseResult);
 
         // 处理 extrafanart 子目录中的截图（只枚举一次，映射和入库共用同一份列表）
-        var extrafanartDir = FindExtrafanartDirectory(movieDir.FullPath);
-        var screenshotPaths = extrafanartDir != null ? GetScreenshotFiles(extrafanartDir) : [];
+        var screenshotPaths = GetScreenshotFiles(movieDir.FullPath);
         var screenshotsPath = string.Join(",", screenshotPaths.Select(MediaUtils.GenerateUrlNameFromPath));
 
         // 使用数据库事务确保所有操作的原子性
