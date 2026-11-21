@@ -15,7 +15,7 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
     {
         // 分页参数兜底：客户端传多大就查多大，等于送了一个拖库接口
         var page = query.Page < 1 ? 1 : query.Page;
-        var pageSize = Math.Clamp(query.PageSize, 1, 200);
+        var pageSize = Math.Clamp(query.PageSize, 1, 500);
         var userId = query.UserId;
 
         var mediaQuery = _context.Medias

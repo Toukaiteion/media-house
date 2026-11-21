@@ -22,8 +22,8 @@ import { MovieFilterBar, type SortByKey, type CardSize } from '../../components/
 import { FilterStatusBar } from '../../components/FilterStatusBar';
 import type { MovieDetail, MovieListParams, Tag, Actor, MediaLibrary } from '../../types';
 
-const PAGE_SIZE_OPTIONS = [30, 50, 100];
-const DEFAULT_PAGE_SIZE = 30;
+const PAGE_SIZE_OPTIONS = [50, 100, 200, 500];
+const DEFAULT_PAGE_SIZE = 100;
 const CARD_SIZE_STORAGE_KEY = 'movies_card_size';
 
 const SORT_KEYS: SortByKey[] = ['default', 'recent', 'mostly_play', 'name', 'release_date', 'create_time'];
@@ -143,6 +143,12 @@ export function MoviesPage() {
   useEffect(() => {
     setSearchValue(queryState.search);
   }, [queryState.search]);
+
+  // 记住当前列表的完整 URL（含分页和筛选），供详情页删除后返回时兜底
+  useEffect(() => {
+    const search = searchParams.toString();
+    movieListCache.saveListUrl(`/media-center/movies${search ? `?${search}` : ''}`);
+  }, [searchParams]);
 
   // ---------------- 查询 ----------------
 
@@ -284,6 +290,14 @@ export function MoviesPage() {
     localStorage.setItem(CARD_SIZE_STORAGE_KEY, size);
   }, []);
 
+  // 删掉最后一页的最后一条后，页码会超出范围，自动退回最后一页，避免停在一个空页上
+  useEffect(() => {
+    if (isLoading || isFetching) return;
+    if (queryState.page > totalPages) {
+      updateParams({ page: totalPages > 1 ? String(totalPages) : null });
+    }
+  }, [isLoading, isFetching, queryState.page, totalPages, updateParams]);
+
   // ---------------- 滚动：隐藏筛选栏 + 记忆位置 ----------------
 
   const handleScroll = useCallback(() => {
@@ -318,9 +332,14 @@ export function MoviesPage() {
     content.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       content.removeEventListener('scroll', handleScroll);
+      // 离开页面前把还没落盘的位置补写一次，否则「滚动后马上点进详情」会丢掉最后一段
       if (scrollSaveTimerRef.current !== null) {
         window.clearTimeout(scrollSaveTimerRef.current);
         scrollSaveTimerRef.current = null;
+        movieListCache.saveUIState({
+          scrollY: lastScrollYRef.current,
+          filterBarVisible: filterBarVisibleRef.current,
+        });
       }
     };
   }, [handleScroll]);

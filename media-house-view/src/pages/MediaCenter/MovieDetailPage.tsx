@@ -17,7 +17,7 @@ import {
   IconButton,
   Divider,
 } from '@mui/material';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   PlayArrow as PlayIcon,
   Delete as DeleteIcon,
@@ -28,6 +28,7 @@ import {
 } from '@mui/icons-material';
 import { api } from '../../services/api';
 import { movieListCache } from '../../services/movieListCache';
+import { useQueryClient } from '@tanstack/react-query';
 import type { MovieDetail } from '../../types';
 import { ImageViewer } from '../../components/ImageViewer';
 import { MetadataUploadDialog } from '../../components/MetadataUploadDialog';
@@ -37,6 +38,8 @@ const POSTER_WIDTH = 300;
 export function MovieDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
   const [movie, setMovie] = useState<MovieDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +120,27 @@ export function MovieDetailPage() {
 
     try {
       await api.deleteMovie(id);
-      navigate('/media-center/movies');
+
+      // 把这条从所有列表缓存里摘掉：返回列表时不会再看到已删除的片子，
+      // 列表高度也不会少一格，滚动位置恢复才准。
+      queryClient.setQueriesData({ queryKey: ['movies'] }, (oldData) => {
+        const data = oldData as { items?: Array<{ id: string }>; total_count?: number } | undefined;
+        if (!data?.items) return oldData;
+        return {
+          ...data,
+          items: data.items.filter((item) => Number(item.id) !== Number(id)),
+          total_count: Math.max(0, (data.total_count ?? 0) - 1),
+        };
+      });
+      void queryClient.invalidateQueries({ queryKey: ['movies'] });
+
+      // 返回列表：优先走浏览器历史（这样分页、筛选、滚动位置都能原样恢复），
+      // 详情页是直接打开、没有上一页时，退回到记录下来的列表 URL。
+      if (location.key !== 'default') {
+        navigate(-1);
+      } else {
+        navigate(movieListCache.loadListUrl() ?? '/media-center/movies');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '删除失败');
       setDeleteDialogOpen(false);

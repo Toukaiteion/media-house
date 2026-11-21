@@ -5,6 +5,7 @@
 
 const NAVIGATION_SOURCE_KEY = 'movies-navigation-source';
 const UI_STATE_KEY = 'movies-ui-state';
+const LIST_URL_KEY = 'movies-list-url';
 
 export interface UIState {
   scrollY: number;
@@ -67,12 +68,37 @@ export class MovieListCache {
   }
 
   /**
+   * 保存列表页当前的完整 URL（含分页和筛选），
+   * 用于从详情页「删除后返回」时还原到原来的列表位置。
+   */
+  saveListUrl(url: string) {
+    try {
+      sessionStorage.setItem(LIST_URL_KEY, url);
+    } catch (err) {
+      console.error('保存列表 URL 失败:', err);
+    }
+  }
+
+  /**
+   * 读取上次列表页的完整 URL
+   */
+  loadListUrl(): string | null {
+    try {
+      return sessionStorage.getItem(LIST_URL_KEY);
+    } catch (err) {
+      console.error('读取列表 URL 失败:', err);
+      return null;
+    }
+  }
+
+  /**
    * 清除所有缓存
    */
   clear() {
     try {
       sessionStorage.removeItem(NAVIGATION_SOURCE_KEY);
       sessionStorage.removeItem(UI_STATE_KEY);
+      sessionStorage.removeItem(LIST_URL_KEY);
     } catch (err) {
       console.error('清除缓存失败:', err);
     }
