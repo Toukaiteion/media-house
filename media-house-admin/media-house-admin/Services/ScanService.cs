@@ -394,7 +394,9 @@ public class ScanService(
     {
         _logger.LogInformation("Processing movie directory: {DirName}", movieDir.Name);
 
-        if (FindVideoFile(movieDir.Files) == null)
+        // videoFile 是完整路径（files 里存的就是全路径）
+        var videoFile = FindVideoFile(movieDir.Files);
+        if (videoFile == null)
         {
             _logger.LogWarning("No video file found in {DirPath}", movieDir.FullPath);
             return null;
@@ -404,11 +406,11 @@ public class ScanService(
         var nfoFile = FindNfoFile(movieDir.Files);
         var parseResult = nfoFile != null ? await _metadataService.ParseNfoFileFullAsync(nfoFile) : null;
 
-        // 使用解析结果中的 Num 作为唯一标识符，如果没有则使用目录名
+        // 番号只作为显示名；真正的身份是视频文件路径 —— 同一番号可以有多个目录（多版本）
         var movieIdentifier = parseResult?.Num ?? movieDir.Name;
 
         // 处理所有相关实体
-        return await ProcessMediaItemAsync(context, libraryId, movieDir, movieIdentifier, parseResult, log, lookup);
+        return await ProcessMediaItemAsync(context, libraryId, movieDir, videoFile, movieIdentifier, parseResult, log, lookup);
     }
 
     /// <summary>
@@ -418,6 +420,7 @@ public class ScanService(
         MediaHouseDbContext context,
         int libraryId,
         MovieDirectory movieDir,
+        string videoFullPath,
         string movieIdentifier,
         NfoParseResult? parseResult,
         SystemSyncLog? log,
@@ -437,7 +440,7 @@ public class ScanService(
         try
         {
             // 1. 创建或更新 MediaItem (medias 表)
-            var mediaItem = await UpsertMediaItemAsync(context, libraryId, movieIdentifier, movieDir.Name, parseResult, imageUrlNames, log);
+            var mediaItem = await UpsertMediaItemAsync(context, libraryId, movieIdentifier, movieDir.Name, videoFullPath, parseResult, imageUrlNames, log);
 
             // 2. 创建或更新 Movie 并关联到 MediaItem (movies 表)
             //    新增/更新计数只在 UpsertMediaItemAsync 里加一次，这里不再重复计数（否则一部片算两次）
@@ -544,12 +547,17 @@ public class ScanService(
         int libraryId,
         string movieIdentifier,
         string movieDirName,
+        string videoFullPath,
         NfoParseResult? parseResult,
         Dictionary<string, string> imageUrlNames,
         SystemSyncLog? log)
     {
+        // 身份 = 视频文件路径（media_files.path 本身就有唯一索引）。
+        // 这样同一个番号的多个目录会各自成为一条记录，正好承载「一部片多个版本」；
+        // 用番号做身份的话它们会互相覆盖，只剩最后扫到的一份。
         var existingItem = await context.Medias
-            .FirstOrDefaultAsync(m => m.LibraryId == libraryId && m.Name == movieIdentifier);
+            .FirstOrDefaultAsync(m => m.LibraryId == libraryId
+                && m.MediaFiles.Any(mf => mf.Path == videoFullPath));
 
         Media mediaItem;
         if (existingItem == null)
@@ -633,10 +641,10 @@ public class ScanService(
         string movieIdentifier,
         NfoParseResult? parseResult,
         string? screenshotsPath)
-    {        // 注意：必须带 LibraryId 过滤。只按 Num 找会把别的媒体库里的同番号影片“抢”过来，
-        // 两个库有同一部片时，后扫描的库会直接把前一个库的记录改挂到自己身上。
+    {        // 按 MediaId 找：同一番号可能有多个版本（多个目录），
+        // 用 Num 做查找键会把不同版本互相覆盖。
         var existingMovie = await context.Movies
-            .FirstOrDefaultAsync(m => m.Num == movieIdentifier && m.LibraryId == libraryId);
+            .FirstOrDefaultAsync(m => m.MediaId == mediaItemId && m.LibraryId == libraryId);
 
         Movie movie;
         if (existingMovie == null)
@@ -1294,22 +1302,64 @@ public class ScanService(
                 .Where(f => missingIds.Contains(f.MediaId))
                 .ExecuteDeleteAsync();
 
-            context.Medias.RemoveRange(missing);
-            await context.SaveChangesAsync();
+            // 其余关联表也显式用 SQL 删，不依赖数据库级联
+            await context.MediaImgs.Where(i => missingIds.Contains(i.MediaId)).ExecuteDeleteAsync();
+            await context.MediaFiles.Where(f => missingIds.Contains(f.MediaId)).ExecuteDeleteAsync();
+            await context.Movies.Where(m => missingIds.Contains(m.MediaId)).ExecuteDeleteAsync();
 
-            log.DeletedCount = (log.DeletedCount ?? 0) + missing.Count;
+            // 媒体本体同样用 SQL 删。
+            // 之前是 RemoveRange + SaveChanges，走跟踪器：本次扫描处理过的实体还挂在
+            // 跟踪器里，但对应的行可能已经被上面的 SQL 删掉了，EF 拿着旧状态去
+            // DELETE/UPDATE 就会撞 "expected to affect 1 row(s), but actually affected 0"。
+            var removedMedia = await context.Medias
+                .Where(m => missingIds.Contains(m.Id))
+                .ExecuteDeleteAsync();
+
+            // 上面绕过了跟踪器，把这些实体摘掉，免得后面的 SaveChanges 再碰它们
+            DetachMissingMediaEntities(context, missingIds);
+
+            log.DeletedCount = (log.DeletedCount ?? 0) + removedMedia;
 
             _logger.LogInformation(
                 "清理媒体库 {LibraryId}: 媒体 {MediaCount} 条、播放记录 {PlayCount} 条、收藏 {FavorCount} 条",
-                libraryId, missing.Count, removedPlayRecords, removedFavors);
+                libraryId, removedMedia, removedPlayRecords, removedFavors);
 
-            return missing.Count;
+            return removedMedia;
         }
         catch (Exception ex)
         {
             // 清理失败不影响本次扫描结果，记录下来下次再说
             _logger.LogError(ex, "清理媒体库 {LibraryId} 的失效媒体时出错", libraryId);
             return 0;
+        }
+    }
+
+    /// <summary>
+    /// 清理用的 SQL 删除绕过了跟踪器，把这些实体从上下文里摘掉，
+    /// 避免后续 SaveChanges 拿着已经失效的状态再操作它们。
+    /// </summary>
+    private static void DetachMissingMediaEntities(MediaHouseDbContext context, List<int> missingIds)
+    {
+        var ids = missingIds.ToHashSet();
+
+        foreach (var entry in context.ChangeTracker.Entries<Media>().ToList())
+        {
+            if (ids.Contains(entry.Entity.Id)) entry.State = EntityState.Detached;
+        }
+
+        foreach (var entry in context.ChangeTracker.Entries<MediaFile>().ToList())
+        {
+            if (ids.Contains(entry.Entity.MediaId)) entry.State = EntityState.Detached;
+        }
+
+        foreach (var entry in context.ChangeTracker.Entries<MediaImgs>().ToList())
+        {
+            if (ids.Contains(entry.Entity.MediaId)) entry.State = EntityState.Detached;
+        }
+
+        foreach (var entry in context.ChangeTracker.Entries<Movie>().ToList())
+        {
+            if (ids.Contains(entry.Entity.MediaId)) entry.State = EntityState.Detached;
         }
     }
 
