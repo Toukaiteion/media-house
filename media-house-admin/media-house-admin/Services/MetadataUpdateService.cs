@@ -222,6 +222,29 @@ public class MetadataUpdateService(
             ? System.IO.Directory.GetDirectories(sourceDir).First()
             : sourceDir;
 
+        // 先把影片目录里已有的 nfo 全部删掉（前提是这次上传确实带了 nfo）。
+        // Linux 上大小写敏感：目录里若有 SSIS-778.nfo，而这次上传的文件名是按视频名
+        // 生成的 ssis-778.nfo，两份会同时存在，扫描时可能读到旧的那份（元数据看起来没更新）。
+        var hasIncomingNfo = System.IO.Directory
+            .GetFiles(actualSourceDir, "*.nfo", System.IO.SearchOption.AllDirectories)
+            .Length > 0;
+
+        if (hasIncomingNfo)
+        {
+            try
+            {
+                foreach (var oldNfo in System.IO.Directory.GetFiles(targetDir, "*.nfo"))
+                {
+                    System.IO.File.Delete(oldNfo);
+                    _logger.LogInformation("删除旧 NFO: {Path}", oldNfo);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogWarning(ex, "清理旧 NFO 失败: {Dir}", targetDir);
+            }
+        }
+
         // 复制所有文件（包括视频文件，允许覆盖）
         foreach (var sourceFile in System.IO.Directory.GetFiles(actualSourceDir, "*", System.IO.SearchOption.AllDirectories))
         {
@@ -241,6 +264,25 @@ public class MetadataUpdateService(
             if (destDir != null && !System.IO.Directory.Exists(destDir))
             {
                 System.IO.Directory.CreateDirectory(destDir);
+            }
+
+            // Linux 上大小写敏感：目录里可能已有 ssis-778-poster.jpg，而这次带的是
+            // SSIS-778-poster.jpg。直接复制会变成两个文件，旧的那张永远留着当垃圾。
+            // 先删掉仅大小写不同的同名文件。
+            if (destDir != null && System.IO.Directory.Exists(destDir))
+            {
+                var destName = System.IO.Path.GetFileName(destFile);
+                foreach (var existing in System.IO.Directory.GetFiles(destDir))
+                {
+                    if (string.Equals(System.IO.Path.GetFileName(existing), destName, System.StringComparison.Ordinal)
+                        || !string.Equals(System.IO.Path.GetFileName(existing), destName, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    System.IO.File.Delete(existing);
+                    _logger.LogInformation("删除仅大小写不同的旧文件: {Path}", existing);
+                }
             }
 
             System.IO.File.Copy(sourceFile, destFile, true);

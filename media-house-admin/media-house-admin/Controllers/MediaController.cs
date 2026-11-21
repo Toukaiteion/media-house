@@ -128,8 +128,10 @@ public class MediaController(
             var fileInfo = new System.IO.FileInfo(imagePath);
             var etag = new EntityTagHeaderValue($"\"{fileInfo.Length:x}-{fileInfo.LastWriteTimeUtc.Ticks:x}\"");
 
-            // 图片 30 天强缓存
-            Response.Headers.CacheControl = "public, max-age=2592000";
+            // 图片缓存 1 小时：之前是 30 天，重新搜刮换了图之后用户要等一个月才能看到，
+            // 而且一旦浏览器缓存到坏响应（下载中断、代理错误页），一个月内都不会自愈。
+            // 配合下面的 ETag，过期后只是一次 304 协商，几乎没开销。
+            Response.Headers.CacheControl = "public, max-age=3600";
 
             // 浏览器带着同一个 ETag 回来时直接 304，不传内容也不占带宽
             var ifNoneMatch = Request.Headers.IfNoneMatch.ToString();

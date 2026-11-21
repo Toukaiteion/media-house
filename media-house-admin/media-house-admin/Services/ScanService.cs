@@ -376,6 +376,7 @@ public class ScanService(
     ///
     /// 正常情况在 extrafanart/ 子目录里；但旧版本的上传工具会把剧照摊平到影片目录根，
     /// 那种情况也认，否则用户只能重新上传才能找回剧照。
+    /// 小于 2KB 的跳过：那是下载失败留下的残图，登记进来只会显示成坏图。
     /// </summary>
     private static List<string> GetScreenshotFiles(string movieDirPath)
     {
@@ -393,7 +394,22 @@ public class ScanService(
             .Where(f => ScreenshotExtensions.Contains(Path.GetExtension(f).ToLower()))
             .Where(IsScreenshotFileName));
 
-        return result;
+        return [.. result.Where(f => IsUsableImage(f))];
+    }
+
+    /// <summary>小于 2KB 的图片基本是下载失败的残图（真实剧照通常几十 KB）</summary>
+    private const long MinImageBytes = 2048;
+
+    private static bool IsUsableImage(string path)
+    {
+        try
+        {
+            return new FileInfo(path).Length >= MinImageBytes;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>文件名是否像剧照（extrafanart-1.jpg、screenshot_2.png 等）</summary>
@@ -532,6 +548,34 @@ public class ScanService(
     }
 
     /// <summary>
+    /// 在影片目录里找 NFO 里引用的图片文件。
+    ///
+    /// Linux 文件系统大小写敏感：NFO 里写的是 SSIS-778-poster.jpg，实际文件可能叫
+    /// ssis-778-poster.jpg（或者反过来）。精确匹配失败时再做一次大小写不敏感查找，
+    /// 否则封面/缩略图会被静默跳过。
+    /// </summary>
+    private static string? ResolveExistingImagePath(string movieDirPath, string relativePath)
+    {
+        var fullPath = Path.Combine(movieDirPath, relativePath);
+        if (File.Exists(fullPath)) return fullPath;
+
+        var parent = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrEmpty(parent) || !Directory.Exists(parent)) return null;
+
+        var fileName = Path.GetFileName(fullPath);
+
+        try
+        {
+            return Directory.EnumerateFiles(parent)
+                .FirstOrDefault(f => string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// 生成图片 url_name 映射
     /// 格式：{hash}.{extension}
     /// </summary>
@@ -549,9 +593,12 @@ public class ScanService(
             if (!parseResult.ImagePaths.TryGetValue(imageType, out var imagePath) || string.IsNullOrEmpty(imagePath))
                 continue;
 
-            var fullPath = Path.Combine(movieDirPath, imagePath);
-            if (!File.Exists(fullPath))
+            var fullPath = ResolveExistingImagePath(movieDirPath, imagePath);
+            if (fullPath == null)
+            {
+                _logger.LogDebug("NFO 引用的图片不存在: {ImagePath}", imagePath);
                 continue;
+            }
 
             var urlName = MediaUtils.GenerateUrlNameFromPath(fullPath);
             imageUrlNames[imageType] = urlName;
@@ -824,10 +871,11 @@ public class ScanService(
             if (!parseResult.ImagePaths.TryGetValue(imageType, out var imagePath) || string.IsNullOrEmpty(imagePath))
                 continue;
 
-            var fullPath = Path.Combine(movieDir.FullPath, imagePath);
-            if (!File.Exists(fullPath))
+            // 大小写不敏感地找文件：NFO 里的名字和实际文件名可能大小写不一致
+            var fullPath = ResolveExistingImagePath(movieDir.FullPath, imagePath);
+            if (fullPath == null)
             {
-                _logger.LogWarning("Image file not found: {FilePath}", fullPath);
+                _logger.LogWarning("Image file not found: {FileName}", imagePath);
                 continue;
             }
 
@@ -972,6 +1020,16 @@ public class ScanService(
         {
             if (!File.Exists(image.Path))
             {
+                context.MediaImgs.Remove(image);
+                continue;
+            }
+
+            // 文件还在但是残图（下载中断留下的几百字节文件）：这种以前登记过，
+            // 光靠「文件存在」判断清不掉，接口会一直返回一张打不开的图。
+            if (string.Equals(image.Type, "screenshot", StringComparison.OrdinalIgnoreCase)
+                && !IsUsableImage(image.Path))
+            {
+                _logger.LogInformation("删除残图记录: {Path}", image.Path);
                 context.MediaImgs.Remove(image);
             }
         }
