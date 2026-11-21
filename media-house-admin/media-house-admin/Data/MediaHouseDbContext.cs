@@ -24,6 +24,8 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
     public DbSet<UploadTask> UploadTasks { get; set; }
     public DbSet<UploadFolder> UploadFolders { get; set; }
     public DbSet<StagingMedia> StagingMedias { get; set; }
+    public DbSet<FavoriteStaff> FavoriteStaffs { get; set; }
+    public DbSet<FavoriteTag> FavoriteTags { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -240,6 +242,21 @@ public class MediaHouseDbContext(DbContextOptions<MediaHouseDbContext> options) 
             .WithMany(uf => uf.Files)
             .HasForeignKey(ut => ut.FolderId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // 演员 / 标签收藏：同一用户对同一个对象只能有一条记录
+        modelBuilder.Entity<FavoriteStaff>()
+            .HasIndex(f => new { f.UserId, f.StaffId })
+            .IsUnique();
+
+        modelBuilder.Entity<FavoriteStaff>()
+            .HasIndex(f => f.StaffId);
+
+        modelBuilder.Entity<FavoriteTag>()
+            .HasIndex(f => new { f.UserId, f.TagId })
+            .IsUnique();
+
+        modelBuilder.Entity<FavoriteTag>()
+            .HasIndex(f => f.TagId);
 
     }
 }

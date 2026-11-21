@@ -2,13 +2,15 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Box,
   Typography,
+  Chip,
   styled,
 } from '@mui/material';
 import { ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon } from '@mui/icons-material';
 import { api } from '../../services/api';
 import { OverviewLibraryCard } from '../../components/OverviewLibraryCard';
 import { OverviewMovieCard } from '../../components/OverviewMovieCard';
-import type { MediaLibrary, MovieDetail, TagRecommendation, ActorRecommendation } from '../../types';
+import type { MediaLibrary, MovieDetail, TagRecommendation, ActorRecommendation, Tag } from '../../types';
+import { useNavigate } from 'react-router-dom';
 
 const ScrollContainer = styled(Box)({
   display: 'flex',
@@ -32,6 +34,50 @@ const ScrollContainer = styled(Box)({
 interface SectionProps {
   title: string;
   children: React.ReactNode;
+}
+
+interface ScrollButtonProps {
+  direction: 'left' | 'right';
+  onClick: () => void;
+  ariaLabel: string;
+  height: number;
+  visible: boolean;
+}
+
+// 定义在组件外部：写在 render 里的组件每次渲染都会重建，导致内部 state 被重置
+function ScrollButton({ direction, onClick, ariaLabel, height, visible }: ScrollButtonProps) {
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        position: 'absolute',
+        left: direction === 'left' ? 0 : 'auto',
+        right: direction === 'right' ? 0 : 'auto',
+        borderRadius: '10px',
+        top: 0,
+        height,
+        width: 66,
+        bgcolor: 'rgba(0, 0, 0, 0.2)',
+        opacity: visible ? 1 : 0,
+        transition: 'opacity 0.2s ease-in-out, height 0.2s ease-in-out',
+        zIndex: 20,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        '&:hover': {
+          bgcolor: 'rgba(0, 0, 0, 0.3)',
+        },
+      }}
+      aria-label={ariaLabel}
+    >
+      {direction === 'left' ? (
+        <ChevronLeftIcon sx={{ color: 'white' }} />
+      ) : (
+        <ChevronRightIcon sx={{ color: 'white' }} />
+      )}
+    </Box>
+  );
 }
 
 function Section({ title, children }: SectionProps) {
@@ -81,38 +127,6 @@ function Section({ title, children }: SectionProps) {
     }
   };
 
-  const ScrollButton = ({ direction, onClick, ariaLabel }: { direction: 'left' | 'right', onClick: () => void, ariaLabel: string }) => (
-    <Box
-      onClick={onClick}
-      sx={{
-        position: 'absolute',
-        left: direction === 'left' ? 0 : 'auto',
-        right: direction === 'right' ? 0 : 'auto',
-        borderRadius: '10px',
-        top: 0,
-        height: containerHeight,
-        width: 66,
-        bgcolor: 'rgba(0, 0, 0, 0.2)',
-        opacity: hovered ? 1 : 0,
-        transition: 'opacity 0.2s ease-in-out, height 0.2s ease-in-out',
-        zIndex: 20,
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        '&:hover': {
-          bgcolor: 'rgba(0, 0, 0, 0.3)',
-        },
-      }}
-      aria-label={ariaLabel}
-    >
-      {direction === 'left' ? (
-        <ChevronLeftIcon sx={{ color: 'white' }} />
-      ) : (
-        <ChevronRightIcon sx={{ color: 'white' }} />
-      )}
-    </Box>
-  );
 
   return (
     <Box
@@ -130,6 +144,8 @@ function Section({ title, children }: SectionProps) {
             direction="left"
             onClick={handleScrollLeft}
             ariaLabel="向左滚动"
+            height={containerHeight}
+            visible={hovered}
           />
         )}
 
@@ -142,6 +158,8 @@ function Section({ title, children }: SectionProps) {
             direction="right"
             onClick={handleScrollRight}
             ariaLabel="向右滚动"
+            height={containerHeight}
+            visible={hovered}
           />
         )}
       </Box>
@@ -155,6 +173,8 @@ export function OverviewPage() {
   const [recentlyUpdated, setRecentlyUpdated] = useState<MovieDetail[]>([]);
   const [tagRecommendations, setTagRecommendations] = useState<TagRecommendation[]>([]);
   const [actorRecommendations, setActorRecommendations] = useState<ActorRecommendation[]>([]);
+  const [favoriteTags, setFavoriteTags] = useState<Tag[]>([]);
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -213,18 +233,31 @@ export function OverviewPage() {
     }
   };
 
+  const loadFavoriteTags = async () => {
+    try {
+      const data = await api.getTags(1, 20, true);
+      setFavoriteTags(data.tags);
+    } catch (err) {
+      console.error('Failed to load favorite tags:', err);
+    }
+  };
+
+  /* eslint-disable react-hooks/set-state-in-effect --
+     首屏数据在挂载时并发拉取，各个 loader 里的 setState 都在 await 之后执行，
+     属于异步回调而不是同步 setState；这条规则对 async 函数的分析过于保守。 */
   useEffect(() => {
-    setLoading(true);
     Promise.all([
       loadLibraries(),
       loadRecentlyPlayed(),
       loadRecentlyUpdated(),
       loadTagRecommendations(),
       loadActorRecommendations(),
+      loadFavoriteTags(),
     ]).finally(() => {
       setLoading(false);
     });
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (loading) {
     return (
@@ -249,6 +282,26 @@ export function OverviewPage() {
           <OverviewLibraryCard key={library.id} library={library} />
         ))}
       </Section>
+
+      {favoriteTags.length > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" fontWeight={600} gutterBottom>
+            我喜欢的标签
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {favoriteTags.map((tag) => (
+              <Chip
+                key={tag.id}
+                label={`${tag.tag_name}${tag.media_count ? ` · ${tag.media_count}` : ''}`}
+                onClick={() => navigate(`/media-center/movies?tag_ids=${tag.id}`)}
+                clickable
+                color="primary"
+                variant="outlined"
+              />
+            ))}
+          </Box>
+        </Box>
+      )}
 
       <Section title="最近播放">
         {recentlyPlayed.map((movie: MovieDetail) => (

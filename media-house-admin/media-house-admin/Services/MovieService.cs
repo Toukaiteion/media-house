@@ -260,26 +260,38 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
             .Select(f => f.MediaId)
             .ToListAsync();
 
-        if (favoriteMediaIds.Count == 0)
+        // 优先用「收藏的标签」当推荐种子；没收藏过标签时，才退回「从收藏影片反推高频标签」
+        var seedTagIds = userId.HasValue
+            ? await _context.FavoriteTags
+                .Where(f => f.UserId == userId.Value)
+                .OrderByDescending(f => f.CreateTime)
+                .Select(f => f.TagId)
+                .Take(query.TagNum)
+                .ToListAsync()
+            : [];
+
+        if (seedTagIds.Count == 0)
+        {
+            if (favoriteMediaIds.Count == 0)
+            {
+                return [];
+            }
+
+            seedTagIds = await _context.MediaTags
+                .Where(mt => favoriteMediaIds.Contains(mt.MediaId))
+                .GroupBy(mt => mt.TagId)
+                .Select(g => new { TagId = g.Key, Count = g.Count() })
+                .OrderByDescending(g => g.Count)
+                .Take(query.TagNum)
+                .Select(g => g.TagId)
+                .ToListAsync();
+        }
+
+        if (seedTagIds.Count == 0)
         {
             return [];
         }
 
-        // Get all tags from favorite movies with their frequency
-        var tagsByFrequency = await _context.MediaTags
-            .Where(mt => favoriteMediaIds.Contains(mt.MediaId))
-            .GroupBy(mt => mt.TagId)
-            .Select(g => new { TagId = g.Key, Count = g.Count() })
-            .OrderByDescending(g => g.Count)
-            .Take(query.TagNum)
-            .ToListAsync();
-
-        if (tagsByFrequency.Count == 0)
-        {
-            return [];
-        }
-
-        var topTagIds = tagsByFrequency.Select(t => t.TagId).ToList();
         var result = new List<TagWithMoviesDto>();
 
         // Get favorited media IDs for IsFavorited property
@@ -287,19 +299,19 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
 
         // Get tag information for all top tags
         var tags = await _context.Tags
-            .Where(t => topTagIds.Contains(t.Id))
+            .Where(t => seedTagIds.Contains(t.Id))
             .ToListAsync();
 
         // For each top tag, query movies
-        foreach (var tagInfo in tagsByFrequency)
+        foreach (var tagId in seedTagIds)
         {
-            var tag = tags.FirstOrDefault(t => t.Id == tagInfo.TagId);
+            var tag = tags.FirstOrDefault(t => t.Id == tagId);
             if (tag == null) continue;
 
             IQueryable<Media> moviesQuery = _context.Medias
                 .Include(m => m.Movie)
                 .Where(m => m.Type == "movie")
-                .Where(m => m.MediaTags.Any(mt => mt.TagId == tagInfo.TagId));
+                .Where(m => m.MediaTags.Any(mt => mt.TagId == tagId));
 
             // Apply ordering based on MediaSearchType
             if (query.MediaSearchType.ToLower() == "create_time")
@@ -320,7 +332,7 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
 
             // Get total media count for this tag
             var totalMediaCount = await _context.MediaTags
-                .Where(mt => mt.TagId == tagInfo.TagId)
+                .Where(mt => mt.TagId == tagId)
                 .CountAsync();
 
             result.Add(new TagWithMoviesDto
@@ -343,28 +355,40 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
             .Select(f => f.MediaId)
             .ToListAsync();
 
-        if (favoriteMediaIds.Count == 0)
+        // 优先用「收藏的演员」当推荐种子；没收藏过演员时，才退回「从收藏影片反推高频演员」
+        var seedStaffIds = userId.HasValue
+            ? await _context.FavoriteStaffs
+                .Where(f => f.UserId == userId.Value)
+                .OrderByDescending(f => f.CreateTime)
+                .Select(f => f.StaffId)
+                .Take(query.TagNum)
+                .ToListAsync()
+            : [];
+
+        if (seedStaffIds.Count == 0)
+        {
+            if (favoriteMediaIds.Count == 0)
+            {
+                return [];
+            }
+
+            seedStaffIds = await _context.MediaStaffs
+                .Where(ms => favoriteMediaIds.Contains(ms.MediaId) &&
+                            ms.MediaType == "movie" &&
+                            ms.RoleType.ToLower() == "actor")
+                .GroupBy(ms => ms.StaffId)
+                .Select(g => new { StaffId = g.Key, Count = g.Count() })
+                .OrderByDescending(g => g.Count)
+                .Take(query.TagNum)
+                .Select(g => g.StaffId)
+                .ToListAsync();
+        }
+
+        if (seedStaffIds.Count == 0)
         {
             return [];
         }
 
-        // Get all actors (staff with RoleType == "actor") from favorite movies with their frequency
-        var actorsByFrequency = await _context.MediaStaffs
-            .Where(ms => favoriteMediaIds.Contains(ms.MediaId) &&
-                        ms.MediaType == "movie" &&
-                        ms.RoleType.ToLower() == "actor")
-            .GroupBy(ms => ms.StaffId)
-            .Select(g => new { StaffId = g.Key, Count = g.Count() })
-            .OrderByDescending(g => g.Count)
-            .Take(query.TagNum)
-            .ToListAsync();
-
-        if (actorsByFrequency.Count == 0)
-        {
-            return [];
-        }
-
-        var topStaffIds = actorsByFrequency.Select(a => a.StaffId).ToList();
         var result = new List<ActorWithMoviesDto>();
 
         // Get favorited media IDs for IsFavorited property
@@ -372,20 +396,20 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
 
         // Get staff information for all top staff
         var staffs = await _context.Staffs
-            .Where(s => topStaffIds.Contains(s.Id))
+            .Where(s => seedStaffIds.Contains(s.Id))
             .ToListAsync();
 
         // For each top actor, query movies
-        foreach (var actorInfo in actorsByFrequency)
+        foreach (var staffId in seedStaffIds)
         {
-            var staff = staffs.FirstOrDefault(s => s.Id == actorInfo.StaffId);
+            var staff = staffs.FirstOrDefault(s => s.Id == staffId);
             if (staff == null) continue;
 
             IQueryable<Media> moviesQuery = _context.Medias
                 .Include(m => m.Movie)
                 .Where(m => m.Type == "movie")
                 .Where(m => m.MediaStaffs.Any(ms =>
-                    ms.StaffId == actorInfo.StaffId &&
+                    ms.StaffId == staffId &&
                     ms.MediaType == "movie" &&
                     ms.RoleType.ToLower() == "actor"));
 
@@ -408,7 +432,7 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
 
             // Get total media count for this staff as actor
             var totalMediaCount = await _context.MediaStaffs
-                .Where(ms => ms.StaffId == actorInfo.StaffId &&
+                .Where(ms => ms.StaffId == staffId &&
                             ms.MediaType == "movie" &&
                             ms.RoleType.ToLower() == "actor")
                 .CountAsync();

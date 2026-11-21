@@ -1,205 +1,225 @@
-import { useState, useEffect, useRef } from 'react';
-import {
-  Box,
-  Typography,
-  Grid,
-  CircularProgress,
-  Alert,
-} from '@mui/material';
+import { useState, useEffect, useCallback } from 'react';
+import { Box, Typography, Grid, CircularProgress, Alert, Tabs, Tab, Button } from '@mui/material';
+import FavoriteIcon from '@mui/icons-material/Favorite';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
 import { MovieCard } from '../../components/MovieCard';
-import type { MovieDetail } from '../../types';
+import { InfoCard } from '../../components/InfoCard';
+import type { MovieDetail, Tag, Actor } from '../../types';
 
-const PAGE_SIZE = 18;
-const USER_ID = 1; // TODO: 从用户上下文获取
+type FavoritesTab = 'movies' | 'actors' | 'tags';
+
+const PAGE_SIZE = 100;
+const TAB_KEYS: FavoritesTab[] = ['movies', 'actors', 'tags'];
 
 export function FavoritesPage() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const tabParam = searchParams.get('tab') as FavoritesTab | null;
+  const tab: FavoritesTab = tabParam && TAB_KEYS.includes(tabParam) ? tabParam : 'movies';
+
   const [movies, setMovies] = useState<MovieDetail[]>([]);
+  const [actors, setActors] = useState<Actor[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
 
-  // 滚动相关引用
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  // 加载收藏电影列表
-  const loadMovies = async (reset = false) => {
+  // 收藏数量通常不大，直接把全部分页拉完，省掉翻页交互
+  const loadAll = useCallback(async () => {
     try {
+      setLoading(true);
       setError(null);
-      const params = {
-        page,
-        pageSize: PAGE_SIZE,
-        favor: true,
-        userId: USER_ID,
-      };
-      const data = await api.getMoviesWithParams(params);
 
-      if (reset) {
-        setMovies(data.items);
-      } else {
-        setMovies((prev) => [...prev, ...data.items]);
-      }
-      setTotal(data.total_count);
+      const collect = async <T,>(
+        fetchPage: (page: number, pageSize: number) => Promise<{ items: T[]; total: number }>,
+      ): Promise<T[]> => {
+        let all: T[] = [];
+        let page = 1;
+        let hasMore = true;
+        while (hasMore) {
+          const { items, total } = await fetchPage(page, PAGE_SIZE);
+          all = [...all, ...items];
+          hasMore = items.length > 0 && all.length < total;
+          page++;
+        }
+        return all;
+      };
+
+      const [favoriteMovies, favoriteActors, favoriteTags] = await Promise.all([
+        collect<MovieDetail>(async (page, pageSize) => {
+          const data = await api.getMoviesWithParams({ page, pageSize, favor: true });
+          return { items: data.items, total: data.total_count };
+        }),
+        collect<Actor>(async (page, pageSize) => {
+          const data = await api.getActors(page, pageSize, true);
+          return { items: data.actors, total: data.total_count };
+        }),
+        collect<Tag>(async (page, pageSize) => {
+          const data = await api.getTags(page, pageSize, true);
+          return { items: data.tags, total: data.total_count };
+        }),
+      ]);
+
+      setMovies(favoriteMovies);
+      setActors(favoriteActors);
+      setTags(favoriteTags);
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
     } finally {
       setLoading(false);
     }
-  };
-
-  // 初始化加载
-  useEffect(() => {
-    setPage(1);
-    setLoading(true);
-    loadMovies(true);
   }, []);
 
-  // 无限滚动 - Intersection Observer
   useEffect(() => {
-    const element = loadMoreRef.current;
-    if (!element) return;
+    void loadAll();
+  }, [loadAll]);
 
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !loading && movies.length < total) {
-          setPage((prev) => prev + 1);
-        }
-      },
-      { threshold: 0.1 }
-    );
+  const switchTab = (_: React.SyntheticEvent, value: FavoritesTab) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === 'movies') next.delete('tab');
+    else next.set('tab', value);
+    setSearchParams(next, { replace: true });
+  };
 
-    observerRef.current.observe(element);
-
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
-  }, [loading, movies.length, total]);
-
-  useEffect(() => {
-    if (page > 1) {
-      setLoading(true);
-      loadMovies(false);
-    }
-  }, [page]);
-
-  // 处理收藏切换
-  const handleFavoriteToggle = async (movieId: number, currentIndex: number) => {
+  const handleUnfavoriteActor = async (actor: Actor) => {
+    setActors((prev) => prev.filter((item) => item.id !== actor.id));
     try {
-      const response = await api.toggleFavorite(movieId, USER_ID);
-      // 更新本地收藏状态
-      setMovies((prev) => {
-        const newMovies = [...prev];
-        newMovies[currentIndex] = {
-          ...newMovies[currentIndex],
-          is_favorited: response.is_favorited,
-        };
-        return newMovies;
-      });
-
-      // 如果取消收藏，从列表中移除
-      if (!response.is_favorited) {
-        setTimeout(() => {
-          setMovies((prev) => prev.filter((_, idx) => idx !== currentIndex));
-          setTotal((prev) => prev - 1);
-        }, 300);
-      }
+      await api.toggleActorFavorite(actor.id);
     } catch (err) {
-      console.error('收藏切换失败:', err);
+      setError(err instanceof Error ? err.message : '取消收藏失败');
+      void loadAll();
     }
   };
 
-  if (error && movies.length === 0) {
+  const handleUnfavoriteTag = async (tag: Tag) => {
+    setTags((prev) => prev.filter((item) => item.id !== tag.id));
+    try {
+      await api.toggleTagFavorite(tag.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '取消收藏失败');
+      void loadAll();
+    }
+  };
+
+  // 影片收藏页里的取消收藏，直接整页刷新一次即可（复用影片列表的收藏接口）
+  const handleToggleMovieFavorite = async (mediaId: number) => {
+    try {
+      await api.toggleFavorite(mediaId, 0);
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '取消收藏失败');
+    }
+  };
+
+  if (loading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Alert severity="error">{error}</Alert>
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+        <CircularProgress />
       </Box>
     );
   }
 
+  const emptyState = (title: string, actionText: string, action: () => void) => (
+    <Box sx={{ py: 8, textAlign: 'center' }}>
+      <Typography variant="h6" color="text.secondary" gutterBottom>
+        {title}
+      </Typography>
+      <Button variant="outlined" sx={{ mt: 1 }} onClick={action}>
+        {actionText}
+      </Button>
+    </Box>
+  );
+
   return (
-    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* 页面标题 */}
-      <Box sx={{ p: 3, pb: 1 }}>
-        <Typography variant="h5" sx={{ fontWeight: 600 }}>
-          我的喜欢
+    <Box sx={{ p: 3, width: '100%' }}>
+      <Typography variant="h5" fontWeight={600} gutterBottom>
+        我的喜欢
+      </Typography>
+
+      <Tabs value={tab} onChange={switchTab} sx={{ mb: 3 }}>
+        <Tab value="movies" label={`影片 ${movies.length}`} />
+        <Tab value="actors" label={`演员 ${actors.length}`} />
+        <Tab
+          value="tags"
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              标签 {tags.length}
+            </Box>
+          }
+        />
+      </Tabs>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
+
+      {tab === 'movies' &&
+        (movies.length === 0
+          ? emptyState('还没有收藏影片', '去电影页看看', () => navigate('/media-center/movies'))
+          : (
+            <Grid container spacing={3} columns={24}>
+              {movies.map((movie) => (
+                <Grid size={{ xs: 24, sm: 12, md: 6, lg: 4, xl: 3 }} key={movie.id}>
+                  <MovieCard
+                    media_id={Number(movie.id)}
+                    poster_url={movie.poster_path}
+                    title={movie.title}
+                    year={movie.year}
+                    is_favorited
+                    onFavoriteToggle={() => handleToggleMovieFavorite(Number(movie.id))}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          ))}
+
+      {tab === 'actors' &&
+        (actors.length === 0
+          ? emptyState('还没有收藏演员', '去演员页看看', () => navigate('/media-center/actors'))
+          : (
+            <Grid container spacing={3}>
+              {actors.map((actor) => (
+                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 2 }} key={actor.id}>
+                  <InfoCard
+                    title={actor.name}
+                    count={actor.media_count}
+                    avatar={actor.avatar_path ? api.imageUrl(actor.avatar_path) : undefined}
+                    onClick={() => navigate(`/media-center/movies?actor_id=${actor.id}`)}
+                    favorite
+                    onToggleFavorite={() => handleUnfavoriteActor(actor)}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          ))}
+
+      {tab === 'tags' &&
+        (tags.length === 0
+          ? emptyState('还没有收藏标签', '去标签页看看', () => navigate('/media-center/tags'))
+          : (
+            <Grid container spacing={3}>
+              {tags.map((tag) => (
+                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 2 }} key={tag.id}>
+                  <InfoCard
+                    title={tag.tag_name}
+                    count={tag.media_count}
+                    onClick={() => navigate(`/media-center/movies?tag_ids=${tag.id}`)}
+                    favorite
+                    onToggleFavorite={() => handleUnfavoriteTag(tag)}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          ))}
+
+      <Box sx={{ mt: 4, display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}>
+        <FavoriteIcon fontSize="small" sx={{ color: 'error.main' }} />
+        <Typography variant="body2">
+          在演员页、标签页点卡片右上角的心形即可收藏，收藏的内容都会出现在这里
         </Typography>
-      </Box>
-
-      {/* 滚动内容区域 */}
-      <Box
-        ref={contentRef}
-        sx={{
-          flex: 1,
-          overflow: 'auto',
-          position: 'relative',
-        }}
-      >
-        {/* 电影内容 */}
-        <Box sx={{ p: 3, pt: 1 }}>
-          {/* 电影网格 */}
-          <Grid container spacing={3}>
-            {movies.map((movie, index) => (
-              <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 2 }} key={movie.id}>
-                <MovieCard
-                  media_id={parseInt(movie.id)}
-                  poster_url={movie.poster_path}
-                  title={movie.title}
-                  year={movie.year}
-                  is_favorited={movie.is_favorited}
-                  onFavoriteToggle={() => handleFavoriteToggle(parseInt(movie.id), index)}
-                />
-              </Grid>
-            ))}
-          </Grid>
-
-          {/* 加载更多指示器 */}
-          {movies.length < total && (
-            <Box
-              ref={loadMoreRef}
-              sx={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                py: 4,
-              }}
-            >
-              <CircularProgress />
-            </Box>
-          )}
-
-          {/* 无更多数据 */}
-          {movies.length >= total && movies.length > 0 && (
-            <Box sx={{ py: 4, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                没有更多收藏了
-              </Typography>
-            </Box>
-          )}
-
-          {/* 空状态 */}
-          {!loading && movies.length === 0 && (
-            <Box sx={{ py: 8, textAlign: 'center' }}>
-              <Typography variant="h6" color="text.secondary">
-                暂无收藏
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                去电影页面添加一些喜欢的电影吧
-              </Typography>
-            </Box>
-          )}
-
-          {/* 错误提示（已有数据时） */}
-          {error && movies.length > 0 && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
-            </Alert>
-          )}
-        </Box>
       </Box>
     </Box>
   );

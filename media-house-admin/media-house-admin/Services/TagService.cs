@@ -12,15 +12,40 @@ public class TagService(MediaHouseDbContext context, ILogger<TagService> logger)
     private readonly MediaHouseDbContext _context = context;
     private readonly ILogger<TagService> _logger = logger;
 
-    public async Task<(List<Tag> Tags, int TotalCount)> GetTagsAsync(int page, int pageSize, string? sortBy = null)
+    public async Task<(List<Tag> Tags, int TotalCount)> GetTagsAsync(
+        int page,
+        int pageSize,
+        string? sortBy = null,
+        bool favoritedOnly = false,
+        int? userId = null)
     {
         page = page < 1 ? 1 : page;
         pageSize = pageSize < 1 ? 20 : Math.Min(pageSize, MaxPageSize);
 
-        // 只列出至少还挂着一条关联的标签。
-        // 删片、改 NFO 之后留下的空标签（关联行已被清掉）不会再出现在列表里。
-        var query = _context.Tags.Where(t => t.MediaTags.Any());
+        // 只看收藏：按收藏时间倒序（最近收藏的在前）
+        if (favoritedOnly)
+        {
+            if (!userId.HasValue || userId.Value <= 0) return ([], 0);
 
+            var uid = userId.Value;
+            var favoriteQuery =
+                from t in _context.Tags
+                join f in _context.FavoriteTags.Where(x => x.UserId == uid) on t.Id equals f.TagId
+                where t.MediaTags.Any()
+                orderby f.CreateTime descending, t.Id
+                select t;
+
+            var favoriteTotal = await favoriteQuery.CountAsync();
+            var favoriteTags = await favoriteQuery
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (favoriteTags, favoriteTotal);
+        }
+
+        // 只列出至少还挂着一条关联的标签
+        var query = _context.Tags.Where(t => t.MediaTags.Any());
         var totalCount = await query.CountAsync();
 
         List<Tag> tags;
@@ -65,5 +90,50 @@ public class TagService(MediaHouseDbContext context, ILogger<TagService> logger)
             .ToListAsync();
 
         return counts.ToDictionary(c => c.TagId, c => c.Count);
+    }
+
+    /// <summary>
+    /// 切换标签收藏。返回 true=已收藏、false=已取消、null=标签不存在。
+    /// </summary>
+    public async Task<bool?> ToggleFavoriteAsync(int tagId, int userId)
+    {
+        if (!await _context.Tags.AnyAsync(t => t.Id == tagId))
+        {
+            return null;
+        }
+
+        var existing = await _context.FavoriteTags
+            .FirstOrDefaultAsync(f => f.UserId == userId && f.TagId == tagId);
+
+        if (existing != null)
+        {
+            _context.FavoriteTags.Remove(existing);
+            await _context.SaveChangesAsync();
+            return false;
+        }
+
+        _context.FavoriteTags.Add(new FavoriteTag
+        {
+            UserId = userId,
+            TagId = tagId,
+            CreateTime = DateTime.UtcNow,
+        });
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("User {UserId} favorited tag {TagId}", userId, tagId);
+        return true;
+    }
+
+    public async Task<HashSet<int>> GetFavoritedTagIdsAsync(int userId, IEnumerable<int> tagIds)
+    {
+        var ids = tagIds as IList<int> ?? tagIds.ToList();
+        if (ids.Count == 0 || userId <= 0) return [];
+
+        var favorited = await _context.FavoriteTags
+            .Where(f => f.UserId == userId && ids.Contains(f.TagId))
+            .Select(f => f.TagId)
+            .ToListAsync();
+
+        return [.. favorited];
     }
 }

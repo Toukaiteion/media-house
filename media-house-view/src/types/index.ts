@@ -129,6 +129,7 @@ export interface Tag {
   id: string;
   tag_name: string;
   media_count?: number;
+  is_favorited?: boolean;
 }
 
 /**
@@ -148,6 +149,7 @@ export interface Actor {
   type?: string;
   country?: string;
   media_count?: number;
+  is_favorited?: boolean;
 }
 
 /**

@@ -382,3 +382,28 @@ CREATE INDEX IF NOT EXISTS idx_upload_folders_created_at ON upload_folders(creat
 
 -- 添加外键约束（如果表已存在，需要手动执行）
 -- CREATE INDEX IF NOT EXISTS idx_upload_tasks_folder_id ON upload_tasks(folder_id);
+
+-- ==============================
+-- 19. 演员 / 标签收藏表
+-- ==============================
+DROP TABLE IF EXISTS favorite_staffs;
+CREATE TABLE favorite_staffs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    staff_id    INTEGER NOT NULL,
+    create_time TIMESTAMP NOT NULL DEFAULT (datetime('now','localtime')),
+    UNIQUE (user_id, staff_id)
+);
+CREATE INDEX IF NOT EXISTS idx_favorite_staffs_user  ON favorite_staffs (user_id);
+CREATE INDEX IF NOT EXISTS idx_favorite_staffs_staff ON favorite_staffs (staff_id);
+
+DROP TABLE IF EXISTS favorite_tags;
+CREATE TABLE favorite_tags (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    tag_id      INTEGER NOT NULL,
+    create_time TIMESTAMP NOT NULL DEFAULT (datetime('now','localtime')),
+    UNIQUE (user_id, tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_favorite_tags_user ON favorite_tags (user_id);
+CREATE INDEX IF NOT EXISTS idx_favorite_tags_tag  ON favorite_tags (tag_id);
