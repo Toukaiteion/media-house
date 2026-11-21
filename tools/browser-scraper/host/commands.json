@@ -1,12 +1,78 @@
 {
   "commands": [
     {
+      "id": "jrender-upload",
+      "name": "jrender 搜刮当前影片并上传（Playwright）",
+      "description": "真浏览器渲染，自动过年龄验证；比 jfetch 慢，但 JS 页面和风控都能过",
+      "type": "scrape-upload",
+      "executable": "node",
+      "args": [
+        "${hostDir}/scraper/browser-scraper.mjs",
+        "-k",
+        "${key}",
+        "-o",
+        "${outputDir}"
+      ],
+      "timeoutSeconds": 600,
+      "params": [
+        {
+          "key": "key",
+          "label": "番号",
+          "type": "text",
+          "required": true,
+          "default": "${num}",
+          "placeholder": "留空则用当前影片的番号"
+        },
+        {
+          "key": "cookie",
+          "label": "Cookie",
+          "type": "text",
+          "placeholder": "留空则读 scraper/cookie.txt",
+          "arg": [
+            "--cookie",
+            "${value}"
+          ]
+        },
+        {
+          "key": "origin",
+          "label": "站点",
+          "type": "text",
+          "default": "https://www.javbus.com",
+          "placeholder": "直连不通可换镜像域名",
+          "arg": [
+            "--origin",
+            "${value}"
+          ]
+        },
+        {
+          "key": "headless",
+          "label": "无头模式",
+          "type": "boolean",
+          "default": "true",
+          "flagTrue": "--headless",
+          "flagFalse": "--no-headless"
+        },
+        {
+          "key": "debug",
+          "label": "保存原始页面",
+          "type": "boolean",
+          "default": "false",
+          "flagTrue": "--debug-html"
+        }
+      ]
+    },
+    {
       "id": "catch-upload",
       "name": "jcatch 搜刮当前影片并上传",
       "description": "用当前详情页的番号调用 jcatch 抓取元数据，打包后上传回服务器",
       "type": "scrape-upload",
       "executable": "G:\\project\\bin\\jcatch.exe",
-      "args": ["-k", "${key}", "-o", "${outputDir}"],
+      "args": [
+        "-k",
+        "${key}",
+        "-o",
+        "${outputDir}"
+      ],
       "workingDirectory": "G:\\project\\bin",
       "timeoutSeconds": 900,
       "params": [
@@ -32,7 +98,10 @@
           "type": "file",
           "default": "G:\\project\\chromedriver\\157.0.8103.81\\chromedriver.exe",
           "placeholder": "留空则自动查找",
-          "arg": ["--chromedriver-path", "${value}"]
+          "arg": [
+            "--chromedriver-path",
+            "${value}"
+          ]
         }
       ]
     },
@@ -42,7 +111,10 @@
       "description": "对本机某个视频文件跑 jcatch，产出整理到输出目录（不经过服务器）",
       "type": "process",
       "executable": "G:\\project\\bin\\jcatch.exe",
-      "args": ["-v", "${videoPath}"],
+      "args": [
+        "-v",
+        "${videoPath}"
+      ],
       "workingDirectory": "G:\\project\\bin",
       "timeoutSeconds": 900,
       "params": [
@@ -58,14 +130,20 @@
           "label": "输出目录",
           "type": "directory",
           "placeholder": "默认当前目录",
-          "arg": ["--output", "${value}"]
+          "arg": [
+            "--output",
+            "${value}"
+          ]
         },
         {
           "key": "key",
           "label": "番号",
           "type": "text",
           "placeholder": "留空则从文件名解析",
-          "arg": ["--key", "${value}"]
+          "arg": [
+            "--key",
+            "${value}"
+          ]
         },
         {
           "key": "headless",
@@ -95,7 +173,10 @@
           "type": "file",
           "default": "G:\\project\\chromedriver\\157.0.8103.81\\chromedriver.exe",
           "placeholder": "留空则自动查找",
-          "arg": ["--chromedriver-path", "${value}"]
+          "arg": [
+            "--chromedriver-path",
+            "${value}"
+          ]
         }
       ]
     },
@@ -105,7 +186,9 @@
       "description": "递归扫描目录，按大小筛选后调用 jcatch 处理，结果整理到输出目录",
       "type": "process",
       "executable": "G:\\project\\bin\\jsearch.exe",
-      "args": ["${directory}"],
+      "args": [
+        "${directory}"
+      ],
       "workingDirectory": "G:\\project\\bin",
       "timeoutSeconds": 7200,
       "params": [
@@ -121,7 +204,10 @@
           "label": "输出目录",
           "type": "directory",
           "placeholder": "默认当前目录",
-          "arg": ["--output", "${value}"]
+          "arg": [
+            "--output",
+            "${value}"
+          ]
         },
         {
           "key": "minSize",
@@ -129,7 +215,10 @@
           "type": "text",
           "default": "1G",
           "placeholder": "1G / 500M / 1024",
-          "arg": ["--min-size", "${value}"]
+          "arg": [
+            "--min-size",
+            "${value}"
+          ]
         },
         {
           "key": "limit",
@@ -137,7 +226,10 @@
           "type": "number",
           "default": "3",
           "placeholder": "默认 3",
-          "arg": ["--limit", "${value}"]
+          "arg": [
+            "--limit",
+            "${value}"
+          ]
         },
         {
           "key": "headless",
@@ -160,7 +252,63 @@
           "type": "file",
           "default": "G:\\project\\chromedriver\\157.0.8103.81\\chromedriver.exe",
           "placeholder": "留空则自动查找",
-          "arg": ["--chromedriver-path", "${value}"]
+          "arg": [
+            "--chromedriver-path",
+            "${value}"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "jfetch-upload",
+      "name": "jfetch 搜刮当前影片并上传（不用浏览器）",
+      "description": "纯 HTTP 抓取，不启动 Chrome，单部 1~2 秒。首次需要填一次 Cookie",
+      "type": "scrape-upload",
+      "executable": "node",
+      "args": [
+        "${hostDir}/scraper/http-scraper.mjs",
+        "-k",
+        "${key}",
+        "-o",
+        "${outputDir}"
+      ],
+      "timeoutSeconds": 300,
+      "params": [
+        {
+          "key": "key",
+          "label": "番号",
+          "type": "text",
+          "required": true,
+          "default": "${num}",
+          "placeholder": "留空则用当前影片的番号"
+        },
+        {
+          "key": "cookie",
+          "label": "Cookie",
+          "type": "text",
+          "placeholder": "留空则读 scraper/cookie.txt",
+          "arg": [
+            "--cookie",
+            "${value}"
+          ]
+        },
+        {
+          "key": "origin",
+          "label": "站点",
+          "type": "text",
+          "default": "https://www.javbus.com",
+          "placeholder": "直连不通可换镜像域名",
+          "arg": [
+            "--origin",
+            "${value}"
+          ]
+        },
+        {
+          "key": "debug",
+          "label": "保存原始页面",
+          "type": "boolean",
+          "default": "false",
+          "flagTrue": "--debug-html"
         }
       ]
     }

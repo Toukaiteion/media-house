@@ -49,3 +49,10 @@ media-house-admin/media-house-admin/mediahouse.db
 *.pid
 
 media-house-view/.vs/
+
+
+# browser tool: local deps and build output
+tools/browser-scraper/node_modules/
+tools/browser-scraper/dist/
+tools/browser-scraper/host-manifest.json
+tools/browser-scraper/scrape-tmp/

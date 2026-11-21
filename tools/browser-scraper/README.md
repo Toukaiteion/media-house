@@ -276,6 +276,111 @@ extrafanart/extrafanart-1.jpg
 
 ---
 
+## 三个采集器怎么选
+
+| | jfetch（纯 HTTP） | jrender（Playwright） | jcatch（Selenium） |
+|---|---|---|---|
+| 脚本 | `scraper\http-scraper.mjs` | `scraper\browser-scraper.mjs` | `bin\jcatch.exe` |
+| 单部耗时 | **1~2 秒** | 3~8 秒 | 5~20 秒 |
+| 依赖 | Node ≥ 18 | Node + `playwright` 包 | Python + chromedriver |
+| 需要 chromedriver | 否 | **否** | 是（版本要匹配） |
+| JS 渲染页面 | ❌ | ✅ | ✅ |
+| 年龄验证 | 需要你给 Cookie | **自动点，失败才要 Cookie** | 看站点 |
+| 启动开销 | 极低 | 中（起一次浏览器） | 高 |
+
+**建议顺序**：jrender → 失败 → jfetch → 再不行 → jcatch。
+
+两个 node 脚本共用 `scraper/parse-detail.mjs`（解析 + NFO）和 `scraper/image-ops.mjs`
+（海报裁切），改一处两边生效。
+
+> **poster 裁切**：javbus 的封面是横向拼图（左边封底、右边正面），所以
+> poster 取**右半**，fanart / thumb 保留整张；本来就是竖版的封面不裁。
+> 实现用的是 PowerShell + System.Drawing（Windows 自带），不引 native 模块；
+> 非 Windows 或裁切失败时退回整张图，不影响搜刮结果。
+
+## jfetch：不用浏览器的采集（速度优先）
+
+`dist\scraper\http-scraper.mjs` 是一个**纯 HTTP + 正则**的采集器，零依赖，
+不启动 Chrome。思路来自「站点是服务端渲染的，HTML 里就有全部数据」——
+那就没必要为了一次抓取起一个浏览器。
+
+### Cookie 怎么拿
+
+javbus 会弹年龄验证。在浏览器里正常打开一次详情页过掉验证，然后：
+
+```
+F12 → Network → 任意请求 → 复制请求头里整段 Cookie
+```
+
+粘到两个地方之一：
+
+1. 面板上的「Cookie」输入框（每次都要填）
+2. **`dist\scraper\cookie.txt`**（推荐，写一次就够）
+
+脚本会自动补 `existmag=all`——这个字段决定列表范围，从浏览器复制时最常漏。
+
+### 直接拿它当命令行用
+
+```powershell
+node dist\scraper\http-scraper.mjs -k SSIS-778 -o G:\tmp\out
+node dist\scraper\http-scraper.mjs -k SSIS-778 -o G:\tmp\out --origin https://busdmm.casa
+node dist\scraper\http-scraper.mjs -k SSIS-778 -o G:\tmp\out --html saved.html --no-images   # 离线调试
+```
+
+产物和 jcatch 一致（`<out>/<番号>/…`），所以能直接挂 `scrape-upload` 命令。
+
+| 退出码 | 含义 |
+|---|---|
+| 0 | 成功 |
+| 2 | 站点要年龄验证 → 去填 Cookie |
+| 3 | 页面上找不到这个番号（或站点改版） |
+| 1 | 其它错误（网络、参数等） |
+
+### 解析坏了怎么办
+
+`--debug-html` 会把抓到的原始页面存到 `<out>/<番号>/debug.html`，
+改正则时对着它调；`--html <文件>` 可以完全离线跑解析和落盘，不用联网。
+
+> 解析逻辑在 `parseDetailPage()`（纯函数，`scraper/parse-detail.mjs`），
+> 字段用多语言标签匹配（`識別碼/识别码/番号`），站点换语言不影响。
+
+## jrender：Playwright 版（能过验证 / 渲染慢页面）
+
+`dist\scraper\browser-scraper.mjs` 用真浏览器渲染页面，并会**主动点掉年龄验证**，
+所以大部分情况不需要 Cookie。它和 jfetch 的唯一区别就是「怎么拿到 HTML」，
+解析、NFO、落盘、退出码完全一致。
+
+浏览器按这个顺序找，通常不用额外下载：
+
+```
+1. 系统 Chrome（channel="chrome"）
+2. C:\Program Files\Google\Chrome\Application\chrome.exe 等常见路径
+3. Playwright 自带 chromium（需 npx playwright install chromium）
+```
+
+```powershell
+node dist\scraper\browser-scraper.mjs -k SSIS-778 -o G:\tmp\out
+node dist\scraper\browser-scraper.mjs -k SSIS-778 -o G:\tmp\out --no-headless   # 看得见窗口
+node dist\scraper\browser-scraper.mjs -k SSIS-778 -o G:\tmp\out --html saved.html --no-images
+```
+
+### 它依赖 playwright 包
+
+`tools\browser-scraper\package.json` 里声明了依赖，装一次就行（约 40MB）：
+
+```powershell
+cd tools\browser-scraper
+npm install
+```
+
+`dist\scraper\*.mjs` 会向上找到 `tools\browser-scraper\node_modules`，所以
+**构建时不复制 node_modules**，不会拖慢 `build.ps1`。
+
+> 没装 playwright 的话，jfetch 照常能用——只有 jrender 会报
+> 「没有安装 playwright」。
+
+---
+
 ## 实现细节
 
 | 主题 | 行为 |

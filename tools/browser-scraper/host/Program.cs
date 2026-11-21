@@ -195,6 +195,10 @@ internal static partial class Program
 
         // 默认值可以引用页面上下文（如 ${num}），到这里才解析。
         // scrape-upload 的上下文要等取到影片信息才有，那边会再补一次。
+        // ${hostDir} 让 commands.json 能引用 host 自身目录（内置脚本等）
+        parameters["hostDir"] = AppContext.BaseDirectory
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
         if (command.Type != "scrape-upload")
         {
             try

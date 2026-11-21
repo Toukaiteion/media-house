@@ -1,0 +1,12 @@
+{
+  "name": "mediahouse-browser-scraper",
+  "private": true,
+  "type": "module",
+  "description": "MediaHouse 本地工具的内置采集脚本（jfetch / jrender）",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright": "^1.56.0"
+  }
+}
