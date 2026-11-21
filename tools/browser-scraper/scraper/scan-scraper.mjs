@@ -17,7 +17,8 @@
  */
 
 import { copyFile, mkdir, readdir, rename, stat, unlink, readFile, writeFile } from 'node:fs/promises';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { execSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, extname, join, resolve, sep } from 'node:path';
@@ -373,6 +374,50 @@ function dedupe(items) {
 // ---------------- 文件整理 ----------------
 
 /**
+ * 带进度的复制。大文件（几 GB）跨盘搬要几分钟到几十分钟，
+ * 不报进度的话界面上就是「卡住」。
+ */
+async function copyWithProgress(from, to, totalBytes, log = () => {}) {
+  const started = Date.now();
+  let copied = 0;
+  let lastReport = 0;
+
+  const totalMb = totalBytes / 1048576;
+
+  const reader = createReadStream(from, { highWaterMark: 1 << 20 });
+  reader.on('data', (chunk) => {
+    copied += chunk.length;
+
+    const now = Date.now();
+    // 小于 200MB 的不用刷屏，只在结束时说一句
+    if (totalMb < 200) return;
+    if (now - lastReport < 10000 && copied < totalBytes) return;
+    lastReport = now;
+
+    const pct = totalBytes ? Math.min(100, Math.round((copied / totalBytes) * 100)) : 0;
+    const seconds = Math.max(0.1, (now - started) / 1000);
+    const speed = copied / 1048576 / seconds;
+
+    log(
+      `    复制中 ${pct}%（${(copied / 1048576).toFixed(0)}/${totalMb.toFixed(0)} MB，${speed.toFixed(1)} MB/s）`,
+    );
+  });
+
+  try {
+    await pipeline(reader, createWriteStream(to));
+  } catch (err) {
+    // 半截文件留着会被误认为是完整副本，删掉
+    await unlink(to).catch(() => {});
+    throw err;
+  }
+
+  if (totalMb >= 200) {
+    const seconds = Math.max(0.1, (Date.now() - started) / 1000);
+    log(`    复制完成 ${totalMb.toFixed(0)} MB，用时 ${(seconds / 60).toFixed(1)} 分钟`);
+  }
+}
+
+/**
  * 把视频放进目标目录。
  *
  * 三种情况：
@@ -381,9 +426,12 @@ function dedupe(items) {
  *   - 权限不足（EPERM/EACCES）：复制，源文件留着 —— 常见于浏览器派生进程
  *     跑在 Low 完整性级别，删不掉资源管理器/迅雷创建的 Medium 文件
  *
+ * 大文件复制要几十秒到几十分钟，所以带进度输出，
+ * 否则界面上看起来就是「卡住不动」。
+ *
  * 返回值：'moved' | 'copied'（源已删）| 'copied-kept-source'（源留着）
  */
-async function safeMove(from, to) {
+async function safeMove(from, to, log = () => {}) {
   try {
     await rename(from, to);
     return 'moved';
@@ -391,7 +439,26 @@ async function safeMove(from, to) {
     const recoverable = err?.code === 'EXDEV' || err?.code === 'EPERM' || err?.code === 'EACCES';
     if (!recoverable) throw err;
 
-    await copyFile(from, to);
+    const source = await stat(from);
+    const target = await stat(to).catch(() => null);
+
+    // 上一次中断留下了同样大小的完整副本：不再重传，只补删源
+    if (target && target.size === source.size) {
+      log(`  目标已有同样大小的文件（${(source.size / 1048576).toFixed(0)} MB），跳过复制`);
+    } else {
+      const totalMb = (source.size / 1048576).toFixed(0);
+      const sameVolume = resolve(from).slice(0, 2).toLowerCase() === resolve(to).slice(0, 2).toLowerCase();
+
+      if (source.size > 50 * 1024 * 1024) {
+        log(
+          sameVolume
+            ? `  需要复制 ${totalMb} MB（删除源文件被拒，改复制）`
+            : `  跨盘移动，需要复制 ${totalMb} MB，可能要几分钟…`,
+        );
+      }
+
+      await copyWithProgress(from, to, source.size, log);
+    }
 
     try {
       await unlink(from);
@@ -647,7 +714,7 @@ async function main() {
         } else {
           let how;
           if (options.move) {
-            how = await safeMove(item.path, targetVideo);
+            how = await safeMove(item.path, targetVideo, log);
           } else {
             await copyFile(item.path, targetVideo);
             how = 'copied';
