@@ -409,24 +409,34 @@
   ],
   "snippets": [
     {
-      "name": "jscan · 先看计划（不动文件）",
-      "description": "列出会处理哪些番号，确认无误再正式跑",
-      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 0 --dry-run"
+      "name": "① 只看计划（不动任何文件）",
+      "description": "先确认会处理哪些番号、有哪些只差一半。\n参数：-m 1G 体积下限 ｜ -l 10 本次最多 10 部（0 = 不限）｜ --headless 无头浏览器 ｜ --delay 5-10 每部间隔秒数 ｜ --origin 换镜像站点 ｜ --cookie 留空则读 scraper\\cookie.txt",
+      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 10 --headless --dry-run"
     },
     {
-      "name": "jscan · 正式跑（搜刮 + 移动）",
-      "description": "逐部搜刮并把视频移进输出目录；已完成和只差一半的会自动处理",
-      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 0"
+      "name": "② 正式跑（推荐）",
+      "description": "搜刮 + 移动，跨盘会复制（有进度）。跑完再看下一批。\n参数：-m 1G 体积下限 ｜ -l 10 本次最多 10 部（0 = 不限）｜ --headless 无头浏览器 ｜ --delay 5-10 每部间隔秒数 ｜ --origin 换镜像站点 ｜ --cookie 留空则读 scraper\\cookie.txt",
+      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 10 --headless"
     },
     {
-      "name": "jscan · 只整理不搜刮",
-      "description": "只把视频移进输出目录，不联网、不抓元数据",
-      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 0 --skip-scrape"
+      "name": "③ 大批量（不限数量，适合挂一晚上）",
+      "description": "一次跑完所有候选，注意跨盘复制按 GB 算，几百部可能要几十小时；建议用桌面「批量搜刮」快捷方式跑，关浏览器不影响。",
+      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 0 --headless"
     },
     {
-      "name": "jsearch · 批量搜刮（jcatch / chromedriver）",
-      "description": "原来的批量方案，走 Selenium，慢但能过验证",
-      "command": "\"G:\\project\\bin\\jsearch.exe\" \"G:\\迅雷下载\" --output \"F:\\迅雷下载\\emby_out\" --min-size 1G --limit 0 --headless --verbose --chromedriver-path \"G:\\project\\chromedriver\\157.0.8103.81\\chromedriver.exe\""
+      "name": "④ 只整理不搜刮（不联网）",
+      "description": "只把视频移进输出目录，适合已经搜刮过的片子。\n参数：-m 1G 体积下限 ｜ -l 10 本次最多 10 部（0 = 不限）｜ --headless 无头浏览器 ｜ --delay 5-10 每部间隔秒数 ｜ --origin 换镜像站点 ｜ --cookie 留空则读 scraper\\cookie.txt",
+      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 10 --skip-scrape"
+    },
+    {
+      "name": "⑤ 排查用（只跑 1 部 + 显示浏览器）",
+      "description": "解析不到、验证码过不去时，跑这一条看着浏览器找原因；--debug-html 可另加",
+      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 1 --no-headless --debug-html"
+    },
+    {
+      "name": "⑥ jsearch 批量（jcatch / chromedriver，慢但能过验证）",
+      "description": "老方案，走 Selenium。参数：--min-size 1G 体积下限 ｜ --limit 10 最多 10 部 ｜ --headless 无头 ｜ --verbose 详细日志 ｜ --chromedriver-path 驱动路径",
+      "command": "\"G:\\project\\bin\\jsearch.exe\" \"G:\\迅雷下载\" --output \"F:\\迅雷下载\\emby_out\" --min-size 1G --limit 10 --headless --verbose --chromedriver-path \"G:\\project\\chromedriver\\157.0.8103.81\\chromedriver.exe\""
     }
   ]
 }

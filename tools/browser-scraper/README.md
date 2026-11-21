@@ -504,6 +504,29 @@ node dist\scraper\scan-scraper.mjs G:\迅雷下载 -o F:\迅雷下载\emby_out -
 | **跳过输出目录** | 输出目录在扫描目录内时不会被自己扫到 |
 | **退出码** | 0 全部成功 / 1 有失败 / 2 需要 Cookie / 3 没找到可处理的视频 |
 
+### 参数速查
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `<目录>` | 必填 | 扫描哪个目录（位置参数，不带选项名） |
+| `-o, --output` | 当前目录 | 整理到的输出目录 |
+| `-m, --min-size` | `1G` | 体积下限，支持 `1G` / `1.5G` / `500M` / `1024`（按 MB） |
+| `-l, --limit` | `3` | 本次最多处理几部，`0` = 不限 |
+| `--headless` / `--no-headless` | 有头 | 浏览器是否隐藏窗口；排查问题时用 `--no-headless` |
+| `--delay <min-max>` | `5-10` | 每部之间随机等待秒数，`--delay 0` 关闭 |
+| `--origin` | `https://www.javbus.com` | 站点地址，直连不通可换镜像 |
+| `--cookie` | 空 | 年龄验证用的 Cookie；留空自动读 `scraper\cookie.txt` |
+| `--cookie-file` | `scraper\cookie.txt` | Cookie 文件路径 |
+| `--timeout <秒>` | `30` | 页面加载超时 |
+| `--dry-run` | 关 | 只列计划，不动任何文件 |
+| `--skip-scrape` | 关 | 只整理视频，不联网搜刮 |
+| `--force` | 关 | 已完成的也重做（重新搜刮 + 重新移动） |
+| `--copy` / `--move` | `--move` | 复制还是移动源文件（跨盘时两者都要传输） |
+| `--prefix-file` | `~\.jsearch\prefixes.json` | 番号前缀库，与 jsearch 共用 |
+| `--debug-html` | 关 | 把抓到的原始页面存到 `<输出>\<番号>\debug.html` |
+
+推荐组合（也是面板里 snippets 的默认值）：`-m 1G -l 10 --headless`
+
 > 「搜刮」和「移动」是两件独立的事，分开判断：
 > 视频已在目标目录（扩展名不同也认）就不再移动，保留源文件；
 > 元数据已存在就不再搜刮。跳过已完成的条目时会提示那些仍留在输入目录的源文件，

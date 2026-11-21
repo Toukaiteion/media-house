@@ -66,7 +66,7 @@ function ensureStyle() {
     .mh-snippet{border:1px solid #2a3446;border-radius:6px;padding:6px 8px;background:#11161f}
     .mh-snippet-head{display:flex;align-items:center;gap:6px;font-size:12px;color:#e6e6e6}
     .mh-snippet-head .mh-copied{margin-left:auto;font-size:11px;color:#7ee787}
-    .mh-snippet-desc{margin:2px 0 5px;font-size:11px;color:#8b95a5;line-height:1.35}
+    .mh-snippet-desc{margin:2px 0 5px;font-size:11px;color:#8b95a5;line-height:1.4;white-space:pre-line}
     .mh-snippet-body{display:flex;gap:6px;align-items:flex-start}
     .mh-snippet-body code{flex:1;min-width:0;font:11px/1.45 ui-monospace,Consolas,monospace;color:#9ecbff;
       background:#0d1117;border-radius:4px;padding:5px 6px;white-space:pre-wrap;word-break:break-all}

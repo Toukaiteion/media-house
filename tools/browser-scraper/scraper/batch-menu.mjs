@@ -18,9 +18,22 @@ const INPUT = 'G:\\迅雷下载';
 const OUTPUT = 'F:\\迅雷下载\\emby_out';
 
 const MODES = {
-  1: { label: '只看计划（不动任何文件）', args: ['--dry-run'] },
-  2: { label: '正式跑（搜刮 + 移动）', args: [] },
-  3: { label: '只整理不搜刮（不联网）', args: ['--skip-scrape'] },
+  1: {
+    label: '只看计划（最多 10 部，不动任何文件）',
+    args: ['-l', '10', '--headless', '--dry-run'],
+  },
+  2: {
+    label: '正式跑（最多 10 部：搜刮 + 移动）',
+    args: ['-l', '10', '--headless'],
+  },
+  3: {
+    label: '只整理不搜刮（最多 10 部，不联网）',
+    args: ['-l', '10', '--skip-scrape'],
+  },
+  4: {
+    label: '大批量（不限数量，适合挂一晚上）',
+    args: ['-l', '0', '--headless'],
+  },
 };
 
 function ask(question) {
@@ -49,7 +62,7 @@ async function main() {
   }
   console.log('--------------------------------------------');
 
-  const choice = (await ask('请选择 [1/2/3，直接回车 = 1]: ')) || '1';
+  const choice = (await ask('请选择 [1/2/3/4，直接回车 = 1]: ')) || '1';
   const mode = MODES[choice];
 
   if (!mode) {
@@ -61,7 +74,7 @@ async function main() {
 
   const result = spawnSync(
     process.execPath,
-    [SCANNER, INPUT, '-o', OUTPUT, '-m', '1G', '-l', '0', ...mode.args],
+    [SCANNER, INPUT, '-o', OUTPUT, '-m', '1G', ...mode.args],
     { stdio: 'inherit', cwd: HERE },
   );
 
