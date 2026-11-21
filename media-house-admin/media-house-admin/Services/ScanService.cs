@@ -142,6 +142,23 @@ public class ScanService(
             log.Status = SyncStatus.InProgress;
             await context.SaveChangesAsync();
 
+            // 媒体库根目录不存在时立刻失败退出。
+            // 否则 GetMovieDirectories 会返回空列表，后面的清理逻辑会把这个库里
+            // 所有媒体都当成「磁盘上已不存在」而全部删掉 ——
+            // 外接硬盘没挂载 / 盘符变了的时候，一次误点扫描就能清空半个库。
+            if (!Directory.Exists(libraryPath))
+            {
+                log.Status = SyncStatus.Failed;
+                log.ErrorMessage = $"媒体库目录不存在：{libraryPath}（磁盘没挂载？本次扫描已中止，未删除任何记录）";
+                log.EndTime = DateTime.UtcNow;
+
+                library.Status = ScanStatus.Idle;
+                await context.SaveChangesAsync();
+
+                _logger.LogError("Abort scan for library {LibraryId}: path missing {Path}", libraryId, libraryPath);
+                return;
+            }
+
             _logger.LogInformation("Starting {SyncType} for library {LibraryId} at {Path}", syncType, libraryId, libraryPath);
 
             var movieDirectories = GetMovieDirectories(libraryPath);
