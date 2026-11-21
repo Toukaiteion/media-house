@@ -7,6 +7,7 @@ const HOST_LABEL = '本地工具';
 let allowedOrigins = [];
 let port = null;
 let commands = [];
+let snippets = [];
 let currentRunId = null;
 let busy = false;
 let pendingPickerTarget = null;
@@ -16,6 +17,7 @@ let statusEl = null;
 let selectEl = null;
 let hintEl = null;
 let paramsEl = null;
+let snippetsEl = null;
 let paramControls = {};
 
 // ---------------- DOM 构建 ----------------
@@ -55,6 +57,14 @@ function ensureStyle() {
     .mh-log .mh-stderr{color:#ffb4a2}
     .mh-log .mh-cmd{color:#79c0ff}
     .mh-log .mh-meta{color:#7ee787}
+    .mh-snippets{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+    .mh-snippet{border:1px solid #2a3446;border-radius:6px;padding:6px 8px;background:#11161f}
+    .mh-snippet-head{display:flex;align-items:center;gap:6px;font-size:12px;color:#e6e6e6}
+    .mh-snippet-head .mh-copied{margin-left:auto;font-size:11px;color:#7ee787}
+    .mh-snippet-desc{margin:2px 0 5px;font-size:11px;color:#8b95a5;line-height:1.35}
+    .mh-snippet-body{display:flex;gap:6px;align-items:flex-start}
+    .mh-snippet-body code{flex:1;min-width:0;font:11px/1.45 ui-monospace,Consolas,monospace;color:#9ecbff;
+      background:#0d1117;border-radius:4px;padding:5px 6px;white-space:pre-wrap;word-break:break-all}
   `;
   document.head.appendChild(style);
 }
@@ -80,6 +90,8 @@ function ensurePanel() {
 
   hintEl = el('p', { class: 'mh-hint' });
   paramsEl = el('div', { class: 'mh-params' });
+  snippetsEl = el('div', { class: 'mh-snippets' });
+  snippetsEl.style.display = 'none';
 
   const runBtn = el('button', { class: 'mh-btn primary', text: '▶ 执行' });
   const stopBtn = el('button', { class: 'mh-btn danger', text: '■ 停止' });
@@ -108,6 +120,7 @@ function ensurePanel() {
       hintEl,
       paramsEl,
       el('div', { class: 'mh-actions' }, [runBtn, stopBtn, copyBtn, clearBtn, statusEl]),
+      snippetsEl,
     ]),
     logEl,
   ]);
@@ -339,7 +352,9 @@ function setBusy(value) {
 function onHostMessage(message) {
   switch (message?.type) {
     case 'commands':
+      snippets = message.snippets || [];
       onCommands(message.commands || [], message.configError);
+      renderSnippets(snippets);
       break;
 
     case 'directory':
@@ -387,6 +402,80 @@ function onHostMessage(message) {
 
     default:
       break;
+  }
+}
+
+// ---------------- 批量命令（只显示 + 复制） ----------------
+
+/** 剪贴板写入，失败时退回 execCommand（有些页面/权限下 clipboard 不可用） */
+function copyText(text) {
+  const fallback = () => {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(area);
+    area.select();
+    try {
+      document.execCommand('copy');
+    } finally {
+      area.remove();
+    }
+  };
+
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text).catch(() => fallback());
+  }
+
+  fallback();
+  return Promise.resolve();
+}
+
+/**
+ * 批量任务不放在下拉里（跑一次几十分钟，误点很痛），
+ * 改成给一条可直接粘贴到终端的命令行。
+ */
+function renderSnippets(list) {
+  if (!snippetsEl) return;
+
+  snippetsEl.textContent = '';
+
+  if (!list || list.length === 0) {
+    snippetsEl.style.display = 'none';
+    return;
+  }
+
+  snippetsEl.style.display = '';
+  snippetsEl.appendChild(el('p', { class: 'mh-hint', text: '批量任务（复制到终端运行）' }));
+
+  for (const snippet of list) {
+    const copiedTip = el('span', { class: 'mh-copied' });
+    const copyBtn = el('button', { class: 'mh-btn', text: '复制' });
+
+    copyBtn.addEventListener('click', () => {
+      copyText(snippet.command || '').then(() => {
+        copiedTip.textContent = '已复制';
+        setTimeout(() => {
+          copiedTip.textContent = '';
+        }, 1500);
+      });
+    });
+
+    const head = el('div', { class: 'mh-snippet-head' }, [
+      el('span', { text: snippet.name || '命令' }),
+      copiedTip,
+    ]);
+
+    const box = el('div', { class: 'mh-snippet' }, [head]);
+
+    if (snippet.description) {
+      box.appendChild(el('div', { class: 'mh-snippet-desc', text: snippet.description }));
+    }
+
+    box.appendChild(
+      el('div', { class: 'mh-snippet-body' }, [el('code', { text: snippet.command || '' }), copyBtn]),
+    );
+
+    snippetsEl.appendChild(box);
   }
 }
 

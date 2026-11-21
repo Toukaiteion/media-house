@@ -237,6 +237,36 @@ https://media.example.com
 2. 再换成真实命令，参数一个一个加
 3. 卡住的话看日志：`> 程序名 参数1 参数2` 这行是**实际执行**的命令行，先肉眼核对参数对不对
 
+### 批量命令：`hidden` + `snippets`
+
+批量任务（jscan / jsearch）跑起来是几十分钟、参数还多，放在下拉里容易误点。
+所以它们用两个机制改成了"给条命令让你去终端跑"：
+
+**① `hidden: true` —— 不进下拉，但仍可执行**
+
+```json
+{ "id": "jscan", "name": "jscan 扫描目录批量搜刮", "hidden": true, ... }
+```
+
+面板的命令下拉会过滤掉它，`run` 接口仍能按 id 调用（自动化脚本不受影响）。
+
+**② `snippets` —— 面板里显示 + 一键复制**
+
+```json
+"snippets": [
+  {
+    "name": "jscan · 先看计划（不动文件）",
+    "description": "列出会处理哪些番号，确认无误再正式跑",
+    "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 0 --dry-run"
+  }
+]
+```
+
+- 面板会在参数区下方渲染成一列，每条有「复制」按钮（`navigator.clipboard`，
+  失败退回 `execCommand`），点了显示「已复制」
+- `command` 里可以用 `${hostDir}`，host 返回时会展开成真实路径，粘到终端直接能跑
+- 命令里别带 `cd`：用绝对路径，PowerShell 和 cmd 都能直接粘贴
+
 ---
 
 ## 使用

@@ -259,7 +259,8 @@
             "${value}"
           ]
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "jscan",
@@ -349,7 +350,8 @@
             "${value}"
           ]
         }
-      ]
+      ],
+      "hidden": true
     },
     {
       "id": "jfetch-upload",
@@ -403,6 +405,28 @@
           "flagTrue": "--debug-html"
         }
       ]
+    }
+  ],
+  "snippets": [
+    {
+      "name": "jscan · 先看计划（不动文件）",
+      "description": "列出会处理哪些番号，确认无误再正式跑",
+      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 0 --dry-run"
+    },
+    {
+      "name": "jscan · 正式跑（搜刮 + 移动）",
+      "description": "逐部搜刮并把视频移进输出目录；已完成和只差一半的会自动处理",
+      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 0"
+    },
+    {
+      "name": "jscan · 只整理不搜刮",
+      "description": "只把视频移进输出目录，不联网、不抓元数据",
+      "command": "node \"${hostDir}\\scraper\\scan-scraper.mjs\" \"G:\\迅雷下载\" -o \"F:\\迅雷下载\\emby_out\" -m 1G -l 0 --skip-scrape"
+    },
+    {
+      "name": "jsearch · 批量搜刮（jcatch / chromedriver）",
+      "description": "原来的批量方案，走 Selenium，慢但能过验证",
+      "command": "\"G:\\project\\bin\\jsearch.exe\" \"G:\\迅雷下载\" --output \"F:\\迅雷下载\\emby_out\" --min-size 1G --limit 0 --headless --verbose --chromedriver-path \"G:\\project\\chromedriver\\157.0.8103.81\\chromedriver.exe\""
     }
   ]
 }

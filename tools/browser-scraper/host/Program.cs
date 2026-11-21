@@ -113,11 +113,19 @@ internal static partial class Program
 
             case "list":
                 RefreshCommandsIfChanged();
+
+                // snippets 里的路径也用 host 自己的目录展开，用户复制走就能跑
+                var snippetValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["hostDir"] = AppContext.BaseDirectory.TrimEnd(
+                        Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                };
+
                 Send(new
                 {
                     type = "commands",
                     configError = _configError,
-                    commands = _commands.Commands.Select(c => new
+                    commands = _commands.Commands.Where(c => !c.Hidden).Select(c => new
                     {
                         id = c.Id,
                         name = c.Name,
@@ -136,6 +144,12 @@ internal static partial class Program
                             placeholder = p.Placeholder,
                             required = p.Required,
                         }).ToList(),
+                    }).ToList(),
+                    snippets = (_commands.Snippets ?? []).Select(s => new
+                    {
+                        name = s.Name,
+                        description = s.Description,
+                        command = Expand(s.Command ?? string.Empty, snippetValues),
                     }).ToList(),
                 });
                 break;
@@ -1148,6 +1162,20 @@ internal static partial class Program
 internal sealed class CommandsFile
 {
     public List<CommandDefinition> Commands { get; set; } = [];
+
+    /// <summary>
+    /// 只在面板上「显示 + 复制」的命令行片段，适合批量任务：
+    /// 这类命令跑得久、参数多，放终端里跑更合适。
+    /// </summary>
+    public List<SnippetDefinition> Snippets { get; set; } = [];
+}
+
+/// <summary>面板「批量操作」里的一条可复制命令。</summary>
+internal sealed class SnippetDefinition
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Command { get; set; } = string.Empty;
 }
 
 internal sealed class CommandDefinition
@@ -1166,6 +1194,12 @@ internal sealed class CommandDefinition
 
     public bool PromptDirectory { get; set; }
     public bool PromptOutputDirectory { get; set; }
+
+    /// <summary>
+    /// 不在面板命令下拉里显示（但用 run 仍可执行）。
+    /// 批量任务用它：避免误点跑一整批，改由 snippets 提供可复制的命令行。
+    /// </summary>
+    public bool Hidden { get; set; }
 
     /// <summary>面板上要显示的参数表单，见 ParamDefinition</summary>
     public List<ParamDefinition>? Params { get; set; }
