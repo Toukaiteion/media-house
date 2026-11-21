@@ -2,13 +2,13 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <title>MediaHouse 本地搜刮 - 设置</title>
+  <title>MediaHouse 本地工具 - 设置</title>
   <style>
-    body { font: 14px/1.6 system-ui, sans-serif; margin: 24px; max-width: 560px; color: #222; }
+    body { font: 14px/1.6 system-ui, sans-serif; margin: 24px; max-width: 620px; color: #222; }
     h1 { font-size: 18px; margin-bottom: 4px; }
     p.hint { color: #666; font-size: 13px; margin-top: 0; }
     label { display: block; margin: 18px 0 6px; font-weight: 600; }
-    input { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+    textarea, input { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; font-family: ui-monospace, Consolas, monospace; }
     .row { display: flex; gap: 8px; margin-top: 16px; }
     button { padding: 8px 16px; border: 0; border-radius: 6px; background: #1976d2; color: #fff; cursor: pointer; font-size: 14px; }
     button.secondary { background: #eee; color: #333; }
@@ -19,12 +19,12 @@
   </style>
 </head>
 <body>
-  <h1>MediaHouse 本地搜刮</h1>
-  <p class="hint">扩展只在你填写的这个服务器地址上生效，其它网站不会注入任何东西。</p>
+  <h1>MediaHouse 本地工具</h1>
+  <p class="hint">面板只在你填写的这些站点上出现，其它网站不会注入任何东西。</p>
 
-  <label for="serverUrl">MediaHouse 地址</label>
-  <input id="serverUrl" type="url" placeholder="http://192.168.1.10:8080" />
-  <p class="hint">要带上协议和端口，不要带 <code>/api</code>，例如 <code>http://192.168.1.10:8080</code>。</p>
+  <label for="servers">MediaHouse 地址（一行一个，可以填多个）</label>
+  <textarea id="servers" rows="4" placeholder="http://192.168.1.10:8080&#10;https://media.example.com"></textarea>
+  <p class="hint">要带协议和端口，不要带 <code>/api</code>。本地和线上可以一起填，哪个页面都能用。</p>
 
   <div class="row">
     <button id="save">保存</button>
@@ -35,8 +35,8 @@
   <label>使用前确认</label>
   <ol>
     <li>本机已安装 Native Messaging 主机（运行过 <code>install.ps1</code>）</li>
-    <li><code>host.config.json</code> 里的 <code>python</code> 和 <code>scraper</code> 路径正确</li>
-    <li>在 MediaHouse 页面登录过一次（扩展需要复用登录态）</li>
+    <li><code>commands.json</code> 里各命令的 <code>executable</code> 路径正确</li>
+    <li>在对应站点登录过一次（抓取上传要复用登录态）</li>
   </ol>
 
   <script src="options.js"></script>

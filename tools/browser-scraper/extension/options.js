@@ -1,4 +1,4 @@
-const $server = document.getElementById('serverUrl');
+const $servers = document.getElementById('servers');
 const $status = document.getElementById('status');
 
 function setStatus(text, ok) {
@@ -6,47 +6,78 @@ function setStatus(text, ok) {
   $status.className = ok === true ? 'ok' : ok === false ? 'err' : '';
 }
 
-function normalize(value) {
+function parseEntry(value) {
   const raw = (value || '').trim().replace(/\/+$/, '');
-  if (!raw) return { ok: false, message: '请先填写地址' };
+  if (!raw) return null;
   let url;
   try {
     url = new URL(raw);
   } catch {
-    return { ok: false, message: '地址格式不对，需要 http:// 或 https:// 开头' };
+    return { error: `地址格式不对：${value.trim()}` };
   }
   if (!/^https?:$/.test(url.protocol)) {
-    return { ok: false, message: '只支持 http / https' };
+    return { error: `只支持 http / https：${value.trim()}` };
   }
-  return { ok: true, origin: url.origin + (url.pathname === '/' ? '' : url.pathname.replace(/\/+$/, '')) };
+  return { origin: url.origin };
 }
 
-chrome.storage.sync.get('serverUrl').then(({ serverUrl }) => {
-  if (serverUrl) $server.value = serverUrl;
+function parseAll(text) {
+  const origins = [];
+  for (const line of text.split(/\r?\n/)) {
+    const entry = parseEntry(line);
+    if (!entry) continue;
+    if (entry.error) return { error: entry.error };
+    if (!origins.includes(entry.origin)) origins.push(entry.origin);
+  }
+  if (origins.length === 0) return { error: '请至少填一个地址，需要 http:// 或 https:// 开头' };
+  return { origins };
+}
+
+// 兼容旧版本只存了一个 serverUrl 的情况
+chrome.storage.sync.get(['serverOrigins', 'serverUrl']).then(({ serverOrigins, serverUrl }) => {
+  const origins = Array.isArray(serverOrigins) && serverOrigins.length
+    ? serverOrigins
+    : serverUrl
+      ? [serverUrl]
+      : [];
+  $servers.value = origins.join('\n');
 });
 
 document.getElementById('save').addEventListener('click', async () => {
-  const result = normalize($server.value);
-  if (!result.ok) return setStatus(result.message, false);
+  const result = parseAll($servers.value);
+  if (result.error) return setStatus(result.error, false);
 
-  await chrome.storage.sync.set({ serverUrl: result.origin });
-  $server.value = result.origin;
-  setStatus(`已保存：${result.origin}\n刷新一下 MediaHouse 页面即可看到按钮。`, true);
+  // serverUrl 留一份首项，供老逻辑/排错时查看
+  await chrome.storage.sync.set({ serverOrigins: result.origins, serverUrl: result.origins[0] });
+  $servers.value = result.origins.join('\n');
+  setStatus(`已保存 ${result.origins.length} 个站点：\n${result.origins.join('\n')}\n刷新对应页面即可看到按钮。`, true);
 });
 
 document.getElementById('test').addEventListener('click', async () => {
-  const result = normalize($server.value);
-  if (!result.ok) return setStatus(result.message, false);
+  const result = parseAll($servers.value);
+  if (result.error) return setStatus(result.error, false);
 
   setStatus('请求中…');
-  try {
-    // 依赖服务端的 CORS 配置（当前是 AllowAnyOrigin）；若之后收紧，这里会失败但上传仍可用，
-    // 因为真正的上传是由本机 host 发起的，不经过浏览器。
-    const res = await fetch(`${result.origin}/health`, { cache: 'no-store' });
-    const text = await res.text();
-    if (res.ok) setStatus(`连接正常：${text}`, true);
-    else setStatus(`服务器返回 ${res.status}：${text.slice(0, 200)}`, false);
-  } catch (err) {
-    setStatus(`连不上：${err?.message || err}\n（如果是 CORS 报错可忽略，直接去页面点按钮试试）`, false);
+  const lines = [];
+  let allOk = true;
+
+  for (const origin of result.origins) {
+    try {
+      // 依赖服务端 CORS（当前 AllowAnyOrigin）；若之后收紧这里会失败，
+      // 但真正的上传由本机 host 发起，不经过浏览器，不受影响。
+      const res = await fetch(`${origin}/health`, { cache: 'no-store' });
+      const text = await res.text();
+      if (res.ok) {
+        lines.push(`✅ ${origin} → ${text.slice(0, 80)}`);
+      } else {
+        allOk = false;
+        lines.push(`❌ ${origin} → HTTP ${res.status}`);
+      }
+    } catch (err) {
+      allOk = false;
+      lines.push(`❌ ${origin} → ${err?.message || err}（CORS 报错可忽略）`);
+    }
   }
+
+  setStatus(lines.join('\n'), allOk);
 });

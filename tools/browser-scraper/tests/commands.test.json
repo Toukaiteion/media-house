@@ -1,0 +1,28 @@
+{
+  "commands": [
+    {
+      "id": "echo",
+      "name": "Echo 测试",
+      "type": "process",
+      "executable": "cmd.exe",
+      "args": ["/c", "echo hello-from-cmd"],
+      "timeoutSeconds": 30
+    },
+    {
+      "id": "err",
+      "name": "Stderr 测试",
+      "type": "process",
+      "executable": "cmd.exe",
+      "args": ["/c", "echo oops-to-stderr 1>&2"],
+      "timeoutSeconds": 30
+    },
+    {
+      "id": "slow",
+      "name": "慢命令（测取消）",
+      "type": "process",
+      "executable": "cmd.exe",
+      "args": ["/c", "ping -n 20 127.0.0.1"],
+      "timeoutSeconds": 60
+    }
+  ]
+}

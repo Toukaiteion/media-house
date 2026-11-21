@@ -1,4 +1,4 @@
-// 只做一件事：把页面端的 Port 和本机 Native Messaging 主机对接起来（双向转发）。
+// 扩展后台：把页面端的长连接和本机 Native Messaging 主机对接起来（双向转发）。
 // 页面 <-> background <-> 本机 exe
 
 const HOST_NAME = 'com.mediahouse.scraper';
@@ -9,7 +9,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 chrome.runtime.onConnect.addListener((pagePort) => {
-  if (pagePort.name !== 'mh-scrape') return;
+  if (pagePort.name !== 'mh-runner') return;
 
   let hostPort = null;
   try {
@@ -19,7 +19,7 @@ chrome.runtime.onConnect.addListener((pagePort) => {
     return;
   }
 
-  // 本机 -> 页面
+  // 本机 -> 页面（日志、进度、退出码都是走这条）
   hostPort.onMessage.addListener((msg) => pagePort.postMessage(msg));
 
   hostPort.onDisconnect.addListener(() => {
@@ -29,12 +29,18 @@ chrome.runtime.onConnect.addListener((pagePort) => {
     try {
       pagePort.postMessage({ type: 'error', message: `与本机程序断开：${reason}` });
     } catch {
-      /* 页面已经关闭 */
+      /* 页面已关闭 */
     }
   });
 
   // 页面 -> 本机
-  pagePort.onMessage.addListener((msg) => hostPort.postMessage(msg));
+  pagePort.onMessage.addListener((msg) => {
+    try {
+      hostPort.postMessage(msg);
+    } catch (err) {
+      pagePort.postMessage({ type: 'error', message: `发送到本机失败：${err?.message || err}` });
+    }
+  });
 
   pagePort.onDisconnect.addListener(() => {
     try {

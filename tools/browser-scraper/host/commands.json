@@ -1,0 +1,165 @@
+{
+  "commands": [
+    {
+      "id": "jsearch",
+      "name": "jsearch 扫描目录并搜刮",
+      "description": "递归扫描目录，按大小筛选后调用 jcatch 处理，结果整理到输出目录",
+      "type": "process",
+      "executable": "G:\\project\\bin\\jsearch.exe",
+      "args": ["${directory}"],
+      "workingDirectory": "G:\\project\\bin",
+      "timeoutSeconds": 7200,
+      "params": [
+        {
+          "key": "directory",
+          "label": "扫描目录",
+          "type": "directory",
+          "required": true,
+          "noArg": true
+        },
+        {
+          "key": "outputDir",
+          "label": "输出目录",
+          "type": "directory",
+          "placeholder": "默认当前目录",
+          "arg": ["--output", "${value}"]
+        },
+        {
+          "key": "minSize",
+          "label": "最小大小",
+          "type": "text",
+          "default": "1G",
+          "placeholder": "1G / 500M / 1024",
+          "arg": ["--min-size", "${value}"]
+        },
+        {
+          "key": "limit",
+          "label": "数量上限",
+          "type": "number",
+          "default": "3",
+          "placeholder": "默认 3",
+          "arg": ["--limit", "${value}"]
+        },
+        {
+          "key": "headless",
+          "label": "无头模式",
+          "type": "boolean",
+          "default": "true",
+          "flagTrue": "--headless",
+          "flagFalse": "--no-headless"
+        },
+        {
+          "key": "verbose",
+          "label": "详细日志",
+          "type": "boolean",
+          "default": "true",
+          "flagTrue": "--verbose"
+        },
+        {
+          "key": "chromedriver",
+          "label": "ChromeDriver",
+          "type": "file",
+          "placeholder": "留空则自动查找",
+          "arg": ["--chromedriver-path", "${value}"]
+        }
+      ]
+    },
+    {
+      "id": "catch-upload",
+      "name": "jcatch 搜刮当前影片并上传",
+      "description": "用当前详情页的番号调用 jcatch 抓取元数据，打包后上传回服务器",
+      "type": "scrape-upload",
+      "executable": "G:\\project\\bin\\jcatch.exe",
+      "args": ["-k", "${key}", "-o", "${outputDir}"],
+      "workingDirectory": "G:\\project\\bin",
+      "timeoutSeconds": 900,
+      "params": [
+        {
+          "key": "key",
+          "label": "番号",
+          "type": "text",
+          "required": true,
+          "default": "${num}",
+          "placeholder": "留空则用当前影片的番号"
+        },
+        {
+          "key": "headless",
+          "label": "无头模式",
+          "type": "boolean",
+          "default": "true",
+          "flagTrue": "--headless",
+          "flagFalse": "--no-headless"
+        },
+        {
+          "key": "chromedriver",
+          "label": "ChromeDriver",
+          "type": "file",
+          "placeholder": "留空则自动查找",
+          "arg": ["--chromedriver-path", "${value}"]
+        }
+      ]
+    },
+    {
+      "id": "jcatch-video",
+      "name": "jcatch 处理本地视频文件",
+      "description": "对本机某个视频文件跑 jcatch，产出整理到输出目录（不经过服务器）",
+      "type": "process",
+      "executable": "G:\\project\\bin\\jcatch.exe",
+      "args": ["-v", "${videoPath}"],
+      "workingDirectory": "G:\\project\\bin",
+      "timeoutSeconds": 900,
+      "params": [
+        {
+          "key": "videoPath",
+          "label": "视频文件",
+          "type": "file",
+          "required": true,
+          "noArg": true
+        },
+        {
+          "key": "outputDir",
+          "label": "输出目录",
+          "type": "directory",
+          "placeholder": "默认当前目录",
+          "arg": ["--output", "${value}"]
+        },
+        {
+          "key": "key",
+          "label": "番号",
+          "type": "text",
+          "placeholder": "留空则从文件名解析",
+          "arg": ["--key", "${value}"]
+        },
+        {
+          "key": "headless",
+          "label": "无头模式",
+          "type": "boolean",
+          "default": "true",
+          "flagTrue": "--headless",
+          "flagFalse": "--no-headless"
+        },
+        {
+          "key": "clean",
+          "label": "清理源文件",
+          "type": "boolean",
+          "default": "false",
+          "flagTrue": "--clean"
+        },
+        {
+          "key": "zip",
+          "label": "打包输出",
+          "type": "boolean",
+          "default": "false",
+          "flagTrue": "--zip-output"
+        },
+        {
+          "key": "chromedriver",
+          "label": "ChromeDriver",
+          "type": "file",
+          "placeholder": "留空则自动查找",
+          "arg": ["--chromedriver-path", "${value}"]
+        }
+      ]
+    }
+  ]
+}

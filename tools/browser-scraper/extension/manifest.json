@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "MediaHouse 本地搜刮",
-  "version": "0.1.0",
-  "description": "在 MediaHouse 影片详情页调用本机 Python 搜刮元数据，并自动上传回服务器。",
+  "name": "MediaHouse 本地工具",
+  "version": "0.3.0",
+  "description": "在 MediaHouse 页面上执行本机配置好的命令（jcatch / jsearch 等），实时查看终端日志。",
   "permissions": ["nativeMessaging", "storage"],
   "background": { "service_worker": "background.js" },
   "options_page": "options.html",

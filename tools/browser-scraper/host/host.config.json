@@ -1,5 +1,0 @@
-{
-  "python": "python",
-  "scraper": "scraper\\scraper.py",
-  "timeout_seconds": 300
-}
