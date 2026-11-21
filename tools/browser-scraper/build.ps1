@@ -54,6 +54,11 @@ Write-Host '==> Copying commands.json and scraper scripts' -ForegroundColor Cyan
 Copy-Item (Join-Path $repoRoot 'host\commands.json') $OutDir -Force
 Copy-Item (Join-Path $repoRoot 'scraper') $OutDir -Recurse -Force
 
+# Desktop launcher for batch jobs (ASCII .bat + Node menu).
+# NOTE: this file must stay ASCII-only; see the header comment.
+$launcher = Join-Path $repoRoot 'jscan-batch.bat'
+if (Test-Path $launcher) { Copy-Item $launcher $OutDir -Force }
+
 Write-Host "==> Done: $OutDir" -ForegroundColor Green
 Write-Host '    Edit commands.json in that folder to add your own commands.' -ForegroundColor Yellow
 Get-ChildItem $OutDir -File | Select-Object Name, Length | Format-Table -AutoSize

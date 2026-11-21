@@ -57,7 +57,12 @@ function ensureStyle() {
     .mh-log .mh-stderr{color:#ffb4a2}
     .mh-log .mh-cmd{color:#79c0ff}
     .mh-log .mh-meta{color:#7ee787}
-    .mh-snippets{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+    .mh-snippets{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto}
+    .mh-tabs{display:flex;gap:6px}
+    .mh-tab{flex:1;border:0;border-radius:6px;padding:6px 8px;cursor:pointer;background:#1b2230;color:#9aa4b2;font-size:12px}
+    .mh-tab:hover{background:#222c3d}
+    .mh-tab.mh-tab-active{background:#1976d2;color:#fff}
+    .mh-pane{display:flex;flex-direction:column;gap:8px}
     .mh-snippet{border:1px solid #2a3446;border-radius:6px;padding:6px 8px;background:#11161f}
     .mh-snippet-head{display:flex;align-items:center;gap:6px;font-size:12px;color:#e6e6e6}
     .mh-snippet-head .mh-copied{margin-left:auto;font-size:11px;color:#7ee787}
@@ -113,14 +118,37 @@ function ensurePanel() {
   const closeBtn = el('button', { class: 'mh-close', text: '✕', title: '收起（命令会继续在后台运行）' });
   closeBtn.addEventListener('click', () => panel.classList.remove('mh-open'));
 
+  // 两个页签：单部搜刮 / 批量任务。批量命令不在下拉里，放这里才不会找不到
+  const tabSingle = el('button', { class: 'mh-tab mh-tab-active', text: '单部搜刮' });
+  const tabBatch = el('button', { class: 'mh-tab', text: '批量任务' });
+
+  const singlePane = el('div', { class: 'mh-pane' }, [
+    el('div', { class: 'mh-row' }, [el('label', { text: '命令' }), selectEl]),
+    hintEl,
+    paramsEl,
+    el('div', { class: 'mh-actions' }, [runBtn, stopBtn, copyBtn, clearBtn, statusEl]),
+  ]);
+
+  const batchPane = el('div', { class: 'mh-pane' }, [snippetsEl]);
+  batchPane.style.display = 'none';
+  snippetsEl.style.display = '';
+
+  const activate = (batch) => {
+    tabSingle.className = batch ? 'mh-tab' : 'mh-tab mh-tab-active';
+    tabBatch.className = batch ? 'mh-tab mh-tab-active' : 'mh-tab';
+    singlePane.style.display = batch ? 'none' : '';
+    batchPane.style.display = batch ? '' : 'none';
+  };
+
+  tabSingle.addEventListener('click', () => activate(false));
+  tabBatch.addEventListener('click', () => activate(true));
+
   panel = el('div', { id: 'mh-tools-panel' }, [
     el('div', { class: 'mh-head' }, [el('span', { text: HOST_LABEL }), closeBtn]),
     el('div', { class: 'mh-body' }, [
-      el('div', { class: 'mh-row' }, [el('label', { text: '命令' }), selectEl]),
-      hintEl,
-      paramsEl,
-      el('div', { class: 'mh-actions' }, [runBtn, stopBtn, copyBtn, clearBtn, statusEl]),
-      snippetsEl,
+      el('div', { class: 'mh-tabs' }, [tabSingle, tabBatch]),
+      singlePane,
+      batchPane,
     ]),
     logEl,
   ]);

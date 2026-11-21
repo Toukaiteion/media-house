@@ -267,6 +267,60 @@ https://media.example.com
 - `command` 里可以用 `${hostDir}`，host 返回时会展开成真实路径，粘到终端直接能跑
 - 命令里别带 `cd`：用绝对路径，PowerShell 和 cmd 都能直接粘贴
 
+### 面板的两个页签
+
+面板顶部有「单部搜刮 / 批量任务」两个页签：
+
+- **单部搜刮**：命令下拉 + 参数表单 + 执行/停止（原来的界面）
+- **批量任务**：`snippets` 列表，每条一个「复制」按钮
+
+批量命令不在下拉里，所以第一次找的时候记得点「批量任务」页签。
+
+### 双击运行：`jscan-batch.bat`
+
+不想开终端敲命令的话，直接双击 `dist\jscan-batch.bat`：
+
+```
+============================================
+  输入目录: G:\迅雷下载
+  输出目录: F:\迅雷下载\emby_out
+============================================
+  1. 只看计划（不动任何文件）
+  2. 正式跑（搜刮 + 移动）
+  3. 只整理不搜刮（不联网）
+--------------------------------------------
+请选择 [1/2/3，直接回车 = 1]:
+```
+
+选完就跑，跑完停住等你看结果。
+
+> 这里有个编码坑：`.bat` 是 cmd 按 GBK 解析的，里面直接写中文路径（`G:\迅雷下载`）
+> 会乱码。所以 `.bat` 只有三行 ASCII，菜单和路径都在 `scraper\batch-menu.mjs`
+> （Node 读文件是 UTF-8，不受影响）。
+
+可以在桌面建个快捷方式指向它，双击即用：
+
+```powershell
+$ws = New-Object -ComObject WScript.Shell
+$lnk = $ws.CreateShortcut("$([Environment]::GetFolderPath('Desktop'))\批量搜刮.lnk")
+$lnk.TargetPath = "G:\project\MediaHouse\tools\browser-scraper\dist\jscan-batch.bat"
+$lnk.WorkingDirectory = Split-Path $lnk.TargetPath
+$lnk.Save()
+```
+
+### 为什么面板不能直接帮你开终端
+
+试过三种方式，都不可行（浏览器派生的进程被降权到 Low 完整性级别时）：
+
+| 方式 | 结果 |
+|---|---|
+| `Process.Start("cmd")` | 子进程继承 Low 令牌，一样写不了 F: |
+| COM `Shell.Application.ShellExecute` | Low 客户端激活被拒，什么都没发生 |
+| `schtasks /create` + `/run` | Low 下创建失败（Medium 下正常），且 `/tr` 里的重定向会被吃掉 |
+| `explorer.exe <file>` | 不可靠，连 Medium 下都没跑起来 |
+
+所以「一键」只能做到：**复制命令**（面板里）+ **双击 .bat**（桌面）。
+
 ---
 
 ## 使用
