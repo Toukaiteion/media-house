@@ -372,17 +372,34 @@ function dedupe(items) {
 
 // ---------------- 文件整理 ----------------
 
+/**
+ * 把视频放进目标目录。
+ *
+ * 三种情况：
+ *   - 同一卷：rename，瞬间完成
+ *   - 跨卷（EXDEV）：复制 + 删除源
+ *   - 权限不足（EPERM/EACCES）：复制，源文件留着 —— 常见于浏览器派生进程
+ *     跑在 Low 完整性级别，删不掉资源管理器/迅雷创建的 Medium 文件
+ *
+ * 返回值：'moved' | 'copied'（源已删）| 'copied-kept-source'（源留着）
+ */
 async function safeMove(from, to) {
   try {
     await rename(from, to);
     return 'moved';
   } catch (err) {
-    if (err?.code !== 'EXDEV') throw err;
+    const recoverable = err?.code === 'EXDEV' || err?.code === 'EPERM' || err?.code === 'EACCES';
+    if (!recoverable) throw err;
 
-    // 跨盘：不支持 rename，只能复制后删源
     await copyFile(from, to);
-    await unlink(from);
-    return 'copied';
+
+    try {
+      await unlink(from);
+      return 'copied';
+    } catch {
+      // 删不掉源文件不影响结果，只是要提醒用户手动清理
+      return 'copied-kept-source';
+    }
   }
 }
 
@@ -635,7 +652,13 @@ async function main() {
             await copyFile(item.path, targetVideo);
             how = 'copied';
           }
-          log(`  视频已${how === 'moved' ? '移动' : '复制'}到 ${targetVideo}`);
+
+          if (how === 'copied-kept-source') {
+            log(`  视频已复制到 ${targetVideo}`);
+            log(`  源文件权限不足删除失败，仍在原地，请稍后手动清理：${item.path}`);
+          } else {
+            log(`  视频已${how === 'moved' ? '移动' : '复制'}到 ${targetVideo}`);
+          }
         }
 
         succeeded.push(code);
