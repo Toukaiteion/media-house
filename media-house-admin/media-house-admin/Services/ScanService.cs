@@ -458,6 +458,8 @@ public class ScanService(
                     .Where(mt => mt.MediaId == mediaItem.Id)
                     .ExecuteDeleteAsync();
 
+                DetachTrackedMediaTags(context, mediaItem.Id);
+
                 await UpsertMediaTagsAsync(context, libraryId, mediaItem.Id, parseResult.Tags, lookup);
             }
 
@@ -467,6 +469,8 @@ public class ScanService(
                 await context.MediaStaffs
                     .Where(ms => ms.MediaId == mediaItem.Id)
                     .ExecuteDeleteAsync();
+
+                DetachTrackedMediaStaffs(context, mediaItem.Id);
 
                 await UpsertMediaStaffAsync(context, mediaItem.Id, parseResult.Actors, lookup);
             }
@@ -944,6 +948,39 @@ public class ScanService(
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// 把跟踪器里属于这部影片的「标签关系」实体摘掉。
+    ///
+    /// ExecuteDeleteAsync 直接走 SQL 删除，跟踪器不会跟着清理。而同一部影片
+    /// 在一次扫描里可能被处理两次——两个目录的 NFO 写了同一个番号就会这样
+    /// （movieIdentifier 取的是 NFO 里的 Num）。第二次 Add 同一个主键时，
+    /// 第一次留下的实体还挂在跟踪器里，就会抛身份冲突。
+    ///
+    /// 必须按类型分开摘：先处理标签、再处理演员，若演员那步把标签一起摘了，
+    /// 刚加进去的标签关系就会丢失。
+    /// </summary>
+    private static void DetachTrackedMediaTags(MediaHouseDbContext context, int mediaItemId)
+    {
+        foreach (var entry in context.ChangeTracker.Entries<MediaTag>().ToList())
+        {
+            if (entry.Entity.MediaId == mediaItemId)
+            {
+                entry.State = EntityState.Detached;
+            }
+        }
+    }
+
+    private static void DetachTrackedMediaStaffs(MediaHouseDbContext context, int mediaItemId)
+    {
+        foreach (var entry in context.ChangeTracker.Entries<MediaStaff>().ToList())
+        {
+            if (entry.Entity.MediaId == mediaItemId)
+            {
+                entry.State = EntityState.Detached;
+            }
+        }
     }
 
     /// <summary>
