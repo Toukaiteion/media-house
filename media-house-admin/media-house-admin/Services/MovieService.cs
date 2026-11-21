@@ -243,13 +243,45 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
 
         // Check if favorited by user
         bool isFavorited = false;
+        HashSet<int> favoritedTagIds = [];
+        HashSet<int> favoritedStaffIds = [];
+
         if (userId.HasValue)
         {
+            var uid = userId.Value;
+
             isFavorited = await _context.MyFavors
-                .AnyAsync(mf => mf.UserId == userId.Value && mf.MediaId == id && mf.MediaType == "movie");
+                .AnyAsync(mf => mf.UserId == uid && mf.MediaId == id && mf.MediaType == "movie");
+
+            // 详情页上的标签/演员也要显示收藏状态，这里一次性查出来
+            var tagIds = media.MediaTags
+                .Where(mt => mt.Tag != null)
+                .Select(mt => mt.Tag!.Id)
+                .ToList();
+
+            if (tagIds.Count > 0)
+            {
+                favoritedTagIds = [.. await _context.FavoriteTags
+                    .Where(f => f.UserId == uid && tagIds.Contains(f.TagId))
+                    .Select(f => f.TagId)
+                    .ToListAsync()];
+            }
+
+            var staffIds = media.MediaStaffs
+                .Where(ms => ms.Staff != null)
+                .Select(ms => ms.Staff!.Id)
+                .ToList();
+
+            if (staffIds.Count > 0)
+            {
+                favoritedStaffIds = [.. await _context.FavoriteStaffs
+                    .Where(f => f.UserId == uid && staffIds.Contains(f.StaffId))
+                    .Select(f => f.StaffId)
+                    .ToListAsync()];
+            }
         }
 
-        return MapToDetailDto(media, isFavorited);
+        return MapToDetailDto(media, isFavorited, favoritedTagIds, favoritedStaffIds);
     }
 
     public async Task<List<TagWithMoviesDto>> GetMoviesByTagsAsync(int? userId, MediaRecommendationQueryDto query)
@@ -474,7 +506,11 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
         };
     }
 
-    private static MovieDetailDto MapToDetailDto(Media media, bool isFavorited = false)
+    private static MovieDetailDto MapToDetailDto(
+        Media media,
+        bool isFavorited = false,
+        HashSet<int>? favoritedTagIds = null,
+        HashSet<int>? favoritedStaffIds = null)
     {
         int? year = null;
         if (!string.IsNullOrEmpty(media.ReleaseDate) && DateTime.TryParse(media.ReleaseDate, out var releaseDate))
@@ -522,7 +558,8 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
                     Id = mediaStaff.Staff.Id.ToString(),
                     Name = mediaStaff.Staff.Name,
                     AvatarPath = mediaStaff.Staff.AvatarPath,
-                    RoleName = mediaStaff.RoleName
+                    RoleName = mediaStaff.RoleName,
+                    IsFavorited = favoritedStaffIds?.Contains(mediaStaff.Staff.Id) ?? false
                 };
 
                 var roleType = mediaStaff.RoleType.ToLowerInvariant();
@@ -547,7 +584,8 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
             .Select(mt => new TagDto
             {
                 Id = mt.Tag!.Id.ToString(),
-                TagName = mt.Tag.TagName
+                TagName = mt.Tag.TagName,
+                IsFavorited = favoritedTagIds?.Contains(mt.Tag!.Id) ?? false
             })
             .ToList() ?? [];
 

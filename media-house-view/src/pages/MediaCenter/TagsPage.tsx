@@ -9,10 +9,11 @@ import {
   ToggleButtonGroup,
   ToggleButton,
 } from '@mui/material';
-import FavoriteIcon from '@mui/icons-material/Favorite';
+import FavoriteIcon from '@mui/icons-material/BookmarkAdded';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
 import { InfoCard } from '../../components/InfoCard';
+import { Toast } from '../../components/Toast';
 import type { Tag } from '../../types';
 
 export function TagsPage() {
@@ -26,6 +27,7 @@ export function TagsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [toast, setToast] = useState<string | null>(null);
 
   const loadTags = useCallback(async () => {
     try {
@@ -64,6 +66,7 @@ export function TagsPage() {
 
     try {
       await api.toggleTagFavorite(tag.id);
+      setToast(next ? `已收藏 ${tag.tag_name}` : `已取消收藏 ${tag.tag_name}`);
       // 在「只看收藏」里取消收藏，要把它从列表里去掉
       if (favoritedOnly) await loadTags();
     } catch (err) {
@@ -140,6 +143,7 @@ export function TagsPage() {
                   count={tag.media_count}
                   onClick={() => handleTagClick(tag.id)}
                   favorite={tag.is_favorited}
+                  favoriteKind="tag"
                   onToggleFavorite={() => handleToggleFavorite(tag)}
                 />
               </Grid>
@@ -152,7 +156,7 @@ export function TagsPage() {
                 {searchTerm
                   ? '未找到匹配的标签'
                   : favoritedOnly
-                    ? '还没有收藏标签，点标签卡片右上角的心形收藏'
+                    ? '还没有收藏标签，点标签卡片右上角的书签收藏'
                     : '暂无标签'}
               </Typography>
             </Box>
@@ -165,6 +169,8 @@ export function TagsPage() {
           )}
         </>
       )}
+
+      <Toast message={toast} onClose={() => setToast(null)} />
     </Box>
   );
 }

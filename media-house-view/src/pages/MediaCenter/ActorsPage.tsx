@@ -9,10 +9,11 @@ import {
   ToggleButtonGroup,
   ToggleButton,
 } from '@mui/material';
-import FavoriteIcon from '@mui/icons-material/Favorite';
+import HowToRegIcon from '@mui/icons-material/HowToReg';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
 import { InfoCard } from '../../components/InfoCard';
+import { Toast } from '../../components/Toast';
 import type { Actor } from '../../types';
 
 export function ActorsPage() {
@@ -25,6 +26,7 @@ export function ActorsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [toast, setToast] = useState<string | null>(null);
 
   const loadActors = useCallback(async () => {
     try {
@@ -62,6 +64,7 @@ export function ActorsPage() {
 
     try {
       await api.toggleActorFavorite(actor.id);
+      setToast(next ? `已关注 ${actor.name}` : `已取消关注 ${actor.name}`);
       if (favoritedOnly) await loadActors();
     } catch (err) {
       setActors((prev) => prev.map((item) => (item.id === actor.id ? { ...item, is_favorited: !next } : item)));
@@ -113,14 +116,14 @@ export function ActorsPage() {
         >
           <ToggleButton value="all">全部</ToggleButton>
           <ToggleButton value="fav">
-            <FavoriteIcon fontSize="small" sx={{ mr: 0.5, color: 'error.main' }} />
-            我的收藏
+            <HowToRegIcon fontSize="small" sx={{ mr: 0.5 }} />
+            我的关注
           </ToggleButton>
         </ToggleButtonGroup>
 
         {!loading && (
           <Typography variant="body2" color="text.secondary">
-            共 {actors.length} 位演员{favoritedOnly ? '（已收藏）' : ''}
+            共 {actors.length} 位演员{favoritedOnly ? '（已关注）' : ''}
           </Typography>
         )}
       </Box>
@@ -140,6 +143,7 @@ export function ActorsPage() {
                   onClick={() => handleActorClick(actor.id)}
                   avatar={getAvatarUrl(actor.avatar_path)}
                   favorite={actor.is_favorited}
+                  favoriteKind="actor"
                   onToggleFavorite={() => handleToggleFavorite(actor)}
                 />
               </Grid>
@@ -152,7 +156,7 @@ export function ActorsPage() {
                 {searchTerm
                   ? '未找到匹配的演员'
                   : favoritedOnly
-                    ? '还没有收藏演员，点演员卡片右上角的心形收藏'
+                    ? '还没有关注演员，点演员卡片右上角的关注按钮'
                     : '暂无演员'}
               </Typography>
             </Box>
@@ -165,6 +169,8 @@ export function ActorsPage() {
           )}
         </>
       )}
+
+      <Toast message={toast} onClose={() => setToast(null)} />
     </Box>
   );
 }

@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Box, Typography, Grid, CircularProgress, Alert, Tabs, Tab, Button } from '@mui/material';
-import FavoriteIcon from '@mui/icons-material/Favorite';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
 import { MovieCard } from '../../components/MovieCard';
 import { InfoCard } from '../../components/InfoCard';
+import { Toast } from '../../components/Toast';
 import type { MovieDetail, Tag, Actor } from '../../types';
 
 type FavoritesTab = 'movies' | 'actors' | 'tags';
@@ -24,6 +24,7 @@ export function FavoritesPage() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   // 收藏数量通常不大，直接把全部分页拉完，省掉翻页交互
   const loadAll = useCallback(async () => {
@@ -86,8 +87,9 @@ export function FavoritesPage() {
     setActors((prev) => prev.filter((item) => item.id !== actor.id));
     try {
       await api.toggleActorFavorite(actor.id);
+      setToast(`已取消关注 ${actor.name}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '取消收藏失败');
+      setError(err instanceof Error ? err.message : '取消关注失败');
       void loadAll();
     }
   };
@@ -96,6 +98,7 @@ export function FavoritesPage() {
     setTags((prev) => prev.filter((item) => item.id !== tag.id));
     try {
       await api.toggleTagFavorite(tag.id);
+      setToast(`已取消收藏 ${tag.tag_name}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : '取消收藏失败');
       void loadAll();
@@ -178,7 +181,7 @@ export function FavoritesPage() {
 
       {tab === 'actors' &&
         (actors.length === 0
-          ? emptyState('还没有收藏演员', '去演员页看看', () => navigate('/media-center/actors'))
+          ? emptyState('还没有关注的演员', '去演员页看看', () => navigate('/media-center/actors'))
           : (
             <Grid container spacing={3}>
               {actors.map((actor) => (
@@ -189,6 +192,7 @@ export function FavoritesPage() {
                     avatar={actor.avatar_path ? api.imageUrl(actor.avatar_path) : undefined}
                     onClick={() => navigate(`/media-center/movies?actor_id=${actor.id}`)}
                     favorite
+                    favoriteKind="actor"
                     onToggleFavorite={() => handleUnfavoriteActor(actor)}
                   />
                 </Grid>
@@ -198,7 +202,7 @@ export function FavoritesPage() {
 
       {tab === 'tags' &&
         (tags.length === 0
-          ? emptyState('还没有收藏标签', '去标签页看看', () => navigate('/media-center/tags'))
+          ? emptyState('还没有收藏的标签', '去标签页看看', () => navigate('/media-center/tags'))
           : (
             <Grid container spacing={3}>
               {tags.map((tag) => (
@@ -208,6 +212,7 @@ export function FavoritesPage() {
                     count={tag.media_count}
                     onClick={() => navigate(`/media-center/movies?tag_ids=${tag.id}`)}
                     favorite
+                    favoriteKind="tag"
                     onToggleFavorite={() => handleUnfavoriteTag(tag)}
                   />
                 </Grid>
@@ -216,11 +221,12 @@ export function FavoritesPage() {
           ))}
 
       <Box sx={{ mt: 4, display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}>
-        <FavoriteIcon fontSize="small" sx={{ color: 'error.main' }} />
         <Typography variant="body2">
-          在演员页、标签页点卡片右上角的心形即可收藏，收藏的内容都会出现在这里
+          影片点心形「喜欢」，演员点人形按钮「关注」，标签点书签按钮「收藏」，都会出现在这里
         </Typography>
       </Box>
+
+      <Toast message={toast} onClose={() => setToast(null)} />
     </Box>
   );
 }

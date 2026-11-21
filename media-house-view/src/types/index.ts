@@ -160,6 +160,7 @@ export interface ActorRole {
   name: string;
   avatar_path?: string;
   role_name?: string;
+  is_favorited?: boolean;
 }
 
 /**

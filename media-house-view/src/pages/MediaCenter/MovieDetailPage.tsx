@@ -25,13 +25,18 @@ import {
   FavoriteBorder,
   MoreVert as MoreVertIcon,
   CloudUpload as CloudUploadIcon,
+  PersonAddAlt1 as PersonAddIcon,
+  HowToReg as HowToRegIcon,
+  BookmarkAddOutlined as BookmarkAddIcon,
+  BookmarkAdded as BookmarkAddedIcon,
 } from '@mui/icons-material';
 import { api } from '../../services/api';
 import { movieListCache } from '../../services/movieListCache';
 import { useQueryClient } from '@tanstack/react-query';
-import type { MovieDetail } from '../../types';
+import type { ActorRole, MovieDetail, Tag } from '../../types';
 import { ImageViewer } from '../../components/ImageViewer';
 import { MetadataUploadDialog } from '../../components/MetadataUploadDialog';
+import { Toast } from '../../components/Toast';
 
 const POSTER_WIDTH = 300;
 
@@ -47,6 +52,7 @@ export function MovieDetailPage() {
   // const [scanDialogOpen, setScanDialogOpen] = useState(false);  // 插件搜刮暂时下线
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const menuAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   // 点击页面外部或按 ESC 关闭菜单
@@ -189,6 +195,58 @@ export function MovieDetailPage() {
     await api.uploadMetadataZip(id, file);
   };
 
+  // 详情页里直接收藏/取消收藏标签
+  const handleToggleTagFavorite = async (tag: Tag) => {
+    const next = !tag.is_favorited;
+
+    setMovie((prev) =>
+      prev?.tags
+        ? { ...prev, tags: prev.tags.map((item) => (item.id === tag.id ? { ...item, is_favorited: next } : item)) }
+        : prev,
+    );
+
+    try {
+      await api.toggleTagFavorite(tag.id);
+      setToast(next ? `已收藏 ${tag.tag_name}` : `已取消收藏 ${tag.tag_name}`);
+    } catch (err) {
+      setMovie((prev) =>
+        prev?.tags
+          ? { ...prev, tags: prev.tags.map((item) => (item.id === tag.id ? { ...item, is_favorited: !next } : item)) }
+          : prev,
+      );
+      setError(err instanceof Error ? err.message : '收藏标签失败');
+    }
+  };
+
+  // 详情页里直接收藏/取消收藏演员
+  const handleToggleActorFavorite = async (actor: ActorRole) => {
+    const next = !actor.is_favorited;
+
+    setMovie((prev) =>
+      prev?.actors
+        ? {
+            ...prev,
+            actors: prev.actors.map((item) => (item.id === actor.id ? { ...item, is_favorited: next } : item)),
+          }
+        : prev,
+    );
+
+    try {
+      await api.toggleActorFavorite(actor.id);
+      setToast(next ? `已关注 ${actor.name}` : `已取消关注 ${actor.name}`);
+    } catch (err) {
+      setMovie((prev) =>
+        prev?.actors
+          ? {
+              ...prev,
+              actors: prev.actors.map((item) => (item.id === actor.id ? { ...item, is_favorited: !next } : item)),
+            }
+          : prev,
+      );
+      setError(err instanceof Error ? err.message : '收藏演员失败');
+    }
+  };
+
   const handleImageClick = (index: number) => {
     setCurrentImageIndex(index);
     setViewerOpen(true);
@@ -313,7 +371,19 @@ export function MovieDetailPage() {
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 {movie.tags.map((tag) => (
-                  <Chip key={tag.id} label={tag.tag_name} size="small" />
+                  <Chip
+                    key={tag.id}
+                    label={tag.tag_name}
+                    size="small"
+                    clickable
+                    onClick={() => navigate(`/media-center/movies?tag_ids=${tag.id}`)}
+                    deleteIcon={
+                      <Box sx={{ display: 'flex', color: tag.is_favorited ? 'warning.main' : 'action.disabled' }}>
+                        {tag.is_favorited ? <BookmarkAddedIcon sx={{ fontSize: 16 }} /> : <BookmarkAddIcon sx={{ fontSize: 16 }} />}
+                      </Box>
+                    }
+                    onDelete={() => handleToggleTagFavorite(tag)}
+                  />
                 ))}
               </Box>
             </Box>
@@ -329,34 +399,49 @@ export function MovieDetailPage() {
                 {movie.actors.map((actor) => {
                   const avatarUrl = actor.avatar_path ? api.imageUrl(actor.avatar_path) : undefined;
                   return (
-                    <Box
-                      key={actor.id}
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1,
-                      }}
-                    >
-                      <Avatar
-                        src={avatarUrl}
-                        alt={actor.name}
-                        sx={{ width: 40, height: 40 }}
+                    <Box key={actor.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Box
+                        onClick={() => navigate(`/media-center/movies?actor_id=${actor.id}`)}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          cursor: 'pointer',
+                          borderRadius: 1,
+                          pr: 0.5,
+                          '&:hover .actor-name': { color: 'primary.main' },
+                        }}
                       >
-                        {actor.name.charAt(0)}
-                      </Avatar>
-                      <Typography variant="body2">
-                        {actor.name}
-                        {actor.role_name && (
-                          <Typography
-                            component="span"
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{ ml: 0.5 }}
-                          >
-                            ({actor.role_name})
-                          </Typography>
-                        )}
-                      </Typography>
+                        <Avatar
+                          src={avatarUrl}
+                          alt={actor.name}
+                          sx={{ width: 40, height: 40 }}
+                        >
+                          {actor.name.charAt(0)}
+                        </Avatar>
+                        <Typography variant="body2" className="actor-name">
+                          {actor.name}
+                          {actor.role_name && (
+                            <Typography
+                              component="span"
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{ ml: 0.5 }}
+                            >
+                              ({actor.role_name})
+                            </Typography>
+                          )}
+                        </Typography>
+                      </Box>
+
+                      <IconButton
+                        size="small"
+                        aria-label={actor.is_favorited ? `取消关注 ${actor.name}` : `关注 ${actor.name}`}
+                        onClick={() => handleToggleActorFavorite(actor)}
+                        sx={{ color: actor.is_favorited ? 'secondary.main' : 'text.disabled' }}
+                      >
+                        {actor.is_favorited ? <HowToRegIcon fontSize="small" /> : <PersonAddIcon fontSize="small" />}
+                      </IconButton>
                     </Box>
                   );
                 })}
@@ -566,6 +651,8 @@ export function MovieDetailPage() {
           {error}
         </Alert>
       )}
+
+      <Toast message={toast} onClose={() => setToast(null)} />
     </Box>
   );
 }
