@@ -918,8 +918,14 @@ public class ScanService(
     {
         var tagNames = tagsString
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            // 大小写不同也算同一个标签，否则会给同一个 Tag 建两条关系
+            // 大小写不同也算同一个标签，省掉最明显的一类重复
             .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        // 按「解析出来的 TagId」再去一次重。
+        // 名字写法不同（重音、组合字符、全角半角等）在库里可能是同一行，
+        // 于是不同名字会拿到同一个 Tag；media_tags 的主键是
+        // (library, media, tag)，再 Add 一次就会触发 EF 的跟踪冲突。
+        var usedTagIds = new HashSet<int>();
 
         foreach (var tagName in tagNames)
         {
@@ -927,6 +933,14 @@ public class ScanService(
                 continue;
 
             var tag = await GetOrCreateTagAsync(context, tagName, lookup);
+
+            if (!usedTagIds.Add(tag.Id))
+            {
+                _logger.LogInformation(
+                    "标签 {TagName} 与本次已处理的标签指向同一行（Id={TagId}），跳过重复关联",
+                    tagName, tag.Id);
+                continue;
+            }
 
             context.MediaTags.Add(new MediaTag
             {
@@ -1005,6 +1019,9 @@ public class ScanService(
         // 库里的唯一约束是大小写不敏感的）
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // 再按解析出来的 StaffId 去重：不同写法可能落到同一行演员上
+        var usedStaffIds = new HashSet<int>();
+
         for (var sortOrder = 0; sortOrder < actorNames.Count; sortOrder++)
         {
             var actorName = actorNames[sortOrder];
@@ -1017,6 +1034,14 @@ public class ScanService(
             if (!seen.Add(name)) continue;
 
             var staff = await GetOrCreateStaffAsync(context, name, lookup);
+
+            if (!usedStaffIds.Add(staff.Id))
+            {
+                _logger.LogInformation(
+                    "演员 {StaffName} 与本次已处理的演员指向同一行（Id={StaffId}），跳过重复关联",
+                    name, staff.Id);
+                continue;
+            }
 
             context.MediaStaffs.Add(new MediaStaff
             {
