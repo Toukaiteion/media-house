@@ -13,157 +13,119 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
 
     public async Task<PagedResponseDto<MovieDto>> GetMoviesAsync(MovieQueryDto query)
     {
-        // Start with base query
+        // 分页参数兜底：客户端传多大就查多大，等于送了一个拖库接口
+        var page = query.Page < 1 ? 1 : query.Page;
+        var pageSize = Math.Clamp(query.PageSize, 1, 200);
+        var userId = query.UserId;
+
         var mediaQuery = _context.Medias
+            .AsNoTracking()
             .Include(m => m.Movie)
             .Where(m => m.Type == "movie");
 
-        // Pre-query favorited media IDs if user ID is provided
-        HashSet<int>? favoritedMediaIds = null;
-        query.UserId = 1;
-        if (query.UserId.HasValue)
+        // 收藏集合：一次查出，只用于给 DTO 打 IsFavorited 标记
+        HashSet<int> favoritedMediaIds = [];
+        if (userId.HasValue)
         {
-            var favorList = await _context.MyFavors
-                .Where(f => f.UserId == query.UserId.Value)
+            var uid = userId.Value;
+            favoritedMediaIds = [.. await _context.MyFavors
+                .AsNoTracking()
+                .Where(f => f.UserId == uid && f.MediaType == "movie")
                 .Select(f => f.MediaId)
-                .ToListAsync();
-            favoritedMediaIds = new HashSet<int>(favorList);
+                .ToListAsync()];
         }
 
-        // Search filter (按name或title模糊查询)
-        if (!string.IsNullOrEmpty(query.Search))
+        // 搜索
+        if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            mediaQuery = mediaQuery.Where(m => m.Name.Contains(query.Search) || m.Title.Contains(query.Search));
+            var search = query.Search.Trim();
+            mediaQuery = mediaQuery.Where(m => m.Name.Contains(search) || m.Title.Contains(search));
         }
 
-        // Library filter
+        // 媒体库
         if (query.LibraryId.HasValue)
         {
             mediaQuery = mediaQuery.Where(m => m.LibraryId == query.LibraryId.Value);
         }
 
-        // Favor filter (combinable)
-        if (query.Favor == true && query.UserId.HasValue)
+        // 只看收藏：用子查询，别把收藏 id 全拉到内存再拼 IN
+        if (query.Favor == true && userId.HasValue)
         {
-            var favorMediaIds = await _context.MyFavors
-                .Where(f => f.UserId == query.UserId.Value)
-                .Select(f => f.MediaId)
-                .ToListAsync();
-
-            mediaQuery = mediaQuery.Where(m => favorMediaIds.Contains(m.Id));
+            var uid = userId.Value;
+            mediaQuery = mediaQuery.Where(m =>
+                _context.MyFavors.Any(f => f.UserId == uid && f.MediaId == m.Id && f.MediaType == "movie"));
         }
 
-        // Tags filter (按tagIds筛选，逗号分隔)
-        if (!string.IsNullOrEmpty(query.Tags))
+        // 标签（逗号分隔）：无法解析的 id 直接忽略，不再因为一个脏参数整页 500
+        if (!string.IsNullOrWhiteSpace(query.Tags))
         {
-            var tagIds = query.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(t => int.Parse(t.Trim()))
+            var tagIds = query.Tags
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(t => int.TryParse(t, out var id) ? id : (int?)null)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
                 .ToList();
 
-            mediaQuery = mediaQuery
-                .Include(m => m.MediaTags)
-                .Where(m => m.MediaTags
-                    .Any(mt => tagIds.Contains(mt.TagId)));
+            if (tagIds.Count > 0)
+            {
+                mediaQuery = mediaQuery.Where(m => m.MediaTags.Any(mt => tagIds.Contains(mt.TagId)));
+            }
         }
 
-        // Actor filter (combinable)
+        // 演员
         if (query.ActorId.HasValue)
         {
-            mediaQuery = mediaQuery
-                .Include(m => m.MediaStaffs)
-                .Where(m => m.MediaStaffs
-                    .Any(ms => ms.StaffId == query.ActorId.Value));
+            var actorId = query.ActorId.Value;
+            mediaQuery = mediaQuery.Where(m => m.MediaStaffs.Any(ms => ms.StaffId == actorId));
         }
 
-        // Apply sorting
-        var sortBy = query.SortBy?.ToLower() ?? "default";
-        var isAscending = (query.SortOrder?.ToLower() ?? "desc") == "asc";
+        var sortBy = (query.SortBy ?? "default").Trim().ToLowerInvariant();
+        var ascending = string.Equals(query.SortOrder, "asc", StringComparison.OrdinalIgnoreCase);
 
-        IOrderedQueryable<Media>? orderedQuery = null;
-
-        switch (sortBy)
+        // 按排序方式排序（全部在 SQL 里完成）
+        if (sortBy == "recent" && userId.HasValue)
         {
-            case "recent":
-                if (query.UserId.HasValue)
-                {
-                    var playRecordsQuery = _context.PlayRecords
-                        .Where(pr => pr.UserId == query.UserId.Value);
+            // 最近播放：按该用户对该影片的最后播放时间排序。
+            // 原来是先把全部播放记录、全部影片拉进内存再排序分页，库一大就爆内存。
+            var uid = userId.Value;
+            var playRecords = _context.PlayRecords.Where(pr => pr.UserId == uid && pr.LastPlayTime != null);
 
-                    var playRecords = isAscending
-                        ? await playRecordsQuery.OrderBy(pr => pr.LastPlayTime).ToListAsync()
-                        : await playRecordsQuery.OrderByDescending(pr => pr.LastPlayTime).ToListAsync();
-
-                    var mediaIds = playRecords.Select(pr => pr.MediaId).ToList();
-
-                    var idToIndex = mediaIds
-                        .Select((id, index) => (id, index))
-                        .ToDictionary(x => x.id, x => x.index);
-
-                    mediaQuery = mediaQuery.Where(m => mediaIds.Contains(m.Id));
-                    var medias = await mediaQuery.ToListAsync();
-                    medias = [.. medias.OrderBy(m => idToIndex.GetValueOrDefault(m.Id, int.MaxValue))];
-
-                    var totalCount = await mediaQuery.CountAsync();
-                    var pagedMedias = medias
-                        .Skip((query.Page - 1) * query.PageSize)
-                        .Take(query.PageSize)
-                        .ToList();
-
-                    return new PagedResponseDto<MovieDto>
-                    {
-                        Items = pagedMedias.Select(m => MapToDto(m, favoritedMediaIds)).ToList(),
-                        TotalCount = totalCount,
-                        Page = query.Page,
-                        PageSize = query.PageSize
-                    };
-                }
-                orderedQuery = isAscending ? mediaQuery.OrderBy(m => m.Id) : mediaQuery.OrderByDescending(m => m.Id);
-                break;
-
-            case "mostly_play":
-                orderedQuery = isAscending
+            mediaQuery = mediaQuery.Where(m => playRecords.Any(pr => pr.MediaId == m.Id));
+            mediaQuery = ascending
+                ? mediaQuery.OrderBy(m => playRecords.Where(pr => pr.MediaId == m.Id).Max(pr => pr.LastPlayTime))
+                : mediaQuery.OrderByDescending(m => playRecords.Where(pr => pr.MediaId == m.Id).Max(pr => pr.LastPlayTime));
+        }
+        else
+        {
+            mediaQuery = sortBy switch
+            {
+                "mostly_play" => ascending
                     ? mediaQuery.OrderBy(m => m.PlayCount ?? 0)
-                    : mediaQuery.OrderByDescending(m => m.PlayCount ?? 0);
-                break;
-
-            case "name":
-                orderedQuery = isAscending
-                    ? mediaQuery.OrderBy(m => m.Name)
-                    : mediaQuery.OrderByDescending(m => m.Name);
-                break;
-
-            case "release_date":
-                orderedQuery = isAscending
+                    : mediaQuery.OrderByDescending(m => m.PlayCount ?? 0),
+                "name" => ascending ? mediaQuery.OrderBy(m => m.Name) : mediaQuery.OrderByDescending(m => m.Name),
+                "release_date" => ascending
                     ? mediaQuery.OrderBy(m => m.ReleaseDate)
-                    : mediaQuery.OrderByDescending(m => m.ReleaseDate);
-                break;
-
-            case "create_time":
-                orderedQuery = isAscending
+                    : mediaQuery.OrderByDescending(m => m.ReleaseDate),
+                "create_time" => ascending
                     ? mediaQuery.OrderBy(m => m.CreateTime)
-                    : mediaQuery.OrderByDescending(m => m.CreateTime);
-                break;
-
-            default:
-                orderedQuery = isAscending
-                    ? mediaQuery.OrderBy(m => m.Id)
-                    : mediaQuery.OrderByDescending(m => m.Id);
-                break;
+                    : mediaQuery.OrderByDescending(m => m.CreateTime),
+                _ => ascending ? mediaQuery.OrderBy(m => m.Id) : mediaQuery.OrderByDescending(m => m.Id),
+            };
         }
 
-        var totalCountDefault = await orderedQuery!.CountAsync();
+        var totalCount = await mediaQuery.CountAsync();
 
-        var mediasDefault = await orderedQuery
-            .Skip((query.Page - 1) * query.PageSize)
-            .Take(query.PageSize)
+        var items = await mediaQuery
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
 
         return new PagedResponseDto<MovieDto>
         {
-            Items = mediasDefault.Select(m => MapToDto(m, favoritedMediaIds)).ToList(),
-            TotalCount = totalCountDefault,
-            Page = query.Page,
-            PageSize = query.PageSize
+            Items = items.Select(m => MapToDto(m, favoritedMediaIds)).ToList(),
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
         };
     }
 

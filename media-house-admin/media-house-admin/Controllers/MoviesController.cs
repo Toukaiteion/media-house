@@ -21,6 +21,9 @@ public class MoviesController(
     {
         try
         {
+            // 「最近播放」「只看收藏」都依赖当前用户，一律以 token 为准，不接受客户端指定
+            query.UserId = HttpContext.GetUserId();
+
             var result = await _movieService.GetMoviesAsync(query);
             return Ok(result);
         }
