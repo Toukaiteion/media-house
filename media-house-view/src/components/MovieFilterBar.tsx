@@ -114,7 +114,13 @@ export function MovieFilterBar({
   const [actorSearch, setActorSearch] = useState('');
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
   const [actorDropdownOpen, setActorDropdownOpen] = useState(false);
+  // 输入框的即时值：受控于本地 state，父组件的值变化（清除筛选、前进后退）时再同步回来
+  const [searchInput, setSearchInput] = useState(searchValue);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setSearchInput(searchValue);
+  }, [searchValue]);
 
   // 分页状态
   const TAGS_PAGE_SIZE = 50;
@@ -152,8 +158,9 @@ export function MovieFilterBar({
   const paginatedActors = filteredActors.slice(0, actorPage * ACTORS_PAGE_SIZE);
   const hasMoreActors = paginatedActors.length < filteredActors.length;
 
-  // 处理搜索输入（防抖）
+  // 处理搜索输入（防抖到父组件，输入框本身保持即时响应）
   const handleSearchChange = (value: string) => {
+    setSearchInput(value);
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -199,7 +206,7 @@ export function MovieFilterBar({
       <TextField
         size="small"
         placeholder="搜索电影..."
-        defaultValue={searchValue}
+        value={searchInput}
         onChange={(e) => handleSearchChange(e.target.value)}
         sx={{
           width: 400,

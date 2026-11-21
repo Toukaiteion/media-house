@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -9,12 +9,14 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Button,
   type SelectChangeEvent,
 } from '@mui/material';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
 import { movieListCache } from '../../services/movieListCache';
+import { useAuth } from '../../contexts/AuthContext';
 import { MovieCard } from '../../components/MovieCard';
 import { MovieFilterBar, type SortByKey, type CardSize } from '../../components/MovieFilterBar';
 import { FilterStatusBar } from '../../components/FilterStatusBar';
@@ -22,6 +24,11 @@ import type { MovieDetail, MovieListParams, Tag, Actor, MediaLibrary } from '../
 
 const PAGE_SIZE_OPTIONS = [30, 50, 100];
 const DEFAULT_PAGE_SIZE = 30;
+const CARD_SIZE_STORAGE_KEY = 'movies_card_size';
+
+const SORT_KEYS: SortByKey[] = ['default', 'recent', 'mostly_play', 'name', 'release_date', 'create_time'];
+const CARD_SIZES: CardSize[] = ['small', 'medium', 'large'];
+
 // 根据卡片大小获取网格列数
 const getGridSize = (cardSize: CardSize) => {
   if (cardSize === 'small') {
@@ -32,18 +39,57 @@ const getGridSize = (cardSize: CardSize) => {
   return { xs: 24, sm: 12, md: 6, lg: 4, xl: 3 };
 };
 
+/** URL 里的筛选条件（唯一数据源，避免 state 和 URL 各存一份导致两者走神） */
+interface MovieQueryState {
+  page: number;
+  pageSize: number;
+  sortBy: SortByKey;
+  sortOrder: 'asc' | 'desc';
+  tags: string[];
+  actorId: string | null;
+  libraryId: string | null;
+  myFavor: boolean;
+  search: string;
+}
+
+function parseQuery(searchParams: URLSearchParams): MovieQueryState {
+  const page = Number.parseInt(searchParams.get('page') ?? '', 10);
+  const pageSizeParam = Number.parseInt(searchParams.get('pageSize') ?? '', 10);
+  const sortParam = searchParams.get('sortBy') as SortByKey | null;
+
+  // 兼容早期版本写在 URL 上的 mostly_play / recent_play
+  const legacySort: SortByKey | null = searchParams.has('mostly_play')
+    ? 'mostly_play'
+    : searchParams.has('recent_play')
+      ? 'recent'
+      : null;
+
+  return {
+    page: Number.isFinite(page) && page > 0 ? page : 1,
+    pageSize: PAGE_SIZE_OPTIONS.includes(pageSizeParam) ? pageSizeParam : DEFAULT_PAGE_SIZE,
+    sortBy: sortParam && SORT_KEYS.includes(sortParam) ? sortParam : legacySort ?? 'default',
+    sortOrder: searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc',
+    tags: (searchParams.get('tag_ids') ?? '').split(',').filter(Boolean),
+    actorId: searchParams.get('actor_id'),
+    libraryId: searchParams.get('library_id'),
+    myFavor: searchParams.has('my_favor'),
+    search: searchParams.get('search') ?? '',
+  };
+}
+
 export function MoviesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [cardSize, setCardSize] = useState<CardSize>('medium');
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
 
-  // 筛选栏状态
-  const [searchValue, setSearchValue] = useState('');
-  const [sortBy, setSortBy] = useState<SortByKey>('default');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [selectedActor, setSelectedActor] = useState<string | null>(null);
+  const queryState = useMemo(() => parseQuery(searchParams), [searchParams]);
+
+  // 只保留「输入框的即时值」和「UI 偏好」，筛选条件一律走 URL
+  const [searchValue, setSearchValue] = useState(queryState.search);
+  const [cardSize, setCardSize] = useState<CardSize>(() => {
+    const saved = localStorage.getItem(CARD_SIZE_STORAGE_KEY) as CardSize | null;
+    return saved && CARD_SIZES.includes(saved) ? saved : 'medium';
+  });
 
   // 标签和演员数据
   const [tags, setTags] = useState<Tag[]>([]);
@@ -54,26 +100,22 @@ export function MoviesPage() {
   // 库数据
   const [libraries, setLibraries] = useState<MediaLibrary[]>([]);
 
-  // 是否使用缓存（从播放页或详情页返回）
-  const [shouldUseCache, setShouldUseCache] = useState(false);
-
   // 滚动相关
   const [filterBarVisible, setFilterBarVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
+  const filterBarVisibleRef = useRef(true);
+  const lastScrollYRef = useRef(0);
   const contentRef = useRef<HTMLDivElement>(null);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const queryClient = useQueryClient();
+  const scrollSaveTimerRef = useRef<number | null>(null);
+  const pendingScrollRestoreRef = useRef<number | null>(null);
 
-  // 加载标签和演员数据
+  // ---------------- 数据加载 ----------------
+
   const loadTagsAndActors = useCallback(async () => {
     try {
       setLoadingTags(true);
       setLoadingActors(true);
-      const [tagsData, actorsData] = await Promise.all([
-        // 筛选栏需要尽量全的候选，后端分页上限 500
-        api.getTags(1, 500),
-        api.getActors(1, 500),
-      ]);
+      // 筛选栏需要尽量全的候选，后端分页上限 500
+      const [tagsData, actorsData] = await Promise.all([api.getTags(1, 500), api.getActors(1, 500)]);
       setTags(tagsData.tags);
       setActors(actorsData.actors);
     } catch (err) {
@@ -84,320 +126,261 @@ export function MoviesPage() {
     }
   }, []);
 
-  // 加载库列表数据
   const loadLibraries = useCallback(async () => {
     try {
-      const data = await api.getLibraries();
-      setLibraries(data);
+      setLibraries(await api.getLibraries());
     } catch (err) {
       console.error('加载库列表失败:', err);
     }
   }, []);
 
-  // 检查是否应该使用缓存并恢复 UI 状态
   useEffect(() => {
-    const navigationSource = movieListCache.getNavigationSource();
-    setShouldUseCache(navigationSource !== null);
-
-    // 检查 URL 参数
-    const urlHasParams = searchParams.toString().length > 0;
-    const libraryId = searchParams.get('library_id');
-    const hasNavigationParams = libraryId !== null;
-
-    if (urlHasParams || hasNavigationParams) {
-      // 从 URL 参数初始化状态
-      setSearchValue(searchParams.get('search') || '');
-      setSortBy((searchParams.get('sortBy') || 'default') as typeof sortBy);
-      setSortOrder((searchParams.get('sortOrder') || 'desc') as typeof sortOrder);
-      setPage(parseInt(searchParams.get('page') || '1'));
-      setPageSize(parseInt(searchParams.get('pageSize') || String(DEFAULT_PAGE_SIZE)));
-
-      const tagIds = searchParams.get('tag_ids');
-      if (tagIds) {
-        setSelectedTags(tagIds.split(','));
-      } else {
-        setSelectedTags([]);
-      }
-
-      const actorId = searchParams.get('actor_id');
-      if (actorId) {
-        setSelectedActor(actorId);
-      } else {
-        setSelectedActor(null);
-      }
-    }
-
-    // 如果从播放/详情页返回，恢复 UI 状态
-    if (navigationSource) {
-      const uiState = movieListCache.loadUIState();
-      if (uiState) {
-        setFilterBarVisible(uiState.filterBarVisible);
-        setTimeout(() => {
-          contentRef.current?.scrollTo({
-            top: uiState.scrollY,
-            behavior: 'auto',
-          });
-        }, 100);
-      }
-      // 清除导航来源标记
-      movieListCache.setNavigationSource(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    loadTagsAndActors();
-    loadLibraries();
+    void loadTagsAndActors();
+    void loadLibraries();
   }, [loadTagsAndActors, loadLibraries]);
 
-  // 更新 URL 参数
-  const updateSearchParams = useCallback((params: Record<string, string | null>) => {
-    setSearchParams((prev) => {
-      const newParams = new URLSearchParams(prev);
-      Object.entries(params).forEach(([key, value]) => {
-        if (value === null || value === '') {
-          newParams.delete(key);
-        } else {
-          newParams.set(key, value);
-        }
-      });
-      return newParams;
-    }, { replace: true });
-  }, [setSearchParams]);
+  // URL 里的搜索词变化（前进/后退、清除筛选）时同步到输入框
+  useEffect(() => {
+    setSearchValue(queryState.search);
+  }, [queryState.search]);
 
-  // 处理搜索输入
-  const handleSearchChange = useCallback((value: string) => {
-    setSearchValue(value);
-    updateSearchParams({ search: value || null });
-  }, [updateSearchParams]);
+  // ---------------- 查询 ----------------
 
-  // 处理排序方式变化
-  const handleSortByChange = useCallback((value: SortByKey) => {
-    setSortBy(value);
-    updateSearchParams({ sortBy: value === 'default' ? null : value });
-  }, [updateSearchParams]);
+  const buildParams = useCallback(
+    (q: MovieQueryState): MovieListParams => {
+      const params: MovieListParams = {
+        page: q.page,
+        pageSize: q.pageSize,
+        sortOrder: q.sortOrder,
+      };
 
-  // 处理排序顺序变化
-  const handleSortOrderChange = useCallback((order: 'asc' | 'desc') => {
-    setSortOrder(order);
-    updateSearchParams({ sortOrder: order });
-  }, [updateSearchParams]);
+      if (q.libraryId) params.libraryId = Number.parseInt(q.libraryId, 10);
+      if (q.tags.length > 0) params.tags = q.tags.join(',');
+      if (q.actorId) params.actorId = Number.parseInt(q.actorId, 10);
+      if (q.myFavor) {
+        // 用户由后端从 token 解析，前端不再传 userId
+        params.favor = true;
+      }
+      if (q.sortBy !== 'default') params.sortBy = q.sortBy;
+      if (q.search) params.search = q.search;
 
-  // 处理标签选择
-  const handleTagsChange = useCallback((tags: string[]) => {
-    setSelectedTags(tags);
-    updateSearchParams({ tag_ids: tags.length > 0 ? tags.join(',') : null });
-  }, [updateSearchParams]);
+      return params;
+    },
+    [],
+  );
 
-  // 处理演员选择
-  const handleActorChange = useCallback((actor: string | null) => {
-    setSelectedActor(actor);
-    updateSearchParams({ actor_id: actor });
-  }, [updateSearchParams]);
+  const {
+    data: moviesData,
+    isLoading,
+    isFetching,
+    error,
+  } = useQuery({
+    queryKey: ['movies', searchParams.toString()],
+    queryFn: () => api.getMoviesWithParams(buildParams(queryState)),
+    // 翻页/改筛选时保留上一页数据，避免整页闪烁和布局跳动
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  });
 
-  // 处理移除标签
-  const handleRemoveTag = useCallback((tagId: string) => {
-    const newTags = selectedTags.filter(id => id !== tagId);
-    setSelectedTags(newTags);
-    updateSearchParams({ tag_ids: newTags.length > 0 ? newTags.join(',') : null });
-  }, [selectedTags, updateSearchParams]);
+  const movies = moviesData?.items ?? [];
+  const total = moviesData?.total_count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / queryState.pageSize));
 
-  // 处理移除演员
+  // ---------------- 筛选条件变更（统一写 URL，并回到第一页） ----------------
+
+  const updateParams = useCallback(
+    (patch: Record<string, string | null>, resetPage = false) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          Object.entries(patch).forEach(([key, value]) => {
+            if (value === null || value === '') next.delete(key);
+            else next.set(key, value);
+          });
+          // 筛选条件变了还停在第 5 页，多半会直接看到空列表
+          if (resetPage) next.delete('page');
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearchValue(value);
+      updateParams({ search: value || null }, true);
+    },
+    [updateParams],
+  );
+
+  const handleSortByChange = useCallback(
+    (value: SortByKey) => {
+      updateParams({ sortBy: value === 'default' ? null : value }, true);
+    },
+    [updateParams],
+  );
+
+  const handleSortOrderChange = useCallback(
+    (order: 'asc' | 'desc') => {
+      updateParams({ sortOrder: order }, true);
+    },
+    [updateParams],
+  );
+
+  const handleTagsChange = useCallback(
+    (next: string[]) => {
+      updateParams({ tag_ids: next.length > 0 ? next.join(',') : null }, true);
+    },
+    [updateParams],
+  );
+
+  const handleActorChange = useCallback(
+    (actor: string | null) => {
+      updateParams({ actor_id: actor }, true);
+    },
+    [updateParams],
+  );
+
+  const handleRemoveTag = useCallback(
+    (tagId: string) => {
+      handleTagsChange(queryState.tags.filter((tag) => tag !== tagId));
+    },
+    [handleTagsChange, queryState.tags],
+  );
+
   const handleRemoveActor = useCallback(() => {
-    setSelectedActor(null);
-    updateSearchParams({ actor_id: null });
-  }, [updateSearchParams]);
+    updateParams({ actor_id: null }, true);
+  }, [updateParams]);
 
-  // 处理页码变化
-  const handlePageChange = useCallback((_: React.ChangeEvent<unknown>, value: number) => {
-    setPage(value);
-    updateSearchParams({ page: value.toString() });
-  }, [updateSearchParams]);
+  const handlePageChange = useCallback(
+    (_: React.ChangeEvent<unknown>, value: number) => {
+      updateParams({ page: value > 1 ? String(value) : null });
+    },
+    [updateParams],
+  );
 
-  // 处理每页大小变化
-  const handlePageSizeChange = useCallback((event: SelectChangeEvent<number>) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1); // 重置到第一页
-    updateSearchParams({ pageSize: newSize.toString(), page: '1' });
-  }, [updateSearchParams]);
+  const handlePageSizeChange = useCallback(
+    (event: SelectChangeEvent<number>) => {
+      const newSize = Number(event.target.value);
+      updateParams({ pageSize: newSize === DEFAULT_PAGE_SIZE ? null : String(newSize) }, true);
+    },
+    [updateParams],
+  );
 
-  // 处理移除搜索
   const handleRemoveSearch = useCallback(() => {
-
     setSearchValue('');
-    updateSearchParams({ search: null });
-  }, [updateSearchParams]);
-  // 处理卡片大小变化
+    updateParams({ search: null }, true);
+  }, [updateParams]);
+
+  const handleClearAll = useCallback(() => {
+    setSearchValue('');
+    updateParams({ tag_ids: null, actor_id: null, search: null }, true);
+  }, [updateParams]);
+
   const handleCardSizeChange = useCallback((size: CardSize) => {
     setCardSize(size);
+    localStorage.setItem(CARD_SIZE_STORAGE_KEY, size);
   }, []);
 
+  // ---------------- 滚动：隐藏筛选栏 + 记忆位置 ----------------
 
-  // 处理清除全部
-  const handleClearAll = useCallback(() => {
-    setSelectedTags([]);
-    setSelectedActor(null);
-    setSearchValue('');
-    updateSearchParams({
-      tag_ids: null,
-      actor_id: null,
-      search: null,
-    });
-    setPage(1);
-  }, [updateSearchParams]);
+  const handleScroll = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
 
-  // 获取当前库的名称
-  const getCurrentLibraryName = () => {
-    const libraryId = searchParams.get('library_id');
-    if (!libraryId) return undefined;
-    const library = libraries.find(lib => lib.id === parseInt(libraryId));
-    return library?.name;
-  };
+    const y = el.scrollTop;
+    const nextVisible = y <= 50 ? true : y < lastScrollYRef.current;
+    lastScrollYRef.current = y;
 
-  // 获取当前是否为我的最爱
-  const getMyFavor = () => {
-    return searchParams.get('my_favor') !== null;
-  };
-
-  // 处理滚动事件
-  const handleScroll = useCallback((e: Event) => {
-    const target = e.target as HTMLElement;
-    const currentScrollY = target.scrollTop;
-
-    // 保存 UI 状态到缓存
-    movieListCache.saveUIState({
-      scrollY: currentScrollY,
-      filterBarVisible,
-    });
-
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
+    if (nextVisible !== filterBarVisibleRef.current) {
+      filterBarVisibleRef.current = nextVisible;
+      setFilterBarVisible(nextVisible);
     }
 
-    scrollTimeoutRef.current = setTimeout(() => {
-      if (currentScrollY > lastScrollY && currentScrollY > 50) {
-        // 向下滚动，隐藏筛选栏
-        setFilterBarVisible(false);
-      } else if (currentScrollY < lastScrollY || currentScrollY <= 0) {
-        // 向上滚动或到达顶部，显示筛选栏
-        setFilterBarVisible(true);
-      }
-      setLastScrollY(currentScrollY);
-    }, 50);
-  }, [lastScrollY, filterBarVisible]);
+    // 节流写 sessionStorage：滚动事件一秒几十次，每次都序列化+写存储会卡
+    if (scrollSaveTimerRef.current === null) {
+      scrollSaveTimerRef.current = window.setTimeout(() => {
+        scrollSaveTimerRef.current = null;
+        movieListCache.saveUIState({
+          scrollY: lastScrollYRef.current,
+          filterBarVisible: filterBarVisibleRef.current,
+        });
+      }, 200);
+    }
+  }, []);
 
-  // 注册滚动监听
   useEffect(() => {
     const content = contentRef.current;
     if (!content) return;
 
-    content.addEventListener('scroll', handleScroll);
+    content.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       content.removeEventListener('scroll', handleScroll);
+      if (scrollSaveTimerRef.current !== null) {
+        window.clearTimeout(scrollSaveTimerRef.current);
+        scrollSaveTimerRef.current = null;
+      }
     };
   }, [handleScroll]);
 
-  // 清理定时器
+  // 从播放页/详情页回来时恢复滚动位置（等列表渲染出来再滚动）
   useEffect(() => {
-    return () => {
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
+    const navigationSource = movieListCache.getNavigationSource();
+    if (!navigationSource) return;
+
+    movieListCache.setNavigationSource(null);
+    const uiState = movieListCache.loadUIState();
+    if (!uiState) return;
+
+    pendingScrollRestoreRef.current = uiState.scrollY;
+    filterBarVisibleRef.current = uiState.filterBarVisible;
+    setFilterBarVisible(uiState.filterBarVisible);
   }, []);
 
-  // 构建查询参数
-  const buildQueryParams = (): MovieListParams => {
-    const params: MovieListParams = {
-      // 优先使用 URL 参数，URL 没有时才使用 state 值（避免重复请求）
-      page: parseInt(searchParams.get('page') || String(page)),
-      pageSize: parseInt(searchParams.get('pageSize') || String(pageSize)),
-    };
+  useEffect(() => {
+    const target = pendingScrollRestoreRef.current;
+    if (target === null || movies.length === 0) return;
 
-    const libraryId = searchParams.get('library_id');
-    const tagIds = searchParams.get('tag_ids');
-    const actorId = searchParams.get('actor_id');
-    const myFavor = searchParams.get('my_favor');
+    pendingScrollRestoreRef.current = null;
+    requestAnimationFrame(() => {
+      contentRef.current?.scrollTo({ top: target, behavior: 'auto' });
+    });
+  }, [movies.length]);
 
-    // 从 URL 获取筛选条件
-    const urlSortBy = searchParams.get('sortBy') as MovieListParams['sortBy'];
-    const urlSearch = searchParams.get('search');
-    const urlSortOrder = searchParams.get('sortOrder') as 'asc' | 'desc';
+  // ---------------- 其他 ----------------
 
-    // 兼容旧的 URL 参数
-    const mostlyPlay = searchParams.get('mostly_play');
-    const recentPlay = searchParams.get('recent_play');
-
-    if (libraryId) {
-      params.libraryId = parseInt(libraryId);
-    }
-    if (tagIds) {
-      params.tags = tagIds;
-    }
-    if (actorId) {
-      params.actorId = parseInt(actorId);
-    }
-    if (myFavor) {
-      params.favor = true;
-      params.userId = 1; // TODO: 从用户上下文获取
-    }
-
-    // 优先使用新的 sortBy 参数，兼容旧的 mostlyPlay 和 recentPlay
-    if (urlSortBy) {
-      params.sortBy = urlSortBy;
-    } else if (mostlyPlay) {
-      params.sortBy = 'mostly_play';
-    } else if (recentPlay) {
-      params.sortBy = 'recent';
-    }
-
-    if (urlSearch) {
-      params.search = urlSearch;
-    }
-
-    if (urlSortOrder) {
-      params.sortOrder = urlSortOrder;
-    }
-
-    return params;
-  };
-
-  // 使用 react-query 缓存电影列表数据
-  const { data: moviesData, isLoading, error } = useQuery({
-    queryKey: ['movies', searchParams.toString()],
-    queryFn: async () => {
-      const params = buildQueryParams();
-      return await api.getMoviesWithParams(params);
+  const handleFavoriteToggle = useCallback(
+    async (movieId: number) => {
+      try {
+        const response = await api.toggleFavorite(movieId, user?.id ?? 0);
+        // 按 id 更新，不要用下标——列表顺序一变就会改错条目
+        queryClient.setQueryData(['movies', searchParams.toString()], (oldData: unknown) => {
+          const data = oldData as { items?: MovieDetail[] } | undefined;
+          if (!data?.items) return oldData;
+          return {
+            ...data,
+            items: data.items.map((item) =>
+              Number(item.id) === movieId ? { ...item, is_favorited: response.is_favorited } : item,
+            ),
+          };
+        });
+      } catch (err) {
+        console.error('收藏切换失败:', err);
+      }
     },
-    // 从播放/详情页返回时，优先使用缓存（staleTime = Infinity）
-    staleTime: shouldUseCache ? Infinity : 5 * 60 * 1000,
-    // 正常情况下 5 分钟后重新获取数据
-  });
+    [queryClient, searchParams, user?.id],
+  );
 
-  const movies = moviesData?.items || [];
-  const total = moviesData?.total_count || 0;
+  const currentLibraryName = useMemo(() => {
+    if (!queryState.libraryId) return undefined;
+    return libraries.find((lib) => lib.id === Number.parseInt(queryState.libraryId!, 10))?.name;
+  }, [libraries, queryState.libraryId]);
 
-  // 如果使用缓存，不显示 loading 状态
-  const loading = shouldUseCache ? false : isLoading;
-
-  // 处理收藏切换
-  const handleFavoriteToggle = async (movieId: number, currentIndex: number) => {
-    try {
-      const response = await api.toggleFavorite(movieId, 1);
-      // 更新 react-query 缓存中的数据
-      queryClient.setQueryData(['movies', searchParams.toString()], (oldData: any) => {
-        if (!oldData) return oldData;
-        return {
-          ...oldData,
-          items: oldData.items.map((item: MovieDetail, idx: number) =>
-            idx === currentIndex ? { ...item, is_favorited: response.is_favorited } : item
-          ),
-        };
-      });
-    } catch (err) {
-      console.error('收藏切换失败:', err);
-    }
-  };
+  const hasActiveFilter =
+    queryState.tags.length > 0 || Boolean(queryState.actorId) || Boolean(queryState.search) || queryState.myFavor;
+  const showInitialLoading = isLoading && movies.length === 0;
 
   if (error && movies.length === 0) {
     return (
@@ -409,30 +392,21 @@ export function MoviesPage() {
 
   return (
     <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* 滚动内容区域 */}
-      <Box
-        ref={contentRef}
-        sx={{
-          flex: 1,
-          overflow: 'auto',
-          position: 'relative',
-        }}
-      >
-        {/* 筛选栏 */}
+      <Box ref={contentRef} sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
         <MovieFilterBar
           visible={filterBarVisible}
-          libraryId={searchParams.get('library_id') ? parseInt(searchParams.get('library_id')!) : null}
-          libraryName={getCurrentLibraryName()}
-          myFavor={getMyFavor()}
+          libraryId={queryState.libraryId ? Number.parseInt(queryState.libraryId, 10) : null}
+          libraryName={currentLibraryName}
+          myFavor={queryState.myFavor}
           searchValue={searchValue}
           onSearchChange={handleSearchChange}
-          sortBy={sortBy}
+          sortBy={queryState.sortBy}
           onSortByChange={handleSortByChange}
-          sortOrder={sortOrder}
+          sortOrder={queryState.sortOrder}
           onSortOrderChange={handleSortOrderChange}
-          selectedTags={selectedTags}
+          selectedTags={queryState.tags}
           onTagsChange={handleTagsChange}
-          selectedActor={selectedActor}
+          selectedActor={queryState.actorId}
           onActorChange={handleActorChange}
           tags={tags}
           actors={actors}
@@ -442,10 +416,9 @@ export function MoviesPage() {
           onCardSizeChange={handleCardSizeChange}
         />
 
-        {/* 筛选状态栏 */}
         <FilterStatusBar
-          selectedTags={selectedTags}
-          selectedActor={selectedActor}
+          selectedTags={queryState.tags}
+          selectedActor={queryState.actorId}
           searchValue={searchValue}
           tags={tags}
           actors={actors}
@@ -455,27 +428,43 @@ export function MoviesPage() {
           onClearAll={handleClearAll}
         />
 
-        {/* 电影内容 */}
         <Box sx={{ p: 3, pt: 2 }}>
-          {/* 电影网格 */}
-          <Grid container spacing={3} columns={24}>
-            {movies.map((movie, index) => (
-              <Grid size={getGridSize(cardSize)} key={movie.id}>
-                <MovieCard
-                  media_id={parseInt(movie.id)}
-                  poster_url={movie.poster_path}
-                  title={movie.title}
-                  year={movie.year}
-                  is_favorited={movie.is_favorited}
-                  size={cardSize}
-                  onFavoriteToggle={() => handleFavoriteToggle(parseInt(movie.id), index)}
-                />
-              </Grid>
-            ))}
-          </Grid>
+          {showInitialLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+              <Typography color="text.secondary">加载中…</Typography>
+            </Box>
+          ) : (
+            <Grid container spacing={3} columns={24} sx={{ opacity: isFetching ? 0.6 : 1, transition: 'opacity .15s' }}>
+              {movies.map((movie) => (
+                <Grid size={getGridSize(cardSize)} key={movie.id}>
+                  <MovieCard
+                    media_id={Number(movie.id)}
+                    poster_url={movie.poster_path}
+                    title={movie.title}
+                    year={movie.year}
+                    is_favorited={movie.is_favorited}
+                    size={cardSize}
+                    onFavoriteToggle={() => handleFavoriteToggle(Number(movie.id))}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          )}
 
-          {/* 分页控制 */}
-          {!loading && movies.length > 0 && total > 0 && (
+          {!showInitialLoading && movies.length === 0 && (
+            <Box sx={{ py: 8, textAlign: 'center' }}>
+              <Typography variant="h6" color="text.secondary">
+                {hasActiveFilter ? '没有符合条件的结果' : '暂无电影'}
+              </Typography>
+              {hasActiveFilter && (
+                <Button sx={{ mt: 2 }} variant="outlined" onClick={handleClearAll}>
+                  清除全部筛选
+                </Button>
+              )}
+            </Box>
+          )}
+
+          {!showInitialLoading && movies.length > 0 && total > 0 && (
             <Box
               sx={{
                 mt: 4,
@@ -490,21 +479,21 @@ export function MoviesPage() {
                 共 {total} 条
               </Typography>
               <Pagination
-                count={Math.ceil(total / pageSize)}
-                page={page}
+                count={totalPages}
+                page={Math.min(queryState.page, totalPages)}
                 onChange={handlePageChange}
                 color="primary"
                 showFirstButton
                 showLastButton
-                disabled={loading}
+                disabled={isFetching}
               />
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <InputLabel>每页显示</InputLabel>
                 <Select
-                  value={pageSize}
+                  value={queryState.pageSize}
                   onChange={handlePageSizeChange}
                   label="每页显示"
-                  disabled={loading}
+                  disabled={isFetching}
                 >
                   {PAGE_SIZE_OPTIONS.map((size) => (
                     <MenuItem key={size} value={size}>
@@ -516,16 +505,6 @@ export function MoviesPage() {
             </Box>
           )}
 
-          {/* 空状态 */}
-          {!loading && movies.length === 0 && (
-            <Box sx={{ py: 8, textAlign: 'center' }}>
-              <Typography variant="h6" color="text.secondary">
-                暂无电影
-              </Typography>
-            </Box>
-          )}
-
-          {/* 错误提示（已有数据时） */}
           {error && movies.length > 0 && (
             <Alert severity="error" sx={{ mt: 2 }}>
               {error instanceof Error ? error.message : '加载失败'}

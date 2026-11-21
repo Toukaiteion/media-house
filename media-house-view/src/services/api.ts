@@ -447,6 +447,20 @@ class ApiClient {
   }
 
   /**
+   * 标记播放完成（片尾时调用，让「已看完」状态能被后端记录）
+   */
+  async markPlaybackCompleted(dto: {
+    media_library_id: number;
+    media_id: number;
+    position_seconds: number;
+  }): Promise<{ message: string }> {
+    return this.request<{ message: string }>('/playrecord/progress/complete', {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  /**
    * 健康检查
    */
   async healthCheck(): Promise<HealthCheckResponse> {
