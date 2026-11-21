@@ -162,8 +162,19 @@ public class ScanService(
 
             foreach (var movieDir in directoriesToProcess)
             {
-                await ProcessMovieDirectoryAsync(context, libraryId, movieDir, log, lookup);
-                await context.SaveChangesAsync();
+                try
+                {
+                    await ProcessMovieDirectoryAsync(context, libraryId, movieDir, log, lookup);
+                    await context.SaveChangesAsync();
+                }
+                catch (DbUpdateException ex)
+                {
+                    // 单部影片的数据冲突不该让整次扫描失败：记录下来、清干净、继续下一个
+                    _logger.LogError(ex, "写入影片失败，跳过该目录：{Directory}", movieDir.Name);
+
+                    context.ChangeTracker.Clear();
+                    log = await context.SystemSyncLogs.FindAsync(log.Id) ?? log;
+                }
             }
 
             // 清理磁盘上已经不存在的媒体（这一步必须在遍历完所有目录之后做）
@@ -172,8 +183,14 @@ public class ScanService(
             log.Status = SyncStatus.Completed;
             log.EndTime = DateTime.UtcNow;
 
-            library.Status = ScanStatus.Idle;
-            library.UpdateTime = DateTime.UtcNow;
+            // 上面的 ChangeTracker.Clear() 会把 library 也一起脱离跟踪，
+            // 所以这里重新查一次再改状态，避免状态没写进去
+            var libraryToUpdate = await context.MediaLibraries.FindAsync(libraryId);
+            if (libraryToUpdate != null)
+            {
+                libraryToUpdate.Status = ScanStatus.Idle;
+                libraryToUpdate.UpdateTime = DateTime.UtcNow;
+            }
 
             await context.SaveChangesAsync();
             _logger.LogInformation(
@@ -184,26 +201,39 @@ public class ScanService(
         {
             _logger.LogError(ex, "{SyncType} failed for library {LibraryId}", syncType, libraryId);
 
-            var log = await context.SystemSyncLogs
-                .Where(sl => sl.MediaLibraryId == libraryId && sl.SyncType == syncType &&
-                             (sl.Status == SyncStatus.Started || sl.Status == SyncStatus.InProgress))
-                .OrderByDescending(sl => sl.StartTime)
-                .FirstOrDefaultAsync();
-
-            if (log != null)
+            try
             {
-                log.Status = SyncStatus.Failed;
-                log.ErrorMessage = ex.Message;
-                log.EndTime = DateTime.UtcNow;
+                // 关键：先把跟踪状态清掉再写状态。
+                // 事务回滚不会重置 EF 的跟踪器，残留的 Added 实体一旦被后面的
+                // SaveChanges 冲出去，就会变成「主键重复」——把真正的错误盖掉。
+                context.ChangeTracker.Clear();
+
+                var log = await context.SystemSyncLogs
+                    .Where(sl => sl.MediaLibraryId == libraryId && sl.SyncType == syncType &&
+                                 (sl.Status == SyncStatus.Started || sl.Status == SyncStatus.InProgress))
+                    .OrderByDescending(sl => sl.StartTime)
+                    .FirstOrDefaultAsync();
+
+                if (log != null)
+                {
+                    log.Status = SyncStatus.Failed;
+                    log.ErrorMessage = ex.Message;
+                    log.EndTime = DateTime.UtcNow;
+                }
+
+                var library = await context.MediaLibraries.FindAsync(libraryId);
+                if (library != null)
+                {
+                    library.Status = ScanStatus.Error;
+                    library.UpdateTime = DateTime.UtcNow;
+                }
+
                 await context.SaveChangesAsync();
             }
-
-            var library = await context.MediaLibraries.FindAsync(libraryId);
-            if (library != null)
+            catch (Exception statusEx)
             {
-                library.Status = ScanStatus.Error;
-                library.UpdateTime = DateTime.UtcNow;
-                await context.SaveChangesAsync();
+                // 连状态都写不进去也不能再抛，否则原始错误会被覆盖
+                _logger.LogError(statusEx, "记录扫描失败状态时出错");
             }
         }
     }
@@ -441,6 +471,11 @@ public class ScanService(
                 await UpsertMediaStaffAsync(context, mediaItem.Id, parseResult.Actors, lookup);
             }
 
+            // 标签/演员的删除和重建都在本事务内落库：
+            // 之前它们只挂在跟踪器上，靠外层循环的 SaveChanges 冲出去，
+            // 既不原子（删除在事务内、插入在事务外），失败时也容易和回滚状态混在一起
+            await context.SaveChangesAsync();
+
             // 提事务
             await transaction.CommitAsync();
 
@@ -458,6 +493,12 @@ public class ScanService(
         {
             // 回滚事务
             await transaction.RollbackAsync();
+
+            // 回滚只撤销数据库，不会撤销 EF 的跟踪状态。不清掉的话，
+            // 后面任何一次 SaveChanges（比如外层记录扫描失败）都会把这次
+            // 已经回滚的 INSERT 再冲一遍，表现为「主键重复」。
+            context.ChangeTracker.Clear();
+
             throw;
         }
     }
