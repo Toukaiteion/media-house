@@ -12,4 +12,5 @@ public class MovieQueryDto
     public string? SortBy { get; set; }        // 排序类型: default, recent, mostly_play, name, release_date, create_time
     public string? Search { get; set; }        // 搜索关键词，按name或title模糊查询
     public string? SortOrder { get; set; }     // 排序方向: asc（升序）或 desc（降序），默认降序
+    public string? Letter { get; set; }        // 首字母筛选: A-Z，按 Media.Name（番号/目录名）的首字母过滤
 }

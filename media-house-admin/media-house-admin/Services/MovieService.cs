@@ -79,8 +79,24 @@ public class MovieService(MediaHouseDbContext context, ILogger<MovieService> log
             mediaQuery = mediaQuery.Where(m => m.MediaStaffs.Any(ms => ms.StaffId == actorId));
         }
 
+        // 首字母筛选：按番号（Media.Name）的首字母过滤，空的或非 A-Z 视为不筛选。
+        // 标题多为中日文，按标题分字母没有意义，所以这里用番号那一列。
+        var letter = query.Letter?.Trim().ToUpperInvariant();
+        var hasLetterFilter = letter is { Length: 1 } && letter[0] >= 'A' && letter[0] <= 'Z';
+        if (hasLetterFilter)
+        {
+            mediaQuery = mediaQuery.Where(m => m.Name.ToUpper().StartsWith(letter!));
+        }
+
         var sortBy = (query.SortBy ?? "default").Trim().ToLowerInvariant();
         var ascending = string.Equals(query.SortOrder, "asc", StringComparison.OrdinalIgnoreCase);
+
+        // 选了首字母时，用户预期是按名称 A→Z 顺序浏览（默认排序是 Id 倒序，看着会很乱）
+        if (hasLetterFilter && sortBy == "default")
+        {
+            sortBy = "name";
+            ascending = true;
+        }
 
         // 按排序方式排序（全部在 SQL 里完成）
         if (sortBy == "recent" && userId.HasValue)

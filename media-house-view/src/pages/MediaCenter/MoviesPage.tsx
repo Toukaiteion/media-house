@@ -20,6 +20,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { MovieCard } from '../../components/MovieCard';
 import { MovieFilterBar, type SortByKey, type CardSize } from '../../components/MovieFilterBar';
 import { FilterStatusBar } from '../../components/FilterStatusBar';
+import { LetterRail } from '../../components/LetterRail';
 import type { MovieDetail, MovieListParams, Tag, Actor, MediaLibrary } from '../../types';
 
 const PAGE_SIZE_OPTIONS = [50, 100, 200, 500];
@@ -50,6 +51,13 @@ interface MovieQueryState {
   libraryId: string | null;
   myFavor: boolean;
   search: string;
+  letter: string | null;
+}
+
+/** 只接受 A-Z 单个字母，其他一律当作未筛选 */
+function parseLetter(raw: string | null): string | null {
+  const value = (raw ?? '').trim().toUpperCase();
+  return value.length === 1 && value >= 'A' && value <= 'Z' ? value : null;
 }
 
 function parseQuery(searchParams: URLSearchParams): MovieQueryState {
@@ -74,6 +82,7 @@ function parseQuery(searchParams: URLSearchParams): MovieQueryState {
     libraryId: searchParams.get('library_id'),
     myFavor: searchParams.has('my_favor'),
     search: searchParams.get('search') ?? '',
+    letter: parseLetter(searchParams.get('letter')),
   };
 }
 
@@ -169,6 +178,7 @@ export function MoviesPage() {
       }
       if (q.sortBy !== 'default') params.sortBy = q.sortBy;
       if (q.search) params.search = q.search;
+      if (q.letter) params.letter = q.letter;
 
       return params;
     },
@@ -280,9 +290,17 @@ export function MoviesPage() {
     updateParams({ search: null }, true);
   }, [updateParams]);
 
+  // 首字母筛选（按番号首字母）
+  const handleLetterSelect = useCallback(
+    (letter: string | null) => {
+      updateParams({ letter }, true);
+    },
+    [updateParams],
+  );
+
   const handleClearAll = useCallback(() => {
     setSearchValue('');
-    updateParams({ tag_ids: null, actor_id: null, search: null }, true);
+    updateParams({ tag_ids: null, actor_id: null, search: null, letter: null }, true);
   }, [updateParams]);
 
   const handleCardSizeChange = useCallback((size: CardSize) => {
@@ -398,7 +416,11 @@ export function MoviesPage() {
   }, [libraries, queryState.libraryId]);
 
   const hasActiveFilter =
-    queryState.tags.length > 0 || Boolean(queryState.actorId) || Boolean(queryState.search) || queryState.myFavor;
+    queryState.tags.length > 0 ||
+    Boolean(queryState.actorId) ||
+    Boolean(queryState.search) ||
+    Boolean(queryState.letter) ||
+    queryState.myFavor;
   const showInitialLoading = isLoading && movies.length === 0;
 
   if (error && movies.length === 0) {
@@ -531,6 +553,9 @@ export function MoviesPage() {
           )}
         </Box>
       </Box>
+
+      {/* 右侧 A-Z 首字母快捷条 */}
+      <LetterRail active={queryState.letter} onSelect={handleLetterSelect} />
     </Box>
   );
 }

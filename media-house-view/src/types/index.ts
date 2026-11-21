@@ -234,6 +234,7 @@ export interface MovieListParams {
   userId?: number;
   favor?: boolean;
   search?: string;
+  letter?: string;
   sortBy?: 'default' | 'recent' | 'mostly_play' | 'name' | 'release_date' | 'create_time';
   sortOrder?: 'asc' | 'desc';
 }

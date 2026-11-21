@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   MediaLibrary,
   CreateMediaLibraryDto,
   UpdateMediaLibraryDto,
@@ -39,7 +39,7 @@
   PluginExecutionLog,
   PluginInstallResponse,
   PluginExecutionResponse,
-  // 涓婁紶妯″潡鐩稿叧绫诲瀷
+  // 上传模块相关类型
   UploadTask,
   UploadRequest,
   UploadChunkResponse,
@@ -52,7 +52,7 @@
   PublishResponse,
   MergeUploadRequest,
   MergeUploadResponse,
-  // 鏂囦欢澶逛笂浼犵浉鍏崇被鍨?
+  // 文件夹上传相关类型
   FolderUploadTask,
   CreateFolderUploadRequest,
   AddFileToFolderRequest,
@@ -119,12 +119,12 @@ class ApiClient {
       throw new Error(errorMessage);
     }
 
-    // 妫€鏌ュ搷搴斾綋鏄惁涓虹┖锛堝 204 No Content锛?
+    // 检查响应体是否为空（如 204 No Content）
     if (response.status === 204 || response.headers.get('content-length') === '0') {
       return undefined as T;
     }
 
-    // 灏濊瘯瑙ｆ瀽 JSON锛屽鏋滃け璐ュ垯杩斿洖 undefined锛堝吋瀹规棤杩斿洖浣撶殑鎯呭喌锛?
+    // 尝试解析 JSON，如果失败则返回 undefined（兼容无返回体的情况）
     return response.json().catch(() => undefined as T);
   }
 
@@ -316,10 +316,10 @@ class ApiClient {
     });
   }
 
-  // ===== 鏂板 API 鏂规硶 =====
+  // ===== 新增 API 方法 =====
 
   /**
-   * 鏍囩鐩稿叧 API
+   * 标签相关 API
    */
   async getTags(page: number = 1, pageSize: number = 20, favorited: boolean = false): Promise<PageTag> {
     const favoritedParam = favorited ? '&favorited=true' : '';
@@ -327,14 +327,14 @@ class ApiClient {
   }
 
   /**
-   * 鍒囨崲鏍囩鏀惰棌
+   * 切换标签收藏
    */
   async toggleTagFavorite(tagId: string | number): Promise<{ is_favorited: boolean }> {
     return this.request<{ is_favorited: boolean }>(`/tags/${tagId}/favor`, { method: 'POST' });
   }
 
   /**
-   * 婕斿憳鐩稿叧 API
+   * 演员相关 API
    */
   async getActors(page: number = 1, pageSize: number = 20, favorited: boolean = false): Promise<PageActor> {
     const favoritedParam = favorited ? '&favorited=true' : '';
@@ -342,17 +342,17 @@ class ApiClient {
   }
 
   /**
-   * 鍒囨崲婕斿憳鏀惰棌
+   * 切换演员收藏
    */
   async toggleActorFavorite(actorId: string | number): Promise<{ is_favorited: boolean }> {
     return this.request<{ is_favorited: boolean }>(`/actors/${actorId}/favor`, { method: 'POST' });
   }
 
   /**
-   * 鐢靛奖鐩稿叧鎵╁睍 API
+   * 电影相关扩展 API
    */
   /**
-   * 鑾峰彇鐢靛奖鍒楄〃锛堝甫楂樼骇绛涢€夛級
+   * 获取电影列表（带高级筛选）
    */
   async getMoviesWithParams(params: MovieListParams): Promise<MoviesPage> {
     const queryParams = new URLSearchParams();
@@ -364,6 +364,7 @@ class ApiClient {
     if (params.userId) queryParams.append('userId', params.userId.toString());
     if (params.favor !== undefined) queryParams.append('favor', params.favor.toString());
     if (params.search) queryParams.append('search', params.search);
+    if (params.letter) queryParams.append('letter', params.letter);
     if (params.sortBy) queryParams.append('sortBy', params.sortBy);
     if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
 
@@ -372,14 +373,14 @@ class ApiClient {
   }
 
   /**
-   * 鑾峰彇鐢靛奖璇︽儏锛堝畬鏁翠俊鎭級
+   * 获取电影详情（完整信息）
    */
   async getMovieDetail(id: string | number): Promise<MovieDetail> {
     return this.request<MovieDetail>(`/movies/${id}`);
   }
 
   /**
-   * 鍒犻櫎鐢靛奖
+   * 删除电影
    */
   async deleteMovie(id: string | number): Promise<DeleteMediaResponse> {
     return this.request<DeleteMediaResponse>(`/movies/${id}`, {
@@ -388,11 +389,11 @@ class ApiClient {
   }
 
   /**
-   * 濯掍綋鐩稿叧 API
+   * 媒体相关 API
    */
 
   /**
-   * 鍙戣捣鎾斁璇锋眰锛圥OST锛?
+   * 发起播放请求（POST）
    */
   async requestPlay(mediaId: string | number, dto: PlayMediaDto): Promise<Blob> {
     const url = `${this.baseUrl}/media/${mediaId}/play`;
@@ -413,7 +414,7 @@ class ApiClient {
   }
 
   /**
-   * 鑾峰彇濯掍綋鏂囦欢锛堥€氳繃璺緞锛?
+   * 获取媒体文件（通过路径）
    */
   get mediaFileUrl(): (path: string) => string {
     return (path: string) => {
@@ -423,7 +424,7 @@ class ApiClient {
   }
 
   /**
-   * 鑾峰彇鍥剧墖锛堥€氳繃 url_name锛?
+   * 获取图片（通过 url_name）
    */
   get imageUrl(): (url_name: string) => string {
     return (url_name: string) => {
@@ -432,7 +433,7 @@ class ApiClient {
   }
 
   /**
-   * 鍒囨崲鏀惰棌鐘舵€侊紙宸插簾寮冿紝浠呬緵鍙傝€冿級
+   * 切换收藏状态（已废弃，仅供参考）
    * @deprecated
    */
   async toggleFavorite(mediaId: string | number, userId: number): Promise<FavoriteResponse> {
@@ -443,17 +444,17 @@ class ApiClient {
   }
 
   /**
-   * 鎾斁璁板綍鐩稿叧 API
+   * 播放记录相关 API
    */
   /**
-   * 鑾峰彇鎾斁璁板綍
+   * 获取播放记录
    */
   async getPlayRecord(mediaId: string | number, userId: number): Promise<PlayRecord> {
     return this.request<PlayRecord>(`/playrecord/${mediaId}?userId=${userId}`);
   }
 
   /**
-   * 鍒涘缓鎴栨洿鏂版挱鏀捐褰?
+   * 创建或更新播放记录
    */
   async upsertPlayRecord(mediaId: string | number, dto: PlayRecordDto): Promise<PlayRecord> {
     return this.request<PlayRecord>(`/playrecord/${mediaId}`, {
@@ -463,7 +464,7 @@ class ApiClient {
   }
 
   /**
-   * 鏍囪鎾斁瀹屾垚锛堢墖灏炬椂璋冪敤锛岃銆屽凡鐪嬪畬銆嶇姸鎬佽兘琚悗绔褰曪級
+   * 标记播放完成（片尾时调用，让「已看完」状态能被后端记录）
    */
   async markPlaybackCompleted(dto: {
     media_library_id: number;
@@ -477,7 +478,7 @@ class ApiClient {
   }
 
   /**
-   * 鍋ュ悍妫€鏌?
+   * 健康检查
    */
   async healthCheck(): Promise<HealthCheckResponse> {
     const url = this.baseUrl.replace('/api', '') + '/health';
@@ -491,10 +492,10 @@ class ApiClient {
   }
 
   /**
-   * 鎺ㄨ崘鐩稿叧 API
+   * 推荐相关 API
    */
   /**
-   * 鍩轰簬鏍囩鎺ㄨ崘鐢靛奖
+   * 基于标签推荐电影
    */
   async recommendByTags(params: RecommendParams): Promise<TagRecommendation[]> {
     const queryParams = new URLSearchParams();
@@ -505,7 +506,7 @@ class ApiClient {
   }
 
   /**
-   * 鍩轰簬婕斿憳鎺ㄨ崘鐢靛奖
+   * 基于演员推荐电影
    */
   async recommendByActors(params: RecommendParams): Promise<ActorRecommendation[]> {
     const queryParams = new URLSearchParams();
@@ -516,7 +517,7 @@ class ApiClient {
   }
 
   /**
-   * 鏇存柊濯掍綋鍏冩暟鎹?
+   * 更新媒体元数据
    */
   async updateMediaMetadata(mediaId: string | number, dto: UpdateMetadataDto): Promise<void> {
     await this.request(`/media/${mediaId}/metadata`, {
@@ -526,7 +527,7 @@ class ApiClient {
   }
 
   /**
-   * 鎼滃埉濯掍綋婧愭暟鎹?
+   * 搜刮媒体源数据
    */
   async scrapeMedia(mediaId: string | number): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/media/${mediaId}/scan`, {
@@ -535,7 +536,7 @@ class ApiClient {
   }
 
   /**
-   * 涓婁紶鍏冩暟鎹畓ip鏂囦欢
+   * 上传元数据zip文件
    */
   async uploadMetadataZip(mediaId: string | number, file: File): Promise<{ message: string }> {
     const formData = new FormData();
@@ -563,31 +564,31 @@ class ApiClient {
   }
 
   /**
-   * 鎻掍欢鐩稿叧 API
+   * 插件相关 API
    */
   /**
-   * 鑾峰彇鎵€鏈夋彃浠?
+   * 获取所有插件
    */
   async getPlugins(): Promise<Plugin[]> {
     return this.request<Plugin[]>('/plugins');
   }
 
   /**
-   * 鑾峰彇鎸夌粍鍒嗙粍鐨勬彃浠跺垪琛?
+   * 获取按组分组的插件列表
    */
   async getPluginsGrouped(): Promise<PluginGrouped[]> {
     return this.request<PluginGrouped[]>('/plugins/grouped');
   }
 
   /**
-   * 鑾峰彇鍗曚釜鎻掍欢璇︽儏
+   * 获取单个插件详情
    */
   async getPlugin(pluginKey: string): Promise<Plugin> {
     return this.request<Plugin>(`/plugins/${pluginKey}`);
   }
 
   /**
-   * 瀹夎鎻掍欢
+   * 安装插件
    */
   async installPlugin(file: File): Promise<PluginInstallResponse> {
     const formData = new FormData();
@@ -615,7 +616,7 @@ class ApiClient {
   }
 
   /**
-   * 鏇存柊鎻掍欢鐘舵€?
+   * 更新插件状态
    */
   async updatePlugin(pluginKey: string, pluginVersion: string, dto: { is_enabled: boolean }): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/plugins/${pluginKey}?version=${pluginVersion}`, {
@@ -625,7 +626,7 @@ class ApiClient {
   }
 
   /**
-   * 鍗歌浇鎻掍欢
+   * 卸载插件
    */
   async uninstallPlugin(pluginKey: string, version: string): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/plugins/${pluginKey}?version=${version}`, {
@@ -634,7 +635,7 @@ class ApiClient {
   }
 
   /**
-   * 鑾峰彇鎻掍欢閰嶇疆
+   * 获取插件配置
    */
   async getPluginConfigs(pluginKey: string, libraryId?: number): Promise<PluginConfig[]> {
     const params = libraryId ? `?libraryId=${libraryId}` : '';
@@ -642,7 +643,7 @@ class ApiClient {
   }
 
   /**
-   * 鍒涘缓鎻掍欢閰嶇疆
+   * 创建插件配置
    */
   async createPluginConfig(pluginKey: string, dto: {
     plugin_version?: string;
@@ -658,7 +659,7 @@ class ApiClient {
   }
 
   /**
-   * 鏇存柊鎻掍欢閰嶇疆
+   * 更新插件配置
    */
   async updatePluginConfig(pluginKey: string, configId: number, dto: {
     library_id?: number;
@@ -673,7 +674,7 @@ class ApiClient {
   }
 
   /**
-   * 鍒犻櫎鎻掍欢閰嶇疆
+   * 删除插件配置
    */
   async deletePluginConfig(pluginKey: string, configId: number): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/plugins/${pluginKey}/configs/${configId}`, {
@@ -682,7 +683,7 @@ class ApiClient {
   }
 
   /**
-   * 鎵ц鎻掍欢鎼滃埉
+   * 执行插件搜刮
    */
   async executePlugin(pluginKey: string, dto: {
     plugin_version?: string;
@@ -698,7 +699,7 @@ class ApiClient {
   }
 
   /**
-   * 鎵归噺鎵ц鎻掍欢
+   * 批量执行插件
    */
   async executePluginBatch(pluginKey: string, dto: {
     plugin_version?: string;
@@ -713,14 +714,14 @@ class ApiClient {
   }
 
   /**
-   * 鑾峰彇鎵ц鐘舵€?
+   * 获取执行状态
    */
   async getPluginExecution(executionId: number): Promise<PluginExecutionLog> {
     return this.request<PluginExecutionLog>(`/plugins/execution/${executionId}`);
   }
 
   /**
-   * 鑾峰彇鎵ц鏃ュ織鍒楄〃
+   * 获取执行日志列表
    */
   async getPluginExecutionLogs(pluginKey: string, mediaId?: number, limit: number = 10): Promise<PluginExecutionLog[]> {
     const params = new URLSearchParams();
@@ -730,7 +731,7 @@ class ApiClient {
   }
 
   /**
-   * 鍙栨秷鎵ц
+   * 取消执行
    */
   async cancelPluginExecution(executionId: number): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/plugins/execution/${executionId}`, {
@@ -739,7 +740,7 @@ class ApiClient {
   }
 
   /**
-   * 閲嶈瘯鎵ц
+   * 重试执行
    */
   async retryPluginExecution(executionId: number): Promise<{ executionId: number; status: string }> {
     return this.request<{ executionId: number; status: string }>(`/plugins/execution/${executionId}/retry`, {
@@ -748,12 +749,12 @@ class ApiClient {
   }
 
   /**
-   * ===== 涓婁紶妯″潡 API =====
+   * ===== 上传模块 API =====
    */
 
   /**
-   * 鍒涘缓涓婁紶浠诲姟
-   * 鏍规嵁璁捐鏂囨。锛屽鏋?MD5 鍖归厤宸插瓨鍦ㄧ殑浠诲姟锛屼細杩斿洖宸叉湁浠诲姟淇℃伅
+   * 创建上传任务
+   * 根据设计文档，如果 MD5 匹配已存在的任务，会返回已有任务信息
    */
   async createUploadTask(dto: UploadRequest): Promise<UploadTask> {
     return this.request<UploadTask>('/media/upload-tasks', {
@@ -763,7 +764,7 @@ class ApiClient {
   }
 
   /**
-   * 涓婁紶鍒嗙墖
+   * 上传分片
    */
   async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob): Promise<UploadChunkResponse> {
     const token = this.getAuthToken();
@@ -789,14 +790,14 @@ class ApiClient {
   }
 
   /**
-   * 鑾峰彇涓婁紶浠诲姟淇℃伅
+   * 获取上传任务信息
    */
   async getUploadTask(uploadId: string): Promise<UploadTask> {
     return this.request<UploadTask>(`/media/upload-tasks/${uploadId}`);
   }
 
   /**
-   * 鍒犻櫎涓婁紶浠诲姟
+   * 删除上传任务
    */
   async deleteUploadTask(uploadId: string): Promise<void> {
     await this.request(`/media/upload-tasks/${uploadId}`, {
@@ -805,7 +806,7 @@ class ApiClient {
   }
 
   /**
-   * 鍚堝苟鍒嗙墖锛屽垱寤哄緟鍙戝竷濯掍綋
+   * 合并分片，创建待发布媒体
    */
   async mergeUpload(dto: MergeUploadRequest): Promise<MergeUploadResponse> {
     const { upload_id, ...requestData } = dto;
@@ -816,7 +817,7 @@ class ApiClient {
   }
 
   /**
-   * 鏍规嵁涓婁紶浠诲姟 ID 鐢熸垚寰呭彂甯冨獟浣?
+   * 根据上传任务 ID 生成待发布媒体
    */
   async createStagingFromUpload(uploadId: string): Promise<CreateStagingResponse> {
     return this.request<CreateStagingResponse>(`/media/upload-tasks/${uploadId}/create-staging`, {
@@ -825,7 +826,7 @@ class ApiClient {
   }
 
   /**
-   * 鏍规嵁鏂囦欢澶?ID 鐢熸垚寰呭彂甯冨獟浣?
+   * 根据文件夹 ID 生成待发布媒体
    */
   async createStagingFromFolder(folderId: string): Promise<CreateStagingResponse> {
     return this.request<CreateStagingResponse>(`/media/upload-tasks/folders/${folderId}/create-staging`, {
@@ -834,21 +835,21 @@ class ApiClient {
   }
 
   /**
-   * 鑾峰彇寰呭彂甯冨獟浣撳垪琛?
+   * 获取待发布媒体列表
    */
   async getStagingMedias(): Promise<StagingMedia[]> {
     return this.request<StagingMedia[]>('/staging/list');
   }
 
   /**
-   * 鑾峰彇寰呭彂甯冨獟浣撹鎯?
+   * 获取待发布媒体详情
    */
   async getStagingMedia(id: string): Promise<StagingMediaDetail> {
     return this.request<StagingMediaDetail>(`/staging/${id}`);
   }
 
   /**
-   * 鏇存柊寰呭彂甯冨獟浣撳厓鏁版嵁
+   * 更新待发布媒体元数据
    */
   async updateStagingMetadata(id: string, dto: UpdateStagingMetadataDto): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/staging/${id}/metadata`, {
@@ -858,7 +859,7 @@ class ApiClient {
   }
 
   /**
-   * 鎼滃埉寰呭彂甯冨獟浣撳厓鏁版嵁
+   * 搜刮待发布媒体元数据
    */
   async scrapeStagingMetadata(stagingMediaId: string, dto: ScrapeStagingMetadataRequest): Promise<ScrapeStagingMetadataResponse> {
     return this.request<ScrapeStagingMetadataResponse>(`/staging/${stagingMediaId}/scrape-metadata`, {
@@ -868,7 +869,7 @@ class ApiClient {
   }
 
   /**
-   * 涓婁紶娴锋姤
+   * 上传海报
    */
   async uploadStagingPoster(id: string, file: File): Promise<{ message: string }> {
     const formData = new FormData();
@@ -896,7 +897,7 @@ class ApiClient {
   }
 
   /**
-   * 涓婁紶鑳屾櫙鍥?
+   * 上传背景图
    */
   async uploadStagingFanart(id: string, file: File): Promise<{ message: string }> {
     const formData = new FormData();
@@ -924,7 +925,7 @@ class ApiClient {
   }
 
   /**
-   * 涓婁紶鎴浘
+   * 上传截图
    */
   async uploadStagingScreenshot(id: string, file: File): Promise<{ message: string }> {
     const formData = new FormData();
@@ -952,7 +953,7 @@ class ApiClient {
   }
 
   /**
-   * 鍒犻櫎寰呭彂甯冨獟浣?
+   * 删除待发布媒体
    */
   async deleteStagingMedia(id: string): Promise<void> {
     await this.request(`/staging/${id}`, {
@@ -961,7 +962,7 @@ class ApiClient {
   }
 
   /**
-   * 鍙戝竷鍒板簱
+   * 发布到库
    */
   async publishStagingMedia(id: string, dto: PublishRequest): Promise<PublishResponse> {
     return this.request<PublishResponse>(`/staging/${id}/publish`, {
@@ -971,18 +972,18 @@ class ApiClient {
   }
 
   /**
-   * 鑾峰彇濯掍綋搴撳垪琛紙鐢ㄤ簬鍙戝竷鏃堕€夋嫨锛?
+   * 获取媒体库列表（用于发布时选择）
    */
   async getLibrariesForPublish(): Promise<MediaLibrary[]> {
     return this.request<MediaLibrary[]>('/libraries');
   }
 
   /**
-   * ===== 鏂囦欢澶逛笂浼?API =====
+   * ===== 文件夹上传 API =====
    */
 
   /**
-   * 鍒涘缓鏂囦欢澶逛笂浼犱换鍔?
+   * 创建文件夹上传任务
    */
   async createFolderUploadTask(dto: CreateFolderUploadRequest): Promise<FolderUploadTask> {
     return this.request<FolderUploadTask>('/media/upload-tasks/folders', {
@@ -992,21 +993,21 @@ class ApiClient {
   }
 
   /**
-   * 鑾峰彇鎵€鏈夋枃浠跺す涓婁紶浠诲姟
+   * 获取所有文件夹上传任务
    */
   async getFolderUploadTasks(): Promise<FolderUploadTask[]> {
     return this.request<FolderUploadTask[]>('/media/upload-tasks/folders');
   }
 
   /**
-   * 鑾峰彇鏂囦欢澶逛笂浼犺繘搴?
+   * 获取文件夹上传进度
    */
   async getFolderUploadTask(folderId: string): Promise<FolderUploadTask> {
     return this.request<FolderUploadTask>(`/media/upload-tasks/folders/${folderId}`);
   }
 
   /**
-   * 娣诲姞鏂囦欢鍒版枃浠跺す
+   * 添加文件到文件夹
    */
   async addFileToFolder(folderId: string, dto: AddFileToFolderRequest): Promise<UploadTask> {
     return this.request<UploadTask>(`/media/upload-tasks/folders/${folderId}/files`, {
@@ -1016,7 +1017,7 @@ class ApiClient {
   }
 
   /**
-   * 鍒犻櫎鏂囦欢澶逛笂浼犱换鍔?
+   * 删除文件夹上传任务
    */
   async deleteFolderUploadTask(folderId: string): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/media/upload-tasks/folders/${folderId}`, {
@@ -1025,11 +1026,11 @@ class ApiClient {
   }
 
   /**
-   * ===== 鏃ュ織绠＄悊 API =====
+   * ===== 日志管理 API =====
    */
 
   /**
-   * 鑾峰彇鏃ュ織鍒楄〃
+   * 获取日志列表
    */
   async getLogs(params: LogsQueryParams): Promise<LogsPageResponse> {
     const queryParams = new URLSearchParams();
@@ -1052,21 +1053,21 @@ class ApiClient {
   }
 
   /**
-   * 鑾峰彇鏃ュ織缁熻
+   * 获取日志统计
    */
   async getLogsStats(): Promise<LogsStats> {
     return this.request<LogsStats>('/logs/stats');
   }
 
   /**
-   * 鑾峰彇鏃ュ織绾у埆閰嶇疆
+   * 获取日志级别配置
    */
   async getLogLevelConfig(): Promise<LogLevelConfig> {
     return this.request<LogLevelConfig>('/logs/levels');
   }
 
   /**
-   * 璁剧疆鏃ュ織绾у埆
+   * 设置日志级别
    */
   async setLogLevel(level: LogLevel | string): Promise<SetLogLevelResponse> {
     return this.request<SetLogLevelResponse>('/logs/level', {
@@ -1076,7 +1077,7 @@ class ApiClient {
   }
 
   /**
-   * 鍒犻櫎鏃ф棩蹇?
+   * 删除旧日志
    */
   async deleteOldLogs(beforeDate: string): Promise<DeleteLogsResponse> {
     return this.request<DeleteLogsResponse>(`/logs?beforeDate=${beforeDate}`, {
