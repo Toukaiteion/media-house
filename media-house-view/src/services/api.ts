@@ -538,6 +538,16 @@ class ApiClient {
   }
 
   /**
+   * 重新解析该影片所在目录的元数据（重读 NFO 并重建关联）
+   */
+  async rescanMovie(mediaId: string | number): Promise<{ message: string; title: string; media_id: string }> {
+    return this.request<{ message: string; title: string; media_id: string }>(
+      `/movies/${mediaId}/rescan`,
+      { method: 'POST' },
+    );
+  }
+
+  /**
    * 上传元数据zip文件
    */
   async uploadMetadataZip(mediaId: string | number, file: File): Promise<{ message: string }> {

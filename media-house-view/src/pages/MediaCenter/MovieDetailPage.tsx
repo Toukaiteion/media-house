@@ -29,6 +29,7 @@ import {
   HowToReg as HowToRegIcon,
   BookmarkAddOutlined as BookmarkAddIcon,
   BookmarkAdded as BookmarkAddedIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { api } from '../../services/api';
 import { movieListCache } from '../../services/movieListCache';
@@ -53,6 +54,7 @@ export function MovieDetailPage() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [rescanning, setRescanning] = useState(false);
   const menuAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   // 点击页面外部或按 ESC 关闭菜单
@@ -193,6 +195,23 @@ export function MovieDetailPage() {
   const handleMetadataUpload = async (file: File) => {
     if (!id) throw new Error('缺少媒体ID');
     await api.uploadMetadataZip(id, file);
+  };
+
+  // 重新解析这部影片所在目录的元数据（重读 NFO，重建标签/演员/图片关系）
+  const handleRescan = async () => {
+    if (!id || rescanning) return;
+
+    setMenuOpen(false);
+    setRescanning(true);
+    try {
+      const result = await api.rescanMovie(id);
+      setToast(`重新解析完成：${result.title}`);
+      await loadMovie();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '重新解析失败');
+    } finally {
+      setRescanning(false);
+    }
   };
 
   // 详情页里直接收藏/取消收藏标签
@@ -541,6 +560,12 @@ export function MovieDetailPage() {
                   </Typography>
                 </MenuItem>
                 */}
+                <MenuItem onClick={handleRescan} disabled={rescanning}>
+                  {rescanning ? <CircularProgress size={18} /> : <RefreshIcon />}
+                  <Typography variant="body2" sx={{ ml: 1 }}>
+                    {rescanning ? '解析中…' : '重新解析元数据'}
+                  </Typography>
+                </MenuItem>
                 <MenuItem onClick={handleUploadClick}>
                   <CloudUploadIcon />
                   <Typography variant="body2" sx={{ ml: 1 }}>
