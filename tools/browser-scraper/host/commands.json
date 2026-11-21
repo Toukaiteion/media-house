@@ -197,7 +197,8 @@
           "label": "扫描目录",
           "type": "directory",
           "required": true,
-          "noArg": true
+          "noArg": true,
+          "default": "G:\\迅雷下载"
         },
         {
           "key": "outputDir",
@@ -207,7 +208,8 @@
           "arg": [
             "--output",
             "${value}"
-          ]
+          ],
+          "default": "F:\\迅雷下载\\emby_out"
         },
         {
           "key": "minSize",
